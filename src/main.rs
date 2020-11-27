@@ -477,9 +477,12 @@ mod qg {
         #[test]
         fn test_merge_rule_deep_apply() {
             let top_box = Rc::new(RefCell::new(QGBox::new(0, BoxType::Select)));
-            let nested_box = Rc::new(RefCell::new(QGBox::new(1, BoxType::Select)));
-            let quantifier = Rc::new(RefCell::new(Quantifier::new(1, QuantifierType::Foreach, nested_box, &top_box)));
-            top_box.borrow_mut().add_quantifier(quantifier);
+            let nested_box1 = Rc::new(RefCell::new(QGBox::new(1, BoxType::Select)));
+            let quantifier1 = Rc::new(RefCell::new(Quantifier::new(1, QuantifierType::Foreach, Rc::clone(&nested_box1), &top_box)));
+            let nested_box2 = Rc::new(RefCell::new(QGBox::new(1, BoxType::Select)));
+            let quantifier2 = Rc::new(RefCell::new(Quantifier::new(1, QuantifierType::Foreach, nested_box2, &nested_box1)));
+            nested_box1.borrow_mut().add_quantifier(quantifier1);
+            top_box.borrow_mut().add_quantifier(quantifier2);
             let mut m = Model { top_box };
             let mut rule = MergeRule::new();
             assert_eq!(m.top_box.borrow().quantifiers.len(), 1);
@@ -515,15 +518,25 @@ mod rewrite_engine {
         }
     }
 
-    pub fn deep_apply_rule<T: Clone>(rule: &mut dyn Rule<T>, target: &mut T) -> Option<T> {
+    pub fn deep_apply_rule<T: Clone + Traverse<T> >(rule: &mut dyn Rule<T>, target: &mut T) -> Option<T> {
         if rule.apply_to_down() {
+            T::descend_and_apply(rule, target);
         }
         let result = apply_rule(rule, target);
-
-        if !rule.apply_to_down() {
+        match result {
+            Some(mut c) => {
+                if !rule.apply_to_down() {
+                    T::descend_and_apply(rule, &mut c);
+                }
+                Some(c)
+            }
+            None => {
+                if !rule.apply_to_down() {
+                    T::descend_and_apply(rule, target);
+                }
+                None
+            }
         }
-
-        result
     }
 }
 
