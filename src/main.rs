@@ -145,7 +145,56 @@ mod syn {
         parts: Vec<String>,
     }
 
-    struct Select {}
+    struct SelectItem {
+        expr: Expr,
+        alias: Option<String>
+    }
+
+    enum JoinType {
+        Inner, LeftOuter, RightOuter
+    }
+
+    enum JoinItem {
+        TableRef(Identifier),
+        Join(JoinType, Box<JoinTerm>, Box<JoinTerm>),
+        DerivedTable(Select)
+    }
+
+    struct JoinTerm {
+        join_term: JoinItem,
+        alias: Option<String>
+    }
+
+    struct Select {
+        selection_list: Option<Vec<SelectItem>>,
+        from_clause: Vec<JoinTerm>,
+        where_clause: Option<Expr>,
+        limit_clause: Option<Expr>
+    }
+
+    impl Select {
+        fn new() -> Self {
+            Self {
+                selection_list: None,
+                from_clause: Vec::new(),
+                where_clause: None,
+                limit_clause: None
+            }
+        }
+
+        fn add_select_item(&mut self, item: SelectItem) {
+            if self.selection_list.is_none() {
+                self.selection_list = Some(Vec::new());
+            }
+            self.selection_list.as_mut().unwrap().push(item);
+        }
+    }
+
+    enum Expr {
+        Reference(String),
+        Unary(Box<Expr>),
+        Binary(Box<Expr>, Box<Expr>)
+    }
 
     enum TypeDef {
         String,
@@ -179,33 +228,48 @@ mod syn {
             }
         }
 
-        fn parse_keyword(input: &Lexeme, keyword: &str) -> bool {
-            if let Lexeme::Keyword(s) = input {
-                return keyword == &s[..];
+        fn parse_keyword<'a, T: Iterator<Item = &'a Lexeme>>(
+            &self,
+            it : &mut Peekable<T>,
+            keyword: &str
+        ) -> bool {
+            if let Some(&lexeme) = it.peek() {
+                if let Lexeme::Keyword(s) = lexeme {
+                    it.next();
+                    return keyword == &s[..];
+                }
             }
             false
         }
 
-        fn parse_symbol(input: &Lexeme, symbol: char) -> bool {
-            if let Lexeme::Symbol(s) = input {
-                return symbol == *s;
+        fn parse_symbol<'a, T: Iterator<Item = &'a Lexeme>>(
+            &self,
+            it : &mut Peekable<T>,
+            symbol: char
+        ) -> bool {
+            if let Some(&lexeme) = it.peek() {
+                if let Lexeme::Symbol(s) = lexeme {
+                    it.next();
+                    return symbol == *s;
+                }
             }
             false
         }
 
         fn parse_select_body<'a, T: Iterator<Item = &'a Lexeme>>(
             &self,
-            _iter: &mut Peekable<T>,
+            it : &mut Peekable<T>
         ) -> Result<Select, String> {
-            Ok(Select {})
+            if !self.parse_symbol(it, '*') {
+            }
+            Ok(Select::new())
         }
 
         fn parse_statements(&self, input: &Vec<Lexeme>) -> Result<Vec<Statement>, String> {
             let mut result: Vec<Statement> = Vec::new();
             let mut it = input.iter().peekable();
             while let Some(&c) = it.peek() {
-                if Parser::parse_keyword(&c, &"SELECT") {
-                    it.next();
+                if self.parse_keyword(&mut it, &"SELECT") {
                     result.push(Statement::Select(self.parse_select_body(&mut it)?));
                     continue;
                 }
