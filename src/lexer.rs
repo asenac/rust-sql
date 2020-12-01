@@ -3,9 +3,11 @@ use std::iter::*;
 #[derive(Debug, PartialEq)]
 pub enum ReservedKeyword {
     As,
+    Create,
     From,
     Limit,
     Select,
+    Table,
     Where,
 }
 
@@ -64,9 +66,11 @@ fn get_reserved_keyword(input: &str) -> Option<ReservedKeyword> {
     use ReservedKeyword::*;
     match input {
         "AS" => Some(As),
+        "CREATE" => Some(Create),
         "FROM" => Some(From),
         "LIMIT" => Some(Limit),
         "SELECT" => Some(Select),
+        "TABLE" => Some(Table),
         "WHERE" => Some(Where),
         _ => None,
     }
