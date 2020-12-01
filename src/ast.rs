@@ -1,36 +1,43 @@
 use std::iter::*;
 
+#[derive(Debug)]
 pub enum Statement {
     Select(Select),
     CreateTable(CreateTable),
 }
 
+#[derive(Debug)]
 pub struct Identifier {
     parts: Vec<String>,
 }
 
+#[derive(Debug)]
 pub struct SelectItem {
     expr: Expr,
     alias: Option<String>,
 }
 
+#[derive(Debug)]
 pub enum JoinType {
     Inner,
     LeftOuter,
     RightOuter,
 }
 
+#[derive(Debug)]
 pub enum JoinItem {
     TableRef(Identifier),
     Join(JoinType, Box<JoinTerm>, Box<JoinTerm>),
     DerivedTable(Select),
 }
 
+#[derive(Debug)]
 pub struct JoinTerm {
     join_item: JoinItem,
     alias: Option<String>,
 }
 
+#[derive(Debug)]
 pub struct Select {
     selection_list: Option<Vec<SelectItem>>,
     from_clause: Vec<JoinTerm>,
@@ -56,12 +63,14 @@ impl Select {
     }
 }
 
+#[derive(Debug)]
 pub enum Expr {
     Reference(Identifier),
     Unary(Box<Expr>),
     Binary(Box<Expr>, Box<Expr>),
 }
 
+#[derive(Debug)]
 pub enum TypeDef {
     String,
     Integer,
@@ -69,11 +78,13 @@ pub enum TypeDef {
     Double,
 }
 
+#[derive(Debug)]
 pub struct ColumnDef {
     name: String,
     data_type: TypeDef,
 }
 
+#[derive(Debug)]
 pub struct CreateTable {
     name: Identifier,
     columns: Vec<ColumnDef>,
@@ -125,6 +136,13 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
 
     // private methods
 
+    fn get_error_context(&mut self) -> String {
+        if let Some(&lexeme) = self.it.peek() {
+            return format!(", found '{}'", lexeme.substring);
+        }
+        String::from("")
+    }
+
     fn complete_substr_and_advance(&mut self, symbol: &str) -> bool {
         if let Some(&lexeme) = self.it.peek() {
             if lexeme.substring == symbol {
@@ -139,7 +157,7 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
         if self.complete_substr_and_advance(symbol) {
             Ok(())
         } else {
-            Err(format!("expected '{}'", symbol))
+            Err(format!("expected '{}'{}", symbol, self.get_error_context()))
         }
     }
 
@@ -159,13 +177,14 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
         if self.complete_token_and_advance(keyword) {
             Ok(())
         } else {
-            Err(format!("expected '{:?}'", keyword))
+            Err(format!("expected '{:?}'{}", keyword, self.get_error_context()))
         }
     }
 
     fn parse_name(&mut self) -> Option<String> {
         if let Some(&lexeme) = self.it.peek() {
             if let lexer::LexemeType::Word(s) = &lexeme.type_ {
+                self.it.next();
                 return Some(s.clone());
             }
         }
@@ -214,12 +233,15 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
 
     fn parse_join_term(&mut self) -> Result<JoinTerm, String> {
         let join_item: JoinItem = self.parse_join_item()?;
-        let mut alias: Option<String> = None;
+        let alias: Option<String>;
         if self.complete_token_and_advance(&lexer::ReservedKeyword::As) {
             alias = self.parse_name();
             if !alias.is_some() {
                 return Err(String::from("expected table alias"));
             }
+        } else {
+            // optional alias
+            alias = self.parse_name();
         }
         Ok(JoinTerm { join_item, alias })
     }
@@ -229,12 +251,15 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
         if !self.complete_substr_and_advance("*") {
             loop {
                 let expr: Expr = self.parse_expr()?;
-                let mut alias: Option<String> = None;
+                let alias: Option<String>;
                 if self.complete_token_and_advance(&lexer::ReservedKeyword::As) {
                     alias = self.parse_name();
                     if !alias.is_some() {
                         return Err(String::from("expected column alias"));
                     }
+                } else {
+                    // optional alias
+                    alias = self.parse_name();
                 }
                 let select_item = SelectItem { expr, alias };
                 select.add_select_item(select_item);
@@ -277,7 +302,12 @@ mod tests {
     #[test]
     fn test_single_select() {
         let parser = Parser {};
-        assert!(parser.parse("select a from a").is_err());
-        println!("{}", parser.parse("select a from a").err().unwrap())
+        assert!(!parser.parse("select a from a").is_err());
+
+        println!("{:?}", parser.parse("select a from a"));
+        println!("{:?}", parser.parse("select a, b from a"));
+        println!("{:?}", parser.parse("select a, b as c from a"));
+        println!("{:?}", parser.parse("select a, b c from a"));
+        println!("{:?}", parser.parse("select a from a where c"));
     }
 }
