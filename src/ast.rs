@@ -245,7 +245,6 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
         let mut terms : Option<Vec<Box<Expr>>> = None;
         loop {
             let term : Expr = self.parse_expr_cmp()?;
-
             let more : bool = self.complete_token_and_advance(&lexer::ReservedKeyword::And);
             if terms.is_none() {
                 if !more {
@@ -265,7 +264,6 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
         let mut terms : Option<Vec<Box<Expr>>> = None;
         loop {
             let term : Expr = self.parse_expr_and()?;
-
             let more : bool = self.complete_token_and_advance(&lexer::ReservedKeyword::Or);
             if terms.is_none() {
                 if !more {
