@@ -103,7 +103,7 @@ impl Parser {
         match lexer::lex(input) {
             Err(c) => Err(c),
             Ok(tokens) => {
-                let mut parser = ParserImpl::new(input, tokens.iter().peekable());
+                let parser = ParserImpl::new(input, tokens.iter().peekable());
                 parser.parse_statements()
             }
         }
@@ -120,7 +120,7 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
         Self { input, it }
     }
 
-    fn parse_statements(&mut self) -> Result<Vec<Statement>, String> {
+    fn parse_statements(mut self) -> Result<Vec<Statement>, String> {
         use lexer::*;
 
         let mut result: Vec<Statement> = Vec::new();
@@ -309,5 +309,6 @@ mod tests {
         println!("{:?}", parser.parse("select a, b as c from a"));
         println!("{:?}", parser.parse("select a, b c from a"));
         println!("{:?}", parser.parse("select a from a where c"));
+        println!("{:?}", parser.parse("select a from a limit c"));
     }
 }
