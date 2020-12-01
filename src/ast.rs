@@ -308,6 +308,7 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
         self.parse_nary_expr(&op, &term)
     }
 
+    /// Parse any n-ary expression. op returns the operation type, term parses the terms of the expression
     fn parse_nary_expr<FOp, FTerm>(&mut self, op: &FOp, term: &FTerm) -> Result<Expr, String>
     where
         FOp: Fn(&mut Self) -> Option<NaryExprType>,
