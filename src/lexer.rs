@@ -25,7 +25,7 @@ pub enum LexemeType {
 pub struct Lexeme<'a> {
     pub type_: LexemeType,
     pub substring: &'a str,
-    pub offset: usize
+    pub offset: usize,
 }
 
 fn consume_number<T: Iterator<Item = (usize, char)>>(iter: &mut Peekable<T>) -> usize {
@@ -68,7 +68,7 @@ fn get_reserved_keyword(input: &str) -> Option<ReservedKeyword> {
         "LIMIT" => Some(Limit),
         "SELECT" => Some(Select),
         "WHERE" => Some(Where),
-        _ => None
+        _ => None,
     }
 }
 
@@ -91,17 +91,29 @@ pub fn lex<'a>(input: &'a str) -> Result<Vec<Lexeme<'a>>, String> {
         match c {
             '0'..='9' => {
                 let len = consume_number(&mut it);
-                result.push(Lexeme{type_ : Number, substring: &input[i..i+len], offset: i});
+                result.push(Lexeme {
+                    type_: Number,
+                    substring: &input[i..i + len],
+                    offset: i,
+                });
             }
             'a'..='z' | 'A'..='Z' => {
                 let len = consume_word(&mut it);
-                let substring = &input[i..i+len];
-                result.push(Lexeme{type_ : build_word(substring), substring: substring, offset: i});
+                let substring = &input[i..i + len];
+                result.push(Lexeme {
+                    type_: build_word(substring),
+                    substring: substring,
+                    offset: i,
+                });
             }
             '*' | '+' | '-' | '/' => {
                 it.next();
                 let len = 1;
-                result.push(Lexeme{type_ : Symbol, substring: &input[i..i+len], offset: i});
+                result.push(Lexeme {
+                    type_: Symbol,
+                    substring: &input[i..i + len],
+                    offset: i,
+                });
             }
             ' ' | '\n' => {
                 it.next();
@@ -109,17 +121,29 @@ pub fn lex<'a>(input: &'a str) -> Result<Vec<Lexeme<'a>>, String> {
             ',' => {
                 it.next();
                 let len = 1;
-                result.push(Lexeme{type_ : Comma, substring: &input[i..i+len], offset: i});
+                result.push(Lexeme {
+                    type_: Comma,
+                    substring: &input[i..i + len],
+                    offset: i,
+                });
             }
             ';' => {
                 it.next();
                 let len = 1;
-                result.push(Lexeme{type_ : Semicolon, substring: &input[i..i+len], offset: i});
+                result.push(Lexeme {
+                    type_: Semicolon,
+                    substring: &input[i..i + len],
+                    offset: i,
+                });
             }
             '.' => {
                 it.next();
                 let len = 1;
-                result.push(Lexeme{type_ : Dot, substring: &input[i..i+len], offset: i});
+                result.push(Lexeme {
+                    type_: Dot,
+                    substring: &input[i..i + len],
+                    offset: i,
+                });
             }
             _ => {
                 return Err(format!("unexpected character {}", c));

@@ -11,29 +11,31 @@ pub struct Identifier {
 
 pub struct SelectItem {
     expr: Expr,
-    alias: Option<String>
+    alias: Option<String>,
 }
 
 pub enum JoinType {
-    Inner, LeftOuter, RightOuter
+    Inner,
+    LeftOuter,
+    RightOuter,
 }
 
 pub enum JoinItem {
     TableRef(Identifier),
     Join(JoinType, Box<JoinTerm>, Box<JoinTerm>),
-    DerivedTable(Select)
+    DerivedTable(Select),
 }
 
 pub struct JoinTerm {
     join_item: JoinItem,
-    alias: Option<String>
+    alias: Option<String>,
 }
 
 pub struct Select {
     selection_list: Option<Vec<SelectItem>>,
     from_clause: Vec<JoinTerm>,
     where_clause: Option<Expr>,
-    limit_clause: Option<Expr>
+    limit_clause: Option<Expr>,
 }
 
 impl Select {
@@ -42,7 +44,7 @@ impl Select {
             selection_list: None,
             from_clause: Vec::new(),
             where_clause: None,
-            limit_clause: None
+            limit_clause: None,
         }
     }
 
@@ -57,7 +59,7 @@ impl Select {
 pub enum Expr {
     Reference(Identifier),
     Unary(Box<Expr>),
-    Binary(Box<Expr>, Box<Expr>)
+    Binary(Box<Expr>, Box<Expr>),
 }
 
 pub enum TypeDef {
@@ -82,15 +84,14 @@ pub struct Parser {}
 use crate::lexer;
 
 impl Parser {
-
     pub fn new() -> Self {
-        Self{}
+        Self {}
     }
 
     pub fn parse(&self, input: &str) -> Result<Vec<Statement>, String> {
         match lexer::lex(input) {
             Err(c) => Err(c),
-            Ok(tokens) =>  {
+            Ok(tokens) => {
                 let mut parser = ParserImpl::new(input, tokens.iter().peekable());
                 parser.parse_statements()
             }
@@ -100,13 +101,12 @@ impl Parser {
 
 struct ParserImpl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> {
     input: &'a str,
-    it: Peekable<T>
+    it: Peekable<T>,
 }
 
 impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
-
     fn new(input: &'a str, it: Peekable<T>) -> Self {
-        Self{input, it}
+        Self { input, it }
     }
 
     fn parse_statements(&mut self) -> Result<Vec<Statement>, String> {
@@ -125,10 +125,7 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
 
     // private methods
 
-    fn complete_substr_and_advance(
-        &mut self,
-        symbol: &str
-    ) -> bool {
+    fn complete_substr_and_advance(&mut self, symbol: &str) -> bool {
         if let Some(&lexeme) = self.it.peek() {
             if lexeme.substring == symbol {
                 self.it.next();
@@ -138,10 +135,7 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
         false
     }
 
-    fn expect_substr_and_advance(
-        &mut self,
-        symbol: &str
-    ) -> Result<(), String> {
+    fn expect_substr_and_advance(&mut self, symbol: &str) -> Result<(), String> {
         if self.complete_substr_and_advance(symbol) {
             Ok(())
         } else {
@@ -149,10 +143,7 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
         }
     }
 
-    fn complete_token_and_advance(
-        &mut self,
-        keyword: &lexer::ReservedKeyword
-    ) -> bool {
+    fn complete_token_and_advance(&mut self, keyword: &lexer::ReservedKeyword) -> bool {
         if let Some(&lexeme) = self.it.peek() {
             if let lexer::LexemeType::ReservedKeyword(s) = &lexeme.type_ {
                 if *keyword == *s {
@@ -164,10 +155,7 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
         false
     }
 
-    fn expect_token_and_advance(
-        &mut self,
-        keyword: &lexer::ReservedKeyword
-    ) -> Result<(), String> {
+    fn expect_token_and_advance(&mut self, keyword: &lexer::ReservedKeyword) -> Result<(), String> {
         if self.complete_token_and_advance(keyword) {
             Ok(())
         } else {
@@ -175,9 +163,7 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
         }
     }
 
-    fn parse_name(
-        &mut self
-    ) -> Option<String> {
+    fn parse_name(&mut self) -> Option<String> {
         if let Some(&lexeme) = self.it.peek() {
             if let lexer::LexemeType::Word(s) = &lexeme.type_ {
                 return Some(s.clone());
@@ -186,13 +172,11 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
         None
     }
 
-    fn parse_identifier(
-        &mut self
-    ) -> Option<Identifier> {
-        let mut identifier : Option<Identifier> = None;
+    fn parse_identifier(&mut self) -> Option<Identifier> {
+        let mut identifier: Option<Identifier> = None;
         while let Some(part) = self.parse_name() {
             if !identifier.is_some() {
-                identifier = Some(Identifier{parts: Vec::new()});
+                identifier = Some(Identifier { parts: Vec::new() });
             }
             identifier.as_mut().unwrap().parts.push(part);
             if !self.complete_substr_and_advance(".") {
@@ -202,9 +186,7 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
         identifier
     }
 
-    fn parse_expr(
-        &mut self
-    ) -> Result<Expr, String> {
+    fn parse_expr(&mut self) -> Result<Expr, String> {
         if self.complete_substr_and_advance("(") {
             let result = self.parse_expr();
             self.expect_substr_and_advance(")")?;
@@ -216,9 +198,7 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
         }
     }
 
-    fn parse_join_item(
-        &mut self
-    ) -> Result<JoinItem, String> {
+    fn parse_join_item(&mut self) -> Result<JoinItem, String> {
         // @todo parse JoinItem::Join
         if let Some(c) = self.parse_identifier() {
             Ok(JoinItem::TableRef(c))
@@ -232,35 +212,31 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
         }
     }
 
-    fn parse_join_term(
-        &mut self
-    ) -> Result<JoinTerm, String> {
-        let join_item : JoinItem = self.parse_join_item()?;
-        let mut alias : Option<String> = None;
+    fn parse_join_term(&mut self) -> Result<JoinTerm, String> {
+        let join_item: JoinItem = self.parse_join_item()?;
+        let mut alias: Option<String> = None;
         if self.complete_token_and_advance(&lexer::ReservedKeyword::As) {
             alias = self.parse_name();
             if !alias.is_some() {
                 return Err(String::from("expected table alias"));
             }
         }
-        Ok(JoinTerm{join_item, alias})
+        Ok(JoinTerm { join_item, alias })
     }
 
-    fn parse_select_body(
-        &mut self
-    ) -> Result<Select, String> {
+    fn parse_select_body(&mut self) -> Result<Select, String> {
         let mut select = Select::new();
         if !self.complete_substr_and_advance("*") {
             loop {
-                let expr : Expr = self.parse_expr()?;
-                let mut alias : Option<String> = None;
+                let expr: Expr = self.parse_expr()?;
+                let mut alias: Option<String> = None;
                 if self.complete_token_and_advance(&lexer::ReservedKeyword::As) {
                     alias = self.parse_name();
                     if !alias.is_some() {
                         return Err(String::from("expected column alias"));
                     }
                 }
-                let select_item = SelectItem{expr, alias};
+                let select_item = SelectItem { expr, alias };
                 select.add_select_item(select_item);
                 if !self.complete_substr_and_advance(",") {
                     break;
@@ -271,7 +247,7 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
         // mandatory from clause
         self.expect_token_and_advance(&lexer::ReservedKeyword::From)?;
         loop {
-            let join_term : JoinTerm = self.parse_join_term()?;
+            let join_term: JoinTerm = self.parse_join_term()?;
             select.from_clause.push(join_term);
             if !self.complete_substr_and_advance(",") {
                 break;
@@ -280,13 +256,13 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
 
         // where clause
         if self.complete_token_and_advance(&lexer::ReservedKeyword::Where) {
-            let expr : Expr = self.parse_expr()?;
+            let expr: Expr = self.parse_expr()?;
             select.where_clause = Some(expr);
         }
 
         // limit clause
         if self.complete_token_and_advance(&lexer::ReservedKeyword::Limit) {
-            let expr : Expr = self.parse_expr()?;
+            let expr: Expr = self.parse_expr()?;
             select.limit_clause = Some(expr);
         }
 
@@ -300,7 +276,7 @@ mod tests {
 
     #[test]
     fn test_single_select() {
-        let parser = Parser{};
+        let parser = Parser {};
         assert!(parser.parse("select a from a").is_err());
         println!("{}", parser.parse("select a from a").err().unwrap())
     }

@@ -2,9 +2,9 @@ use std::env;
 use std::iter::*;
 
 #[allow(dead_code)]
-mod lexer;
-#[allow(dead_code)]
 mod ast;
+#[allow(dead_code)]
+mod lexer;
 
 // lexer
 
@@ -15,9 +15,9 @@ mod ast;
 #[allow(dead_code)]
 mod qg {
     use std::cell::RefCell;
-    use std::rc::*;
-    use std::collections::*;
     use std::cmp::*;
+    use std::collections::*;
+    use std::rc::*;
 
     enum DataType {
         String,
@@ -64,7 +64,10 @@ mod qg {
     impl QGBox {
         fn new(id: i32, box_type: BoxType) -> Self {
             Self {
-                id: id, box_type: box_type, columns: Vec::new(), quantifiers: BTreeSet::new()
+                id: id,
+                box_type: box_type,
+                columns: Vec::new(),
+                quantifiers: BTreeSet::new(),
             }
         }
         fn add_quantifier(&mut self, q: QuantifierRef) {
@@ -90,15 +93,23 @@ mod qg {
     }
 
     impl Quantifier {
-        fn new(id: i32, quantifier_type: QuantifierType, input_box: BoxRef, parent_box: &BoxRef) -> Self {
+        fn new(
+            id: i32,
+            quantifier_type: QuantifierType,
+            input_box: BoxRef,
+            parent_box: &BoxRef,
+        ) -> Self {
             Self {
-                id: id, quantifier_type: quantifier_type, input_box : input_box, parent_box : Rc::downgrade(parent_box)
+                id: id,
+                quantifier_type: quantifier_type,
+                input_box: input_box,
+                parent_box: Rc::downgrade(parent_box),
             }
         }
     }
 
     struct Model {
-        top_box: BoxRef
+        top_box: BoxRef,
     }
 
     impl Model {
@@ -152,13 +163,13 @@ mod qg {
     }
 
     struct MergeRule {
-        to_merge : BTreeSet<QuantifierRef>
+        to_merge: BTreeSet<QuantifierRef>,
     }
 
     impl MergeRule {
         fn new() -> Self {
             Self {
-                to_merge : BTreeSet::new()
+                to_merge: BTreeSet::new(),
             }
         }
     }
@@ -221,7 +232,6 @@ mod qg {
         }
     }
 
-
     #[cfg(test)]
     mod tests {
         use super::*;
@@ -240,7 +250,12 @@ mod qg {
         fn test_merge_rule() {
             let top_box = Rc::new(RefCell::new(QGBox::new(0, BoxType::Select)));
             let nested_box = Rc::new(RefCell::new(QGBox::new(1, BoxType::Select)));
-            let quantifier = Rc::new(RefCell::new(Quantifier::new(1, QuantifierType::Foreach, nested_box, &top_box)));
+            let quantifier = Rc::new(RefCell::new(Quantifier::new(
+                1,
+                QuantifierType::Foreach,
+                nested_box,
+                &top_box,
+            )));
             top_box.borrow_mut().add_quantifier(quantifier);
             let mut m = Model { top_box };
             let mut rule = MergeRule::new();
@@ -256,9 +271,19 @@ mod qg {
         fn test_merge_rule_deep_apply() {
             let top_box = Rc::new(RefCell::new(QGBox::new(0, BoxType::Select)));
             let nested_box1 = Rc::new(RefCell::new(QGBox::new(1, BoxType::Select)));
-            let quantifier1 = Rc::new(RefCell::new(Quantifier::new(1, QuantifierType::Foreach, Rc::clone(&nested_box1), &top_box)));
+            let quantifier1 = Rc::new(RefCell::new(Quantifier::new(
+                1,
+                QuantifierType::Foreach,
+                Rc::clone(&nested_box1),
+                &top_box,
+            )));
             let nested_box2 = Rc::new(RefCell::new(QGBox::new(1, BoxType::Select)));
-            let quantifier2 = Rc::new(RefCell::new(Quantifier::new(1, QuantifierType::Foreach, nested_box2, &nested_box1)));
+            let quantifier2 = Rc::new(RefCell::new(Quantifier::new(
+                1,
+                QuantifierType::Foreach,
+                nested_box2,
+                &nested_box1,
+            )));
             nested_box1.borrow_mut().add_quantifier(quantifier1);
             top_box.borrow_mut().add_quantifier(quantifier2);
             let mut m = Model { top_box };
@@ -296,7 +321,10 @@ mod rewrite_engine {
         }
     }
 
-    pub fn deep_apply_rule<T: Clone + Traverse<T> >(rule: &mut dyn Rule<T>, target: &mut T) -> Option<T> {
+    pub fn deep_apply_rule<T: Clone + Traverse<T>>(
+        rule: &mut dyn Rule<T>,
+        target: &mut T,
+    ) -> Option<T> {
         if rule.apply_to_down() {
             T::descend_and_apply(rule, target);
         }
