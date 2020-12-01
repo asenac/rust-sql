@@ -2,6 +2,7 @@ use std::iter::*;
 
 #[derive(Debug, PartialEq)]
 pub enum ReservedKeyword {
+    As,
     From,
     Limit,
     Select,
@@ -22,11 +23,10 @@ pub enum LexemeType {
 
 #[derive(Debug)]
 pub struct Lexeme<'a> {
-    type_: LexemeType,
-    substring: &'a str,
-    offset: usize
+    pub type_: LexemeType,
+    pub substring: &'a str,
+    pub offset: usize
 }
-
 
 fn consume_number<T: Iterator<Item = (usize, char)>>(iter: &mut Peekable<T>) -> usize {
     let mut len: usize = 0;
@@ -63,6 +63,7 @@ fn consume_word<T: Iterator<Item = (usize, char)>>(iter: &mut Peekable<T>) -> us
 fn get_reserved_keyword(input: &str) -> Option<ReservedKeyword> {
     use ReservedKeyword::*;
     match input {
+        "AS" => Some(As),
         "FROM" => Some(From),
         "LIMIT" => Some(Limit),
         "SELECT" => Some(Select),
