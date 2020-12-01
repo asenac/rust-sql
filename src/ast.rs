@@ -83,55 +83,80 @@ use crate::lexer;
 
 impl Parser {
 
-    pub fn new() -> Parser {
-        Parser {}
+    pub fn new() -> Self {
+        Self{}
     }
 
-    // parser
     pub fn parse(&self, input: &str) -> Result<Vec<Statement>, String> {
         match lexer::lex(input) {
             Err(c) => Err(c),
-            Ok(tokens) => self.parse_statements(&tokens),
+            Ok(tokens) =>  {
+                let mut parser = ParserImpl::new(input, tokens.iter().peekable());
+                parser.parse_statements()
+            }
         }
+    }
+}
+
+struct ParserImpl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> {
+    input: &'a str,
+    it: Peekable<T>
+}
+
+impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
+
+    fn new(input: &'a str, it: Peekable<T>) -> Self {
+        Self{input, it}
+    }
+
+    fn parse_statements(&mut self) -> Result<Vec<Statement>, String> {
+        use lexer::*;
+
+        let mut result: Vec<Statement> = Vec::new();
+        while let Some(&c) = self.it.peek() {
+            if self.complete_token_and_advance(&ReservedKeyword::Select) {
+                result.push(Statement::Select(self.parse_select_body()?));
+            } else {
+                return Err(format!("unexpected token {:?}", c));
+            }
+        }
+        Ok(result)
     }
 
     // private methods
 
-    fn complete_substr_and_advance<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>>(
-        &self,
-        it : &mut Peekable<T>,
+    fn complete_substr_and_advance(
+        &mut self,
         symbol: &str
     ) -> bool {
-        if let Some(&lexeme) = it.peek() {
+        if let Some(&lexeme) = self.it.peek() {
             if lexeme.substring == symbol {
-                it.next();
+                self.it.next();
                 return true;
             }
         }
         false
     }
 
-    fn expect_substr_and_advance<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>>(
-        &self,
-        it : &mut Peekable<T>,
+    fn expect_substr_and_advance(
+        &mut self,
         symbol: &str
     ) -> Result<(), String> {
-        if self.complete_substr_and_advance(it, symbol) {
+        if self.complete_substr_and_advance(symbol) {
             Ok(())
         } else {
             Err(format!("expected '{}'", symbol))
         }
     }
 
-    fn complete_token_and_advance<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>>(
-        &self,
-        it : &mut Peekable<T>,
+    fn complete_token_and_advance(
+        &mut self,
         keyword: &lexer::ReservedKeyword
     ) -> bool {
-        if let Some(&lexeme) = it.peek() {
+        if let Some(&lexeme) = self.it.peek() {
             if let lexer::LexemeType::ReservedKeyword(s) = &lexeme.type_ {
                 if *keyword == *s {
-                    it.next();
+                    self.it.next();
                     return true;
                 }
             }
@@ -139,23 +164,21 @@ impl Parser {
         false
     }
 
-    fn expect_token_and_advance<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>>(
-        &self,
-        it : &mut Peekable<T>,
+    fn expect_token_and_advance(
+        &mut self,
         keyword: &lexer::ReservedKeyword
     ) -> Result<(), String> {
-        if self.complete_token_and_advance(it, keyword) {
+        if self.complete_token_and_advance(keyword) {
             Ok(())
         } else {
             Err(format!("expected '{:?}'", keyword))
         }
     }
 
-    fn parse_name<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>>(
-        &self,
-        it : &mut Peekable<T>
+    fn parse_name(
+        &mut self
     ) -> Option<String> {
-        if let Some(&lexeme) = it.peek() {
+        if let Some(&lexeme) = self.it.peek() {
             if let lexer::LexemeType::Word(s) = &lexeme.type_ {
                 return Some(s.clone());
             }
@@ -163,63 +186,59 @@ impl Parser {
         None
     }
 
-    fn parse_identifier<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>>(
-        &self,
-        it : &mut Peekable<T>
+    fn parse_identifier(
+        &mut self
     ) -> Option<Identifier> {
         let mut identifier : Option<Identifier> = None;
-        while let Some(part) = self.parse_name(it) {
+        while let Some(part) = self.parse_name() {
             if !identifier.is_some() {
                 identifier = Some(Identifier{parts: Vec::new()});
             }
             identifier.as_mut().unwrap().parts.push(part);
-            if !self.complete_substr_and_advance(it, ".") {
+            if !self.complete_substr_and_advance(".") {
                 break;
             }
         }
         identifier
     }
 
-    fn parse_expr<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>>(
-        &self,
-        it : &mut Peekable<T>
+    fn parse_expr(
+        &mut self
     ) -> Result<Expr, String> {
-        if self.complete_substr_and_advance(it, "(") {
-            let result = self.parse_expr(it);
-            self.expect_substr_and_advance(it, ")")?;
+        if self.complete_substr_and_advance("(") {
+            let result = self.parse_expr();
+            self.expect_substr_and_advance(")")?;
             result
-        } else if let Some(id) = self.parse_identifier(it) {
+        } else if let Some(id) = self.parse_identifier() {
             Ok(Expr::Reference(id))
         } else {
             Err(String::from("invalid expression"))
         }
     }
 
-    fn parse_join_item<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>>(
-        &self,
-        it : &mut Peekable<T>
+    fn parse_join_item(
+        &mut self
     ) -> Result<JoinItem, String> {
         // @todo parse JoinItem::Join
-        if let Some(c) = self.parse_identifier(it) {
+        if let Some(c) = self.parse_identifier() {
             Ok(JoinItem::TableRef(c))
-        } else if self.complete_substr_and_advance(it, "(") {
-            self.expect_token_and_advance(it, &lexer::ReservedKeyword::Select)?;
-            let select = self.parse_select_body(it)?;
-            self.expect_substr_and_advance(it, ")")?;
+        } else if self.complete_substr_and_advance("(") {
+            self.expect_token_and_advance(&lexer::ReservedKeyword::Select)?;
+            let select = self.parse_select_body()?;
+            self.expect_substr_and_advance(")")?;
             Ok(JoinItem::DerivedTable(select))
         } else {
             Err(String::from("invalid join term"))
         }
     }
 
-    fn parse_join_term<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>>(
-        &self,
-        it : &mut Peekable<T>
+    fn parse_join_term(
+        &mut self
     ) -> Result<JoinTerm, String> {
-        let join_item : JoinItem = self.parse_join_item(it)?;
+        let join_item : JoinItem = self.parse_join_item()?;
         let mut alias : Option<String> = None;
-        if self.complete_token_and_advance(it, &lexer::ReservedKeyword::As) {
-            alias = self.parse_name(it);
+        if self.complete_token_and_advance(&lexer::ReservedKeyword::As) {
+            alias = self.parse_name();
             if !alias.is_some() {
                 return Err(String::from("expected table alias"));
             }
@@ -227,67 +246,51 @@ impl Parser {
         Ok(JoinTerm{join_item, alias})
     }
 
-    fn parse_select_body<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>>(
-        &self,
-        it : &mut Peekable<T>
+    fn parse_select_body(
+        &mut self
     ) -> Result<Select, String> {
         let mut select = Select::new();
-        if !self.complete_substr_and_advance(it, "*") {
+        if !self.complete_substr_and_advance("*") {
             loop {
-                let expr : Expr = self.parse_expr(it)?;
+                let expr : Expr = self.parse_expr()?;
                 let mut alias : Option<String> = None;
-                if self.complete_token_and_advance(it, &lexer::ReservedKeyword::As) {
-                    alias = self.parse_name(it);
+                if self.complete_token_and_advance(&lexer::ReservedKeyword::As) {
+                    alias = self.parse_name();
                     if !alias.is_some() {
                         return Err(String::from("expected column alias"));
                     }
                 }
                 let select_item = SelectItem{expr, alias};
                 select.add_select_item(select_item);
-                if !self.complete_substr_and_advance(it, ",") {
+                if !self.complete_substr_and_advance(",") {
                     break;
                 }
             }
         }
 
         // mandatory from clause
-        self.expect_token_and_advance(it, &lexer::ReservedKeyword::From)?;
+        self.expect_token_and_advance(&lexer::ReservedKeyword::From)?;
         loop {
-            let join_term : JoinTerm = self.parse_join_term(it)?;
+            let join_term : JoinTerm = self.parse_join_term()?;
             select.from_clause.push(join_term);
-            if !self.complete_substr_and_advance(it, ",") {
+            if !self.complete_substr_and_advance(",") {
                 break;
             }
         }
 
         // where clause
-        if self.complete_token_and_advance(it, &lexer::ReservedKeyword::Where) {
-            let expr : Expr = self.parse_expr(it)?;
+        if self.complete_token_and_advance(&lexer::ReservedKeyword::Where) {
+            let expr : Expr = self.parse_expr()?;
             select.where_clause = Some(expr);
         }
 
         // limit clause
-        if self.complete_token_and_advance(it, &lexer::ReservedKeyword::Limit) {
-            let expr : Expr = self.parse_expr(it)?;
+        if self.complete_token_and_advance(&lexer::ReservedKeyword::Limit) {
+            let expr : Expr = self.parse_expr()?;
             select.limit_clause = Some(expr);
         }
 
         Ok(select)
-    }
-
-    fn parse_statements(&self, input: &Vec<lexer::Lexeme>) -> Result<Vec<Statement>, String> {
-        use lexer::*;
-
-        let mut result: Vec<Statement> = Vec::new();
-        let mut it = input.iter().peekable();
-        while let Some(&c) = it.peek() {
-            if self.complete_token_and_advance(&mut it, &ReservedKeyword::Select) {
-                result.push(Statement::Select(self.parse_select_body(&mut it)?));
-            } else {
-                return Err(format!("unexpected token {:?}", c));
-            }
-        }
-        Ok(result)
     }
 }
 
