@@ -63,10 +63,19 @@ impl Select {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum NaryExprType {
     And,
-    Or
+    Or,
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Eq,
+    Less,
+    LessEq,
+    Greater,
+    GreaterEq,
 }
 
 #[derive(Debug)]
@@ -123,7 +132,6 @@ struct ParserImpl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> {
 }
 
 impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
-
     fn new(input: &'a str, it: Peekable<T>) -> Self {
         Self { input, it }
     }
@@ -185,7 +193,11 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
         if self.complete_token_and_advance(keyword) {
             Ok(())
         } else {
-            Err(format!("expected '{:?}'{}", keyword, self.get_error_context()))
+            Err(format!(
+                "expected '{:?}'{}",
+                keyword,
+                self.get_error_context()
+            ))
         }
     }
 
@@ -223,60 +235,115 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
         } else if let Some(&lexeme) = self.it.peek() {
             if lexeme.type_ == lexer::LexemeType::Number {
                 self.it.next();
-                return Ok(Expr::NumericLiteral(lexeme.substring.to_string().parse::<u64>().unwrap()));
+                return Ok(Expr::NumericLiteral(
+                    lexeme.substring.to_string().parse::<u64>().unwrap(),
+                ));
             }
         }
         Err(String::from("invalid expression"))
     }
 
     fn parse_expr_mult(&mut self) -> Result<Expr, String> {
-        self.parse_expr_term()
+        let op = |s: &mut Self| {
+            if s.complete_substr_and_advance("*") {
+                Some(NaryExprType::Mul)
+            } else if s.complete_substr_and_advance("/") {
+                Some(NaryExprType::Div)
+            } else {
+                None
+            }
+        };
+        let term = |s: &mut Self| s.parse_expr_term();
+        self.parse_nary_expr(&op, &term)
     }
 
     fn parse_expr_add(&mut self) -> Result<Expr, String> {
-        self.parse_expr_mult()
+        let op = |s: &mut Self| {
+            if s.complete_substr_and_advance("+") {
+                Some(NaryExprType::Add)
+            } else if s.complete_substr_and_advance("-") {
+                Some(NaryExprType::Sub)
+            } else {
+                None
+            }
+        };
+        let term = |s: &mut Self| s.parse_expr_mult();
+        self.parse_nary_expr(&op, &term)
     }
 
     fn parse_expr_cmp(&mut self) -> Result<Expr, String> {
-        self.parse_expr_add()
+        // @todo this is not n-ary, but binary
+        let op = |s: &mut Self| {
+            if s.complete_substr_and_advance("=") {
+                Some(NaryExprType::Eq)
+            } else {
+                None
+            }
+        };
+        let term = |s: &mut Self| s.parse_expr_add();
+        self.parse_nary_expr(&op, &term)
     }
 
     fn parse_expr_and(&mut self) -> Result<Expr, String> {
-        let mut terms : Option<Vec<Box<Expr>>> = None;
-        loop {
-            let term : Expr = self.parse_expr_cmp()?;
-            let more : bool = self.complete_token_and_advance(&lexer::ReservedKeyword::And);
-            if terms.is_none() {
-                if !more {
-                    return Ok(term);
-                }
-                terms = Some(Vec::new());
+        let op = |s: &mut Self| {
+            if s.complete_token_and_advance(&lexer::ReservedKeyword::And) {
+                Some(NaryExprType::And)
+            } else {
+                None
             }
-            terms.as_mut().unwrap().push(Box::new(term));
-            if !more {
-                break;
-            }
-        }
-        Ok(Expr::Nary(NaryExprType::And, terms.unwrap()))
+        };
+        let term = |s: &mut Self| s.parse_expr_cmp();
+        self.parse_nary_expr(&op, &term)
     }
 
     fn parse_expr_or(&mut self) -> Result<Expr, String> {
-        let mut terms : Option<Vec<Box<Expr>>> = None;
+        let op = |s: &mut Self| {
+            if s.complete_token_and_advance(&lexer::ReservedKeyword::Or) {
+                Some(NaryExprType::Or)
+            } else {
+                None
+            }
+        };
+        let term = |s: &mut Self| s.parse_expr_and();
+        self.parse_nary_expr(&op, &term)
+    }
+
+    fn parse_nary_expr<FOp, FTerm>(&mut self, op: &FOp, term: &FTerm) -> Result<Expr, String>
+    where
+        FOp: Fn(&mut Self) -> Option<NaryExprType>,
+        FTerm: Fn(&mut Self) -> Result<Expr, String>,
+    {
+        let mut result: Option<Expr> = None;
         loop {
-            let term : Expr = self.parse_expr_and()?;
-            let more : bool = self.complete_token_and_advance(&lexer::ReservedKeyword::Or);
-            if terms.is_none() {
+            let term: Expr = term(self)?;
+            let op = op(self);
+            let more = op.is_some();
+            if result.is_none() {
                 if !more {
                     return Ok(term);
                 }
-                terms = Some(Vec::new());
+                result = Some(Expr::Nary(op.unwrap(), vec![Box::new(term)]));
+            } else {
+                let unwrapped = result.unwrap();
+                if let Expr::Nary(o, mut vec) = unwrapped {
+                    if op.is_none() || o == *op.as_ref().unwrap() {
+                        vec.push(Box::new(term));
+                        result = Some(Expr::Nary(o, vec));
+                    } else {
+                        result = Some(Expr::Nary(
+                            op.unwrap(),
+                            vec![Box::new(Expr::Nary(o, vec)), Box::new(term)],
+                        ));
+                    }
+                } else {
+                    panic!();
+                }
             }
-            terms.as_mut().unwrap().push(Box::new(term));
             if !more {
                 break;
             }
         }
-        Ok(Expr::Nary(NaryExprType::Or, terms.unwrap()))
+        Ok(result.unwrap())
     }
 
     fn parse_expr(&mut self) -> Result<Expr, String> {
@@ -379,5 +446,7 @@ mod tests {
         println!("{:?}", parser.parse("select a from a limit 1"));
         println!("{:?}", parser.parse("select a from a where a or b"));
         println!("{:?}", parser.parse("select a from a where a or b and c"));
+        println!("{:?}", parser.parse("select a from a where a = 1"));
+        println!("{:?}", parser.parse("select a from a where a = h or b = z and c = 1"));
     }
 }

@@ -114,7 +114,7 @@ pub fn lex<'a>(input: &'a str) -> Result<Vec<Lexeme<'a>>, String> {
                     offset: i,
                 });
             }
-            '*' | '+' | '-' | '/' => {
+            '*' | '+' | '-' | '/' | '=' => {
                 it.next();
                 let len = 1;
                 result.push(Lexeme {
