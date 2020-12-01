@@ -1,14 +1,15 @@
 use std::env;
 use std::iter::*;
 
-#[allow(dead_code)]
-mod ast;
+
+// lexer
 #[allow(dead_code)]
 mod lexer;
 
-// lexer
+// syntax tree and parser
 
-// syntax tree
+#[allow(dead_code)]
+mod ast;
 
 // query graph model
 

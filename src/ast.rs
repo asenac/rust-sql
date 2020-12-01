@@ -86,7 +86,7 @@ pub enum Expr {
     Nary(NaryExprType, Vec<Box<Expr>>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum TypeDef {
     String,
     Integer,
@@ -154,6 +154,7 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
 
     fn get_error_context(&mut self) -> String {
         if let Some(&lexeme) = self.it.peek() {
+            // @todo find line and offset
             return format!(", found '{}'", lexeme.substring);
         }
         String::from("")
