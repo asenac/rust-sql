@@ -64,10 +64,17 @@ impl Select {
 }
 
 #[derive(Debug)]
+pub enum NaryExprType {
+    And,
+    Or
+}
+
+#[derive(Debug)]
 pub enum Expr {
     Reference(Identifier),
+    NumericLiteral(u64),
     Unary(Box<Expr>),
-    Binary(Box<Expr>, Box<Expr>),
+    Nary(NaryExprType, Vec<Box<Expr>>),
 }
 
 #[derive(Debug)]
@@ -116,6 +123,7 @@ struct ParserImpl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> {
 }
 
 impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
+
     fn new(input: &'a str, it: Peekable<T>) -> Self {
         Self { input, it }
     }
@@ -205,16 +213,76 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
         identifier
     }
 
-    fn parse_expr(&mut self) -> Result<Expr, String> {
+    fn parse_expr_term(&mut self) -> Result<Expr, String> {
         if self.complete_substr_and_advance("(") {
             let result = self.parse_expr();
             self.expect_substr_and_advance(")")?;
-            result
+            return result;
         } else if let Some(id) = self.parse_identifier() {
-            Ok(Expr::Reference(id))
-        } else {
-            Err(String::from("invalid expression"))
+            return Ok(Expr::Reference(id));
+        } else if let Some(&lexeme) = self.it.peek() {
+            if lexeme.type_ == lexer::LexemeType::Number {
+                self.it.next();
+                return Ok(Expr::NumericLiteral(lexeme.substring.to_string().parse::<u64>().unwrap()));
+            }
         }
+        Err(String::from("invalid expression"))
+    }
+
+    fn parse_expr_mult(&mut self) -> Result<Expr, String> {
+        self.parse_expr_term()
+    }
+
+    fn parse_expr_add(&mut self) -> Result<Expr, String> {
+        self.parse_expr_mult()
+    }
+
+    fn parse_expr_cmp(&mut self) -> Result<Expr, String> {
+        self.parse_expr_add()
+    }
+
+    fn parse_expr_and(&mut self) -> Result<Expr, String> {
+        let mut terms : Option<Vec<Box<Expr>>> = None;
+        loop {
+            let term : Expr = self.parse_expr_cmp()?;
+
+            let more : bool = self.complete_token_and_advance(&lexer::ReservedKeyword::And);
+            if terms.is_none() {
+                if !more {
+                    return Ok(term);
+                }
+                terms = Some(Vec::new());
+            }
+            terms.as_mut().unwrap().push(Box::new(term));
+            if !more {
+                break;
+            }
+        }
+        Ok(Expr::Nary(NaryExprType::And, terms.unwrap()))
+    }
+
+    fn parse_expr_or(&mut self) -> Result<Expr, String> {
+        let mut terms : Option<Vec<Box<Expr>>> = None;
+        loop {
+            let term : Expr = self.parse_expr_and()?;
+
+            let more : bool = self.complete_token_and_advance(&lexer::ReservedKeyword::Or);
+            if terms.is_none() {
+                if !more {
+                    return Ok(term);
+                }
+                terms = Some(Vec::new());
+            }
+            terms.as_mut().unwrap().push(Box::new(term));
+            if !more {
+                break;
+            }
+        }
+        Ok(Expr::Nary(NaryExprType::Or, terms.unwrap()))
+    }
+
+    fn parse_expr(&mut self) -> Result<Expr, String> {
+        self.parse_expr_or()
     }
 
     fn parse_join_item(&mut self) -> Result<JoinItem, String> {
@@ -310,5 +378,8 @@ mod tests {
         println!("{:?}", parser.parse("select a, b c from a"));
         println!("{:?}", parser.parse("select a from a where c"));
         println!("{:?}", parser.parse("select a from a limit c"));
+        println!("{:?}", parser.parse("select a from a limit 1"));
+        println!("{:?}", parser.parse("select a from a where a or b"));
+        println!("{:?}", parser.parse("select a from a where a or b and c"));
     }
 }

@@ -2,10 +2,12 @@ use std::iter::*;
 
 #[derive(Debug, PartialEq)]
 pub enum ReservedKeyword {
+    And,
     As,
     Create,
     From,
     Limit,
+    Or,
     Select,
     Table,
     Where,
@@ -65,9 +67,11 @@ fn consume_word<T: Iterator<Item = (usize, char)>>(iter: &mut Peekable<T>) -> us
 fn get_reserved_keyword(input: &str) -> Option<ReservedKeyword> {
     use ReservedKeyword::*;
     match input {
+        "AND" => Some(And),
         "AS" => Some(As),
         "CREATE" => Some(Create),
         "FROM" => Some(From),
+        "OR" => Some(Or),
         "LIMIT" => Some(Limit),
         "SELECT" => Some(Select),
         "TABLE" => Some(Table),
