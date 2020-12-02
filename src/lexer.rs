@@ -5,6 +5,7 @@ pub enum ReservedKeyword {
     And,
     As,
     Create,
+    In,
     From,
     Limit,
     Or,
@@ -70,6 +71,7 @@ fn get_reserved_keyword(input: &str) -> Option<ReservedKeyword> {
         "AND" => Some(And),
         "AS" => Some(As),
         "CREATE" => Some(Create),
+        "IN" => Some(In),
         "FROM" => Some(From),
         "OR" => Some(Or),
         "LIMIT" => Some(Limit),
@@ -114,7 +116,7 @@ pub fn lex<'a>(input: &'a str) -> Result<Vec<Lexeme<'a>>, String> {
                     offset: i,
                 });
             }
-            '*' | '+' | '-' | '/' | '=' => {
+            '*' | '+' | '-' | '/' | '=' | '(' | ')' | '?' => {
                 it.next();
                 let len = 1;
                 result.push(Lexeme {

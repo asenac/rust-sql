@@ -80,10 +80,48 @@ pub enum NaryExprType {
 
 #[derive(Debug)]
 pub enum Expr {
+    Parameter(u64),
     Reference(Identifier),
     NumericLiteral(u64),
     Unary(Box<Expr>),
     Nary(NaryExprType, Vec<Box<Expr>>),
+    ScalarSubquery(Box<Select>),
+    InSelect(Box<Expr>, Box<Select>),
+    InList(Box<Expr>, Vec<Box<Expr>>),
+}
+
+/// Traverse an expression tree
+pub fn scan_expr<F: Fn(&Expr) -> bool>(f: F, expr: &Expr) {
+    use Expr::*;
+    let mut stack = vec![expr];
+    while let Some(top) = stack.pop() {
+        if !f(top) {
+            break;
+        }
+        match top {
+            Parameter(_) => {},
+            Reference(_) => {},
+            NumericLiteral(_) => {},
+            ScalarSubquery(_) => {},
+            InSelect(e, _) => {
+                stack.push(e);
+            },
+            InList(e, vec) => {
+                stack.push(e);
+                for e in vec.iter() {
+                    stack.push(e);
+                }
+            },
+            Unary(e) => {
+                stack.push(e);
+            },
+            Nary(_, vec) => {
+                for e in vec.iter() {
+                    stack.push(e);
+                }
+            },
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -129,11 +167,12 @@ impl Parser {
 struct ParserImpl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> {
     input: &'a str,
     it: Peekable<T>,
+    parameter_index: u64
 }
 
 impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
     fn new(input: &'a str, it: Peekable<T>) -> Self {
-        Self { input, it }
+        Self { input, it, parameter_index: 0 }
     }
 
     fn parse_statements(mut self) -> Result<Vec<Statement>, String> {
@@ -226,11 +265,24 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
         identifier
     }
 
+    /// scalar subqueries are allowed within parenthesis
+    fn parse_expr_within_parenthesis(&mut self) -> Result<Expr, String> {
+        if self.complete_token_and_advance(&lexer::ReservedKeyword::Select) {
+            Ok(Expr::ScalarSubquery(Box::new(self.parse_select_body()?)))
+        } else {
+            self.parse_expr()
+        }
+    }
+
     fn parse_expr_term(&mut self) -> Result<Expr, String> {
         if self.complete_substr_and_advance("(") {
-            let result = self.parse_expr();
+            let result = self.parse_expr_within_parenthesis();
             self.expect_substr_and_advance(")")?;
             return result;
+        } else if self.complete_substr_and_advance("?") {
+            let result = Expr::Parameter(self.parameter_index);
+            self.parameter_index += 1;
+            return Ok(result);
         } else if let Some(id) = self.parse_identifier() {
             return Ok(Expr::Reference(id));
         } else if let Some(&lexeme) = self.it.peek() {
@@ -244,6 +296,32 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
         Err(String::from("invalid expression"))
     }
 
+    /// handles IN-lists and IN SELECT expressions
+    fn parse_expr_in(&mut self) -> Result<Expr, String> {
+        let result = self.parse_expr_term()?;
+        if !self.complete_token_and_advance(&lexer::ReservedKeyword::In) {
+            Ok(result)
+        } else {
+            self.expect_substr_and_advance("(")?;
+            if self.complete_token_and_advance(&lexer::ReservedKeyword::Select) {
+                let select = self.parse_select_body()?;
+                self.expect_substr_and_advance(")")?;
+                Ok(Expr::InSelect(Box::new(result), Box::new(select)))
+            } else {
+                let mut terms = Vec::new();
+                loop {
+                    let term = self.parse_expr()?;
+                    terms.push(Box::new(term));
+                    if !self.complete_substr_and_advance(",") {
+                        break;
+                    }
+                }
+                self.expect_substr_and_advance(")")?;
+                Ok(Expr::InList(Box::new(result), terms))
+            }
+        }
+    }
+
     fn parse_expr_mult(&mut self) -> Result<Expr, String> {
         let op = |s: &mut Self| {
             if s.complete_substr_and_advance("*") {
@@ -254,7 +332,7 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
                 None
             }
         };
-        let term = |s: &mut Self| s.parse_expr_term();
+        let term = |s: &mut Self| s.parse_expr_in();
         self.parse_nary_expr(&op, &term)
     }
 
@@ -348,6 +426,7 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
         Ok(result.unwrap())
     }
 
+    /// Entry point for parsing expressions
     fn parse_expr(&mut self) -> Result<Expr, String> {
         self.parse_expr_or()
     }
@@ -450,5 +529,11 @@ mod tests {
         println!("{:?}", parser.parse("select a from a where a or b and c"));
         println!("{:?}", parser.parse("select a from a where a = 1"));
         println!("{:?}", parser.parse("select a from a where a = h or b = z and c = 1"));
+        println!("{:?}", parser.parse("select a from a where a in (select b from b)"));
+        println!("{:?}", parser.parse("select a from a where a = (select b from b)"));
+        println!("{:?}", parser.parse("select a from a where a = ?"));
+        println!("{:?}", parser.parse("select a from a where a in (1)"));
+        println!("{:?}", parser.parse("select a from a where a in (1, 2)"));
+        println!("{:?}", parser.parse("select a from a where a in (?, ?, ?, ?)"));
     }
 }
