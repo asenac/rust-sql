@@ -33,16 +33,16 @@ pub enum JoinItem {
 
 #[derive(Debug)]
 pub struct JoinTerm {
-    join_item: JoinItem,
-    alias: Option<String>,
+    pub join_item: JoinItem,
+    pub alias: Option<String>,
 }
 
 #[derive(Debug)]
 pub struct Select {
-    selection_list: Option<Vec<SelectItem>>,
-    from_clause: Vec<JoinTerm>,
-    where_clause: Option<Expr>,
-    limit_clause: Option<Expr>,
+    pub selection_list: Option<Vec<SelectItem>>,
+    pub from_clause: Vec<JoinTerm>,
+    pub where_clause: Option<Expr>,
+    pub limit_clause: Option<Expr>,
 }
 
 impl Select {

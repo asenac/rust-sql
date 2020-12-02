@@ -91,6 +91,7 @@ mod qg {
         quantifier_type: QuantifierType,
         input_box: BoxRef,
         parent_box: Weak<RefCell<QGBox>>,
+        alias: Option<String>
     }
 
     impl Quantifier {
@@ -105,7 +106,12 @@ mod qg {
                 quantifier_type: quantifier_type,
                 input_box: input_box,
                 parent_box: Rc::downgrade(parent_box),
+                alias: None
             }
+        }
+
+        fn set_alias(&mut self, alias: String) {
+            self.alias = Some(alias);
         }
     }
 
@@ -118,6 +124,53 @@ mod qg {
             let other = Rc::clone(&self.top_box);
             self.top_box = new_box;
             other
+        }
+    }
+
+    struct ModelGenerator{
+        stack : Vec<BoxRef>,
+        next_box_id: i32,
+        next_quantifier_id: i32
+    }
+
+    impl ModelGenerator {
+        pub fn new() -> Self {
+            Self {
+                stack: Vec::new(),
+                // @todo move this to the model
+                next_box_id: 0,
+                next_quantifier_id: 0
+            }
+        }
+
+        pub fn process(&mut self, select: &crate::ast::Select) -> Result<Model, String> {
+            let top_box = self.process_select(select)?;
+            let model = Model{ top_box };
+            return Ok(model);
+        }
+
+        fn process_select(&mut self, select: &crate::ast::Select) -> Result<BoxRef, String> {
+            let select_box = Rc::new(RefCell::new(QGBox::new(self.next_box_id, BoxType::Select)));
+            self.next_box_id += 1;
+            self.stack.push(Rc::clone(&select_box));
+            for join_item in &select.from_clause {
+                let b = self.process_join_item(&join_item.join_item)?;
+                let mut q = Quantifier::new(self.next_quantifier_id, QuantifierType::Foreach, b, &select_box);
+                if join_item.alias.is_some() {
+                    q.set_alias(join_item.alias.as_ref().unwrap().clone());
+                }
+                select_box.borrow_mut().add_quantifier(Rc::new(RefCell::new(q)));
+                self.next_quantifier_id += 1;
+            }
+            Ok(self.stack.pop().unwrap())
+        }
+
+        fn process_join_item(&mut self, item : &crate::ast::JoinItem) -> Result<BoxRef, String> {
+            use crate::ast::JoinItem::*;
+            match item {
+                DerivedTable(s) => self.process_select(s),
+                _ => Err(String::from("not implemented")),
+            }
         }
     }
 
