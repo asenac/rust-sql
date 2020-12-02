@@ -88,6 +88,7 @@ pub enum Expr {
     ScalarSubquery(Box<Select>),
     InSelect(Box<Expr>, Box<Select>),
     InList(Box<Expr>, Vec<Box<Expr>>),
+    FunctionCall(Identifier, Vec<Box<Expr>>),
 }
 
 /// Traverse an expression tree
@@ -103,6 +104,11 @@ pub fn scan_expr<F: Fn(&Expr) -> bool>(f: F, expr: &Expr) {
             Reference(_) => {},
             NumericLiteral(_) => {},
             ScalarSubquery(_) => {},
+            FunctionCall(_, vec) => {
+                for e in vec.iter() {
+                    stack.push(e);
+                }
+            },
             InSelect(e, _) => {
                 stack.push(e);
             },
@@ -284,6 +290,20 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
             self.parameter_index += 1;
             return Ok(result);
         } else if let Some(id) = self.parse_identifier() {
+            if self.complete_substr_and_advance("(") {
+                let mut params : Vec<Box<Expr>> = Vec::new();
+                if !self.complete_substr_and_advance(")") {
+                    loop {
+                        let param = self.parse_expr()?;
+                        if !self.complete_substr_and_advance(",") {
+                            break;
+                        }
+                        params.push(Box::new(param));
+                    }
+                    self.expect_substr_and_advance(")")?;
+                }
+                return Ok(Expr::FunctionCall(id, params));
+            }
             return Ok(Expr::Reference(id));
         } else if let Some(&lexeme) = self.it.peek() {
             if lexeme.type_ == lexer::LexemeType::Number {
@@ -535,5 +555,8 @@ mod tests {
         println!("{:?}", parser.parse("select a from a where a in (1)"));
         println!("{:?}", parser.parse("select a from a where a in (1, 2)"));
         println!("{:?}", parser.parse("select a from a where a in (?, ?, ?, ?)"));
+        println!("{:?}", parser.parse("select a from a where f1()"));
+        println!("{:?}", parser.parse("select a from a where f1(?)"));
+        println!("{:?}", parser.parse("select a from a where f1(?, ?, ?, ?)"));
     }
 }
