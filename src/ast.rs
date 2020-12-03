@@ -209,8 +209,9 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
         while let Some(&c) = self.it.peek() {
             if self.complete_token_and_advance(&ReservedKeyword::Select) {
                 result.push(Statement::Select(self.parse_select_body()?));
-            } else {
-                return Err(format!("unexpected token {:?}", c));
+            } else if self.complete_token_and_advance(&ReservedKeyword::Create) {
+                self.expect_token_and_advance(&ReservedKeyword::Table)?;
+                result.push(Statement::CreateTable(self.parse_create_table_body()?));
             }
             if !self.complete_substr_and_advance(";") {
                 break;
@@ -284,6 +285,14 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
         None
     }
 
+    fn expect_name(&mut self) -> Result<String, String> {
+        if let Some(c) = self.parse_name() {
+            Ok(c)
+        } else {
+            Err(String::from("expected name"))
+        }
+    }
+
     fn parse_identifier(&mut self) -> Option<Identifier> {
         let mut identifier: Option<Identifier> = None;
         while let Some(part) = self.parse_name() {
@@ -296,6 +305,14 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
             }
         }
         identifier
+    }
+
+    fn expect_identifier(&mut self) -> Result<Identifier, String> {
+        if let Some(c) = self.parse_identifier() {
+            Ok(c)
+        } else {
+            Err(String::from("expected identifier"))
+        }
     }
 
     /// scalar subqueries are allowed within parenthesis
@@ -588,6 +605,22 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
         }
 
         Ok(select)
+    }
+
+    fn parse_create_table_body(&mut self) -> Result<CreateTable, String> {
+        let identifier = self.expect_identifier()?;
+        self.expect_substr_and_advance("(");
+        let mut columns = Vec::new();
+        loop {
+            let name = self.expect_name()?;
+            // @todo parse type
+            columns.push(ColumnDef{name: name, data_type: TypeDef::String});
+            if !self.complete_substr_and_advance(",") {
+                break;
+            }
+        }
+        self.expect_substr_and_advance(")");
+        Ok(CreateTable{name: identifier, columns: columns})
     }
 }
 
