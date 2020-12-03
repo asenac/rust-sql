@@ -326,7 +326,7 @@ mod qg {
             if let Some(where_clause) = &select.where_clause {
                 self.add_subqueries(&select_box, &where_clause, &mut current_context)?;
                 let expr = self.process_expr(&where_clause, &current_context)?;
-                    select_box.borrow_mut().add_predicate(expr);
+                select_box.borrow_mut().add_predicate(expr);
             }
             Ok(select_box)
         }
@@ -380,13 +380,15 @@ mod qg {
                     if let Some(expr) = &on {
                         // subqueries in the ON clause should not see the siblings in the current context
                         self.add_subqueries(&select_box, expr, &mut child_context)?;
+                        let expr = self.process_expr(expr, &current_context)?;
+                        select_box.borrow_mut().add_predicate(expr);
                     }
 
                     // merge the temporary context into the current one
                     current_context.merge_context(child_context);
                     Ok(select_box)
                 }
-                _ => Err(String::from("not implemented")),
+                // _ => Err(String::from("not implemented")),
             }
         }
 
