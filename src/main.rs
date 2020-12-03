@@ -71,6 +71,7 @@ mod qg {
     enum ExprType {
         BaseColumn(BaseColumn),
         ColumnReference(ColumnReference),
+        Parameter(u64),
     }
 
     struct Expr {
@@ -98,6 +99,13 @@ mod qg {
             };
             Self {
                 expr_type: ExprType::ColumnReference(col_ref),
+                operands: None
+            }
+        }
+
+        fn make_parameter(index: u64) -> Self {
+            Self {
+                expr_type: ExprType::Parameter(index),
                 operands: None
             }
         }
@@ -347,6 +355,17 @@ mod qg {
                     let expr = self.process_expr(&item.expr, &current_context)?;
                     select_box.borrow_mut().add_column(item.alias.clone(), expr);
                 }
+            } else {
+                // add all columns from all quantifiers
+                let quantifiers = select_box.borrow().quantifiers.clone();
+                for q in quantifiers {
+                    let bq = q.borrow();
+                    let input_box = bq.input_box.borrow();
+                    for (i, c) in input_box.columns.iter().enumerate() {
+                        let expr = Expr::make_column_ref(Rc::clone(&q), i);
+                        select_box.borrow_mut().add_column(c.name.clone(), Box::new(expr));
+                    }
+                }
             }
             if let Some(where_clause) = &select.where_clause {
                 self.add_subqueries(&select_box, &where_clause, &mut current_context)?;
@@ -451,6 +470,7 @@ mod qg {
                     }
                     Err(format!("column {} not found", id.get_name()))
                 }
+                ast::Expr::Parameter(index) => Ok(Box::new(Expr::make_parameter(*index))),
                 _ => {
                     Err(String::from("expression not supported!"))
                 }
