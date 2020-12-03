@@ -19,8 +19,8 @@ impl Identifier {
 
 #[derive(Debug)]
 pub struct SelectItem {
-    expr: Expr,
-    alias: Option<String>,
+    pub expr: Expr,
+    pub alias: Option<String>,
 }
 
 #[derive(Debug)]
@@ -99,12 +99,12 @@ pub enum Expr {
 }
 
 impl Expr {
-    fn iter(&self) -> ExprIterator {
+    pub fn iter(&self) -> ExprIterator {
         ExprIterator::new(self)
     }
 }
 
-struct ExprIterator<'a> {
+pub struct ExprIterator<'a> {
     stack: Vec<&'a Expr>
 }
 

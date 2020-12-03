@@ -100,6 +100,7 @@ mod qg {
         PreservedForeach,
         Existential,
         All,
+        Scalar,
     }
 
     struct Quantifier {
@@ -174,17 +175,30 @@ mod qg {
             id
         }
 
+        fn get_quantifier_id(&mut self) -> i32 {
+            let id = self.next_quantifier_id;
+            self.next_quantifier_id += 1;
+            id
+        }
+
         fn process_select(&mut self, select: &crate::ast::Select) -> Result<BoxRef, String> {
             let select_box = Rc::new(RefCell::new(QGBox::new(self.get_box_id(), BoxType::Select)));
             self.stack.push(Rc::clone(&select_box));
             for join_item in &select.from_clause {
                 let b = self.process_join_item(&join_item.join_item)?;
-                let mut q = Quantifier::new(self.next_quantifier_id, QuantifierType::Foreach, b, &select_box);
+                let mut q = Quantifier::new(self.get_quantifier_id(), QuantifierType::Foreach, b, &select_box);
                 if join_item.alias.is_some() {
                     q.set_alias(join_item.alias.as_ref().unwrap().clone());
                 }
                 select_box.borrow_mut().add_quantifier(Rc::new(RefCell::new(q)));
-                self.next_quantifier_id += 1;
+            }
+            if let Some(selection_list) = &select.selection_list {
+                for item in selection_list {
+                    self.add_subqueries(&select_box, &item.expr)?;
+                }
+            }
+            if let Some(where_clause) = &select.where_clause {
+                self.add_subqueries(&select_box, &where_clause)?;
             }
             Ok(self.stack.pop().unwrap())
         }
@@ -207,6 +221,27 @@ mod qg {
                 }
                 _ => Err(String::from("not implemented")),
             }
+        }
+
+        /// the suqbueries in the given expressions as quantifiers in the given select box
+        fn add_subqueries(&mut self, select_box: &BoxRef, expr: &crate::ast::Expr) -> Result<(), String>{
+            use crate::ast::Expr::*;
+            for expr in expr.iter() {
+                match expr {
+                    ScalarSubquery(e) => {
+                        let subquery_box = self.process_select(e)?;
+                        let q = Quantifier::new(self.get_quantifier_id(), QuantifierType::Scalar, subquery_box, &select_box);
+                        select_box.borrow_mut().add_quantifier(Rc::new(RefCell::new(q)));
+                    }
+                    InSelect(_, e) | Exists(e) => {
+                        let subquery_box = self.process_select(e)?;
+                        let q = Quantifier::new(self.get_quantifier_id(), QuantifierType::Existential, subquery_box, &select_box);
+                        select_box.borrow_mut().add_quantifier(Rc::new(RefCell::new(q)));
+                    }
+                    _ => {}
+                }
+            }
+            Ok(())
         }
     }
 
@@ -469,6 +504,7 @@ impl qg::MetadataCatalog for FakeCatalog
     }
 }
 
+/// simple interpreter to manually test the rewrite engine
 struct Interpreter {
     catalog: FakeCatalog
 }
