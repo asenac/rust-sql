@@ -210,13 +210,6 @@ mod qg {
         }
 
         fn add_quantifier(&mut self, q: &QuantifierRef) {
-            if q.borrow().alias.is_some() {
-                self.quantifiers.push(Rc::clone(&q));
-            } else {
-                if let BoxType::BaseTable(_) = q.borrow().input_box.borrow().box_type {
-                    self.quantifiers.push(Rc::clone(&q));
-                }
-            }
             self.quantifiers.push(Rc::clone(q))
         }
 
