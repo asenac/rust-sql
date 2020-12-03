@@ -192,7 +192,6 @@ mod qg {
     /// Generates a query graph model from the AST
     pub struct ModelGenerator<'a>{
         catalog: &'a dyn MetadataCatalog,
-        stack : Vec<BoxRef>,
         next_box_id: i32,
         next_quantifier_id: i32
     }
@@ -219,7 +218,6 @@ mod qg {
         pub fn new(catalog: &'a dyn MetadataCatalog) -> Self {
             Self {
                 catalog: catalog,
-                stack: Vec::new(),
                 // @todo move this to the model
                 next_box_id: 0,
                 next_quantifier_id: 0
@@ -246,7 +244,6 @@ mod qg {
 
         fn process_select(&mut self, select: &crate::ast::Select) -> Result<BoxRef, String> {
             let select_box = Rc::new(RefCell::new(QGBox::new(self.get_box_id(), BoxType::Select)));
-            self.stack.push(Rc::clone(&select_box));
             for join_item in &select.from_clause {
                 let b = self.process_join_item(&join_item.join_item)?;
                 let mut q = Quantifier::new(self.get_quantifier_id(), QuantifierType::Foreach, b, &select_box);
@@ -263,7 +260,7 @@ mod qg {
             if let Some(where_clause) = &select.where_clause {
                 self.add_subqueries(&select_box, &where_clause)?;
             }
-            Ok(self.stack.pop().unwrap())
+            Ok(select_box)
         }
 
         fn process_join_item(&mut self, item : &crate::ast::JoinItem) -> Result<BoxRef, String> {
