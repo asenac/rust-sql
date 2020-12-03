@@ -11,6 +11,12 @@ pub struct Identifier {
     parts: Vec<String>,
 }
 
+impl Identifier {
+    pub fn get_name(&self) -> &str {
+        self.parts.last().unwrap()
+    }
+}
+
 #[derive(Debug)]
 pub struct SelectItem {
     expr: Expr,
@@ -206,7 +212,7 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
         use lexer::*;
 
         let mut result: Vec<Statement> = Vec::new();
-        while let Some(&c) = self.it.peek() {
+        loop {
             if self.complete_token_and_advance(&ReservedKeyword::Select) {
                 result.push(Statement::Select(self.parse_select_body()?));
             } else if self.complete_token_and_advance(&ReservedKeyword::Create) {
@@ -609,7 +615,7 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
 
     fn parse_create_table_body(&mut self) -> Result<CreateTable, String> {
         let identifier = self.expect_identifier()?;
-        self.expect_substr_and_advance("(");
+        self.expect_substr_and_advance("(")?;
         let mut columns = Vec::new();
         loop {
             let name = self.expect_name()?;
@@ -619,7 +625,7 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
                 break;
             }
         }
-        self.expect_substr_and_advance(")");
+        self.expect_substr_and_advance(")")?;
         Ok(CreateTable{name: identifier, columns: columns})
     }
 }

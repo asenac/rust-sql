@@ -20,21 +20,28 @@ mod qg {
     use std::collections::*;
     use std::rc::*;
 
-    enum DataType {
+    #[derive(Clone)]
+    pub enum DataType {
         String,
         Integer,
         BigInt,
         Double,
     }
 
-    struct ColumnMetadata {
+    #[derive(Clone)]
+    pub struct ColumnMetadata {
         name: String,
         data_type: DataType,
     }
 
-    struct TableMetadata {
+    #[derive(Clone)]
+    pub struct TableMetadata {
         name: String,
         columns: Vec<ColumnMetadata>,
+    }
+
+    pub trait MetadataCatalog {
+        fn get_table(&self, name: &str) -> Option<&TableMetadata>;
     }
 
     struct ColumnReference {
@@ -52,7 +59,7 @@ mod qg {
 
     enum BoxType {
         Select,
-        BaseTable,
+        BaseTable(TableMetadata),
     }
 
     struct QGBox {
@@ -127,15 +134,18 @@ mod qg {
         }
     }
 
-    pub struct ModelGenerator{
+    /// Generates a query graph model from the AST
+    pub struct ModelGenerator<'a>{
+        catalog: &'a dyn MetadataCatalog,
         stack : Vec<BoxRef>,
         next_box_id: i32,
         next_quantifier_id: i32
     }
 
-    impl ModelGenerator {
-        pub fn new() -> Self {
+    impl<'a> ModelGenerator<'a> {
+        pub fn new(catalog: &'a dyn MetadataCatalog) -> Self {
             Self {
+                catalog: catalog,
                 stack: Vec::new(),
                 // @todo move this to the model
                 next_box_id: 0,
@@ -149,9 +159,14 @@ mod qg {
             return Ok(model);
         }
 
-        fn process_select(&mut self, select: &crate::ast::Select) -> Result<BoxRef, String> {
-            let select_box = Rc::new(RefCell::new(QGBox::new(self.next_box_id, BoxType::Select)));
+        fn get_box_id(&mut self) -> i32 {
+            let id = self.next_box_id;
             self.next_box_id += 1;
+            id
+        }
+
+        fn process_select(&mut self, select: &crate::ast::Select) -> Result<BoxRef, String> {
+            let select_box = Rc::new(RefCell::new(QGBox::new(self.get_box_id(), BoxType::Select)));
             self.stack.push(Rc::clone(&select_box));
             for join_item in &select.from_clause {
                 let b = self.process_join_item(&join_item.join_item)?;
@@ -169,6 +184,16 @@ mod qg {
             use crate::ast::JoinItem::*;
             match item {
                 DerivedTable(s) => self.process_select(s),
+                TableRef(s) => {
+                    // @todo suport for schemas and catalogs
+                    let metadata = self.catalog.get_table(s.get_name());
+                    if !metadata.is_some() {
+                        return Err(format!("table {} not found", s.get_name()));
+                    }
+                    let base_table = BoxType::BaseTable(metadata.unwrap().clone());
+                    let table_box = Rc::new(RefCell::new(QGBox::new(self.get_box_id(), base_table)));
+                    Ok(table_box)
+                }
                 _ => Err(String::from("not implemented")),
             }
         }
@@ -408,11 +433,34 @@ mod rewrite_engine {
 
 // interpreter
 
-struct Interpreter {}
+use std::collections::*;
+
+struct FakeCatalog {
+    tables : HashMap<String, qg::TableMetadata>
+}
+
+impl FakeCatalog {
+    fn new() -> Self {
+        Self {
+            tables: HashMap::new()
+        }
+    }
+}
+
+impl qg::MetadataCatalog for FakeCatalog
+{
+    fn get_table(&self, name: &str) -> Option<&qg::TableMetadata> {
+        self.tables.get(name)
+    }
+}
+
+struct Interpreter {
+    catalog: FakeCatalog
+}
 
 impl Interpreter {
     pub fn new() -> Self {
-        Self {}
+        Self { catalog: FakeCatalog::new() }
     }
 
     pub fn process_line(&mut self, line: &str) -> Result<(), String> {
@@ -428,7 +476,7 @@ impl Interpreter {
         use ast::Statement::*;
         match stmt {
             Select(e) => {
-                let mut generator = qg::ModelGenerator::new();
+                let mut generator = qg::ModelGenerator::new(&self.catalog);
                 generator.process(e)?;
             }
             _ => {
