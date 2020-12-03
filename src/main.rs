@@ -399,6 +399,9 @@ mod qg {
                 match expr {
                     ScalarSubquery(e) => {
                         let subquery_box = self.process_select(e, Some(current_context))?;
+                        if subquery_box.borrow().columns.len() != 1 {
+                            return Err(format!("scalar subqueries must project a single column"))
+                        }
                         let q = Quantifier::new(self.get_quantifier_id(), QuantifierType::Scalar, subquery_box, &select_box);
                         select_box.borrow_mut().add_quantifier(Rc::new(RefCell::new(q)));
                     }
