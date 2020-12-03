@@ -252,6 +252,7 @@ mod qg {
         owner_box: BoxRef,
         quantifiers: Vec<QuantifierRef>,
         parent_quantifiers: HashMap<i32, QuantifierRef>,
+        subquery_quantifiers: Option<HashMap<*const crate::ast::Select, QuantifierRef>>,
         parent_context: Option<&'a NameResolutionContext<'a>>
     }
 
@@ -261,6 +262,7 @@ mod qg {
                 owner_box: owner_box,
                 quantifiers: Vec::new(),
                 parent_quantifiers: HashMap::new(),
+                subquery_quantifiers: None,
                 parent_context: parent_context
             }
         }
@@ -268,6 +270,17 @@ mod qg {
         fn add_quantifier(&mut self, q: &QuantifierRef) {
             self.parent_quantifiers.insert(q.borrow().input_box.borrow().id, Rc::clone(q));
             self.quantifiers.push(Rc::clone(q))
+        }
+
+        fn add_subquery_quantifier(&mut self, s: *const crate::ast::Select, q: &QuantifierRef) {
+            if self.subquery_quantifiers.is_none() {
+                self.subquery_quantifiers = Some(HashMap::new());
+            }
+            self.subquery_quantifiers.as_mut().unwrap().insert(s, Rc::clone(q));
+        }
+
+        fn get_subquery_quantifier(&self, s: *const crate::ast::Select) -> QuantifierRef {
+            Rc::clone(self.subquery_quantifiers.as_ref().unwrap().get(&s).expect("bug"))
         }
 
         /// adds all the quantifier from the given context into the current one
@@ -479,12 +492,16 @@ mod qg {
                             return Err(format!("scalar subqueries must project a single column"))
                         }
                         let q = Quantifier::new(self.get_quantifier_id(), QuantifierType::Scalar, subquery_box, &select_box);
-                        select_box.borrow_mut().add_quantifier(Rc::new(RefCell::new(q)));
+                        let q = Rc::new(RefCell::new(q));
+                        current_context.add_subquery_quantifier(e.as_ref() as *const crate::ast::Select, &q);
+                        select_box.borrow_mut().add_quantifier(q);
                     }
                     InSelect(_, e) | Exists(e) => {
                         let subquery_box = self.process_select(e, Some(current_context))?;
                         let q = Quantifier::new(self.get_quantifier_id(), QuantifierType::Existential, subquery_box, &select_box);
-                        select_box.borrow_mut().add_quantifier(Rc::new(RefCell::new(q)));
+                        let q = Rc::new(RefCell::new(q));
+                        current_context.add_subquery_quantifier(e.as_ref() as *const crate::ast::Select, &q);
+                        select_box.borrow_mut().add_quantifier(q);
                     }
                     _ => {}
                 }
@@ -503,6 +520,9 @@ mod qg {
                     Err(format!("column {} not found", id.get_name()))
                 }
                 ast::Expr::Parameter(index) => Ok(Box::new(Expr::make_parameter(*index))),
+                ast::Expr::ScalarSubquery(e) => {
+                    Ok(Box::new(Expr::make_column_ref(current_context.get_subquery_quantifier(e.as_ref() as *const crate::ast::Select), 0)))
+                }
                 _ => {
                     Err(String::from("expression not supported!"))
                 }
@@ -803,9 +823,7 @@ impl Interpreter {
                 }
                 self.catalog.add_table(metadata);
             }
-            _ => {
-                return Err(format!("unsupported statement: {:?}", stmt));
-            }
+            // _ => return Err(format!("unsupported statement: {:?}", stmt)),
         }
         Ok(())
     }
