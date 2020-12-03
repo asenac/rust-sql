@@ -115,6 +115,9 @@ mod qg {
                 (ExprType::ColumnReference(l), ExprType::ColumnReference(r)) => {
                     l.position == r.position && l.quantifier == r.quantifier
                 }
+                (ExprType::Parameter(l), ExprType::Parameter(r)) => {
+                    l == r
+                }
                 _ => {
                     false
                 }
