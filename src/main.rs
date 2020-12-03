@@ -54,16 +54,30 @@ mod qg {
     }
 
     struct ColumnReference {
+        quantifier: QuantifierRef,
+        column_position: usize,
         data_type: DataType,
     }
 
-    struct Expr {}
+    struct BaseColumn {
+        parent_box: Weak<RefCell<QGBox>>,
+    }
+
+    enum ExprType {
+        BaseColumn(BaseColumn),
+        ColumnReference(ColumnReference),
+    }
+
+    struct Expr {
+        expr_type: ExprType,
+        operands: Option<Vec<Box<Expr>>>
+    }
 
     impl Expr {}
 
     struct Column {
         name: String,
-        expr: Rc<Expr>,
+        expr: Box<Expr>,
     }
 
     enum BoxType {
@@ -220,6 +234,7 @@ mod qg {
                     Ok(table_box)
                 }
                 Join(_, l, r, on) => {
+                    // @todo outer joins
                     let select_box = Rc::new(RefCell::new(QGBox::new(self.get_box_id(), BoxType::Select)));
                     let l_box = self.process_join_item(&l.join_item)?;
                     let l_q = Quantifier::new(self.get_quantifier_id(), QuantifierType::Foreach, l_box, &select_box);
