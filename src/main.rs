@@ -115,7 +115,7 @@ mod qg {
         }
     }
 
-    struct Model {
+    pub struct Model {
         top_box: BoxRef,
     }
 
@@ -127,7 +127,7 @@ mod qg {
         }
     }
 
-    struct ModelGenerator{
+    pub struct ModelGenerator{
         stack : Vec<BoxRef>,
         next_box_id: i32,
         next_quantifier_id: i32
@@ -406,10 +406,72 @@ mod rewrite_engine {
 
 // execution engine
 
-fn main() {
-    let args: Vec<String> = env::args().collect();
-    for arg in &args[1..] {
-        println!("{:?}", arg);
-        println!("{:?}", lexer::lex(&arg));
+// interpreter
+
+struct Interpreter {}
+
+impl Interpreter {
+    pub fn new() -> Self {
+        Self {}
     }
+
+    pub fn process_line(&mut self, line: &str) -> Result<(), String> {
+        let parser = ast::Parser::new();
+        let result = parser.parse(line)?;
+        for stmt in result {
+            self.process_statement(&stmt)?;
+        }
+        Ok(())
+    }
+
+    fn process_statement(&mut self, stmt: &ast::Statement) -> Result<(), String> {
+        use ast::Statement::*;
+        match stmt {
+            Select(e) => {
+                let mut generator = qg::ModelGenerator::new();
+                generator.process(e)?;
+            }
+            _ => {
+                return Err(format!("unsupported statement: {:?}", stmt));
+            }
+        }
+        Ok(())
+    }
+}
+
+use rustyline::error::ReadlineError;
+use rustyline::Editor;
+
+fn main() {
+    let mut interpreter = Interpreter::new();
+    let mut rl = Editor::<()>::new();
+    if rl.load_history("history.txt").is_err() {
+        println!("No previous history.");
+    }
+    loop {
+        let readline = rl.readline("SQL> ");
+        match readline {
+            Ok(line) => {
+                rl.add_history_entry(line.as_str());
+                println!("Line: {}", line);
+                let result = interpreter.process_line(&line);
+                if result.is_err() {
+                    println!("Error: {}", result.err().unwrap());
+                }
+            },
+            Err(ReadlineError::Interrupted) => {
+                println!("CTRL-C");
+                break
+            },
+            Err(ReadlineError::Eof) => {
+                println!("CTRL-D");
+                break
+            },
+            Err(err) => {
+                println!("Error: {:?}", err);
+                break
+            }
+        }
+    }
+    rl.save_history("history.txt").unwrap();
 }

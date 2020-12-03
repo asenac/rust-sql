@@ -212,6 +212,12 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
             } else {
                 return Err(format!("unexpected token {:?}", c));
             }
+            if !self.complete_substr_and_advance(";") {
+                break;
+            }
+        }
+        if let Some(&c) = self.it.peek() {
+            return Err(format!("unexpected token {:?}", c));
         }
         Ok(result)
     }
