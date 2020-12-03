@@ -631,6 +631,8 @@ mod tests {
 
     #[test]
     fn test_expr_iterator() {
+        use std::collections::HashSet;
+
         let parser = Parser {};
         let result = parser.parse("select * from a where exists(select 1 from a) and a or b and c = 1 or z in (select a from a)");
         assert!(result.is_ok());
@@ -638,7 +640,9 @@ mod tests {
         assert_eq!(result.len(), 1);
         if let Statement::Select(s) = &result[0] {
             assert!(s.where_clause.is_some());
+            let mut exprs = HashSet::new();
             for expr in s.where_clause.as_ref().unwrap().iter() {
+                exprs.insert(expr as *const Expr);
                 println!("{:?}", expr);
             }
         } else {
