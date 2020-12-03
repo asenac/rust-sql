@@ -170,6 +170,24 @@ mod qg {
         next_quantifier_id: i32
     }
 
+    struct NameResolutionContext<'a> {
+        quantifiers: Vec<QuantifierRef>,
+        parent_context: Option<&'a NameResolutionContext<'a>>
+    }
+
+    impl<'a> NameResolutionContext<'a> {
+        fn new(parent_context: Option<&'a Self>) -> Self {
+            Self {
+                quantifiers: Vec::new(),
+                parent_context: parent_context
+            }
+        }
+
+        fn add_quantifier(&mut self, q: QuantifierRef) {
+            self.quantifiers.push(q)
+        }
+    }
+
     impl<'a> ModelGenerator<'a> {
         pub fn new(catalog: &'a dyn MetadataCatalog) -> Self {
             Self {
