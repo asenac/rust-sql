@@ -216,6 +216,17 @@ mod qg {
         fn set_alias(&mut self, alias: String) {
             self.alias = Some(alias);
         }
+
+        fn get_effective_name(&self) -> Option<String> {
+            if self.alias.is_some() {
+                return self.alias.clone();
+            }
+            let b = self.input_box.borrow();
+            if let BoxType::BaseTable(t) = &b.box_type {
+                return Some(t.name.clone());
+            }
+            return None
+        }
     }
 
     pub struct Model {
@@ -272,7 +283,8 @@ mod qg {
                 let tn = table.unwrap();
                 for q in &self.quantifiers {
                     // @todo case insensitive comparisons
-                    if q.borrow().alias.is_some() && q.borrow().alias.as_ref().unwrap() == tn {
+                    let q_name = q.borrow().get_effective_name();
+                    if q_name.is_some() && q_name.as_ref().unwrap() == tn {
                         return self.resolve_column_in_quantifier(q, column);
                     }
                 }
