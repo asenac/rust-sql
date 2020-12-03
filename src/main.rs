@@ -47,6 +47,10 @@ mod qg {
                 columns: Vec::new()
             }
         }
+
+        pub fn add_column(&mut self, name: &str) {
+            self.columns.push(ColumnMetadata{name: name.to_string(), data_type: DataType::String});
+        }
     }
 
     pub trait MetadataCatalog {
@@ -559,7 +563,10 @@ impl Interpreter {
                 generator.process(e)?;
             }
             CreateTable(c) => {
-                let metadata = qg::TableMetadata::new(c.name.get_name());
+                let mut metadata = qg::TableMetadata::new(c.name.get_name());
+                for c in &c.columns {
+                    metadata.add_column(&c.name);
+                }
                 self.catalog.add_table(metadata);
             }
             _ => {
