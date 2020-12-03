@@ -101,6 +101,17 @@ mod qg {
                 operands: None
             }
         }
+
+        fn is_equiv(&self, o: &Self) -> bool {
+            match (&self.expr_type, &o.expr_type) {
+                (ExprType::ColumnReference(l), ExprType::ColumnReference(r)) => {
+                    l.position == r.position && l.quantifier == r.quantifier
+                }
+                _ => {
+                    false
+                }
+            }
+        }
     }
 
     struct Column {
@@ -118,6 +129,7 @@ mod qg {
         box_type: BoxType,
         columns: Vec<Column>,
         quantifiers: BTreeSet<QuantifierRef>,
+        predicates: Option<Vec<Box<Expr>>>,
     }
 
     impl QGBox {
@@ -127,6 +139,7 @@ mod qg {
                 box_type: box_type,
                 columns: Vec::new(),
                 quantifiers: BTreeSet::new(),
+                predicates: None
             }
         }
         fn add_quantifier(&mut self, q: QuantifierRef) {
@@ -137,6 +150,13 @@ mod qg {
         }
         fn add_column(&mut self, name: Option<String>, expr: Box<Expr>) {
             self.columns.push(Column{name : name, expr: expr});
+        }
+        fn add_predicate(&mut self, predicate: Box<Expr>) {
+            if self.predicates.is_some() {
+                self.predicates.as_mut().unwrap().push(predicate);
+            } else {
+                self.predicates = Some(vec![predicate]);
+            }
         }
     }
 
@@ -197,13 +217,15 @@ mod qg {
     }
 
     struct NameResolutionContext<'a> {
+        owner_box: BoxRef,
         quantifiers: Vec<QuantifierRef>,
         parent_context: Option<&'a NameResolutionContext<'a>>
     }
 
     impl<'a> NameResolutionContext<'a> {
-        fn new(parent_context: Option<&'a Self>) -> Self {
+        fn new(owner_box: BoxRef, parent_context: Option<&'a Self>) -> Self {
             Self {
+                owner_box: owner_box,
                 quantifiers: Vec::new(),
                 parent_context: parent_context
             }
@@ -218,6 +240,38 @@ mod qg {
             for q in o.quantifiers {
                 self.quantifiers.push(q);
             }
+        }
+
+        fn resolve_column(&self, table: Option<&str>, column: &str) -> Option<Box<Expr>> {
+            if table.is_some() {
+                let tn = table.unwrap();
+                for q in &self.quantifiers {
+                    // @todo case insensitive comparisons
+                    if q.borrow().alias.is_some() && q.borrow().alias.as_ref().unwrap() == tn {
+                        return self.resolve_column_in_quantifier(q, column);
+                    }
+                }
+            } else {
+                for q in &self.quantifiers {
+                    let r = self.resolve_column_in_quantifier(q, column);
+                    if r.is_some() {
+                        return r;
+                    }
+                }
+            }
+            None
+        }
+
+        fn resolve_column_in_quantifier(&self, q: &QuantifierRef, column: &str) -> Option<Box<Expr>> {
+            for (i, c) in q.borrow().input_box.borrow().columns.iter().enumerate() {
+                // @todo case insensitive comparisons
+                if c.name.is_some() && column == c.name.as_ref().unwrap() {
+                    let column_ref = Expr::make_column_ref(Rc::clone(&q), i);
+                    // @todo pull up column ref
+                    return Some(Box::new(column_ref));
+                }
+            }
+            None
         }
     }
 
@@ -250,8 +304,8 @@ mod qg {
         }
 
         fn process_select(&mut self, select: &crate::ast::Select, parent_context: Option<&NameResolutionContext>) -> Result<BoxRef, String> {
-            let mut current_context = NameResolutionContext::new(parent_context);
             let select_box = Rc::new(RefCell::new(QGBox::new(self.get_box_id(), BoxType::Select)));
+            let mut current_context = NameResolutionContext::new(Rc::clone(&select_box), parent_context);
             for join_item in &select.from_clause {
                 let b = self.process_join_item(&join_item.join_item, &mut current_context)?;
                 let mut q = Quantifier::new(self.get_quantifier_id(), QuantifierType::Foreach, b, &select_box);
@@ -265,10 +319,14 @@ mod qg {
             if let Some(selection_list) = &select.selection_list {
                 for item in selection_list {
                     self.add_subqueries(&select_box, &item.expr, &mut current_context)?;
+                    let expr = self.process_expr(&item.expr, &current_context)?;
+                    select_box.borrow_mut().add_column(item.alias.clone(), expr);
                 }
             }
             if let Some(where_clause) = &select.where_clause {
                 self.add_subqueries(&select_box, &where_clause, &mut current_context)?;
+                let expr = self.process_expr(&where_clause, &current_context)?;
+                    select_box.borrow_mut().add_predicate(expr);
             }
             Ok(select_box)
         }
@@ -295,9 +353,9 @@ mod qg {
                     Ok(table_box)
                 }
                 Join(_, l, r, on) => {
-                    let mut child_context = NameResolutionContext::new(current_context.parent_context);
                     // @todo outer joins
                     let select_box = Rc::new(RefCell::new(QGBox::new(self.get_box_id(), BoxType::Select)));
+                    let mut child_context = NameResolutionContext::new(Rc::clone(&select_box), current_context.parent_context);
 
                     // left term
                     let l_box = self.process_join_item(&l.join_item, &mut child_context)?;
@@ -320,6 +378,7 @@ mod qg {
                     select_box.borrow_mut().add_quantifier(r_q);
 
                     if let Some(expr) = &on {
+                        // subqueries in the ON clause should not see the siblings in the current context
                         self.add_subqueries(&select_box, expr, &mut child_context)?;
                     }
 
@@ -350,6 +409,22 @@ mod qg {
                 }
             }
             Ok(())
+        }
+
+        fn process_expr(&mut self, expr: &crate::ast::Expr, current_context : &NameResolutionContext) -> Result<Box<Expr>, String> {
+            use crate::ast;
+            match expr {
+                ast::Expr::Reference(id) => {
+                    let expr = current_context.resolve_column(id.get_qualifier_before_name(), &id.get_name());
+                    if expr.is_some() {
+                        return Ok(expr.unwrap());
+                    }
+                    Err(format!("column {} not found", id.get_name()))
+                }
+                _ => {
+                    Err(String::from("expression not supported!"))
+                }
+            }
         }
     }
 

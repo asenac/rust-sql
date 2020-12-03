@@ -12,6 +12,14 @@ pub struct Identifier {
 }
 
 impl Identifier {
+    pub fn get_qualifier_before_name(&self) -> Option<&str> {
+        if self.parts.len() > 1 {
+            Some(&self.parts[self.parts.len() - 2])
+        } else {
+            None
+        }
+    }
+
     pub fn get_name(&self) -> &str {
         self.parts.last().unwrap()
     }
