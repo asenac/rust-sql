@@ -236,7 +236,7 @@ mod qg {
         }
 
         /// adds all the quantifier from the given context into the current one
-        fn merge_context(&mut self, o: Self) {
+        fn merge_quantifiers(&mut self, o: Self) {
             for q in o.quantifiers {
                 self.quantifiers.push(q);
             }
@@ -410,7 +410,7 @@ mod qg {
                     }
 
                     // merge the temporary context into the current one
-                    current_context.merge_context(child_context);
+                    current_context.merge_quantifiers(child_context);
                     Ok(select_box)
                 }
                 // _ => Err(String::from("not implemented")),
@@ -731,6 +731,7 @@ impl Interpreter {
         let parser = ast::Parser::new();
         let result = parser.parse(line)?;
         for stmt in result {
+            println!("{:?}", stmt);
             self.process_statement(&stmt)?;
         }
         Ok(())
