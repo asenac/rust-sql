@@ -30,14 +30,23 @@ mod qg {
 
     #[derive(Clone)]
     pub struct ColumnMetadata {
-        name: String,
-        data_type: DataType,
+        pub name: String,
+        pub data_type: DataType,
     }
 
     #[derive(Clone)]
     pub struct TableMetadata {
-        name: String,
-        columns: Vec<ColumnMetadata>,
+        pub name: String,
+        pub columns: Vec<ColumnMetadata>,
+    }
+
+    impl TableMetadata {
+        pub fn new(name: &str) -> Self {
+            Self {
+                name: name.to_string(),
+                columns: Vec::new()
+            }
+        }
     }
 
     pub trait MetadataCatalog {
@@ -190,7 +199,9 @@ mod qg {
                     if !metadata.is_some() {
                         return Err(format!("table {} not found", s.get_name()));
                     }
+                    // @todo avoid cloning the metadata. The catalog should return a ref counted instance
                     let base_table = BoxType::BaseTable(metadata.unwrap().clone());
+                    // @todo add the columns of the table
                     let table_box = Rc::new(RefCell::new(QGBox::new(self.get_box_id(), base_table)));
                     Ok(table_box)
                 }
@@ -445,6 +456,10 @@ impl FakeCatalog {
             tables: HashMap::new()
         }
     }
+
+    fn add_table(&mut self, table: qg::TableMetadata) {
+        self.tables.insert(table.name.clone(), table);
+    }
 }
 
 impl qg::MetadataCatalog for FakeCatalog
@@ -478,6 +493,10 @@ impl Interpreter {
             Select(e) => {
                 let mut generator = qg::ModelGenerator::new(&self.catalog);
                 generator.process(e)?;
+            }
+            CreateTable(c) => {
+                let metadata = qg::TableMetadata::new(c.name.get_name());
+                self.catalog.add_table(metadata);
             }
             _ => {
                 return Err(format!("unsupported statement: {:?}", stmt));

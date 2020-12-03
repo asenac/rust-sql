@@ -167,14 +167,14 @@ pub enum TypeDef {
 
 #[derive(Debug)]
 pub struct ColumnDef {
-    name: String,
-    data_type: TypeDef,
+    pub name: String,
+    pub data_type: TypeDef,
 }
 
 #[derive(Debug)]
 pub struct CreateTable {
-    name: Identifier,
-    columns: Vec<ColumnDef>,
+    pub name: Identifier,
+    pub columns: Vec<ColumnDef>,
 }
 
 pub struct Parser {}
