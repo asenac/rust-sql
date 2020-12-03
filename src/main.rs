@@ -159,6 +159,16 @@ mod qg {
         fn add_column(&mut self, name: Option<String>, expr: Box<Expr>) {
             self.columns.push(Column{name : name, expr: expr});
         }
+        fn add_column_if_not_exists(&mut self, expr: Expr) -> usize {
+            for (i, c) in self.columns.iter().enumerate() {
+                if c.expr.is_equiv(&expr) {
+                    return i;
+                }
+            }
+            let pos = self.columns.len();
+            self.columns.push(Column{name: None, expr: Box::new(expr)});
+            pos
+        }
         fn add_predicate(&mut self, predicate: Box<Expr>) {
             if self.predicates.is_some() {
                 self.predicates.as_mut().unwrap().push(predicate);
@@ -227,6 +237,7 @@ mod qg {
     struct NameResolutionContext<'a> {
         owner_box: BoxRef,
         quantifiers: Vec<QuantifierRef>,
+        parent_quantifiers: HashMap<i32, QuantifierRef>,
         parent_context: Option<&'a NameResolutionContext<'a>>
     }
 
@@ -235,11 +246,13 @@ mod qg {
             Self {
                 owner_box: owner_box,
                 quantifiers: Vec::new(),
+                parent_quantifiers: HashMap::new(),
                 parent_context: parent_context
             }
         }
 
         fn add_quantifier(&mut self, q: &QuantifierRef) {
+            self.parent_quantifiers.insert(q.borrow().input_box.borrow().id, Rc::clone(q));
             self.quantifiers.push(Rc::clone(q))
         }
 
@@ -248,6 +261,7 @@ mod qg {
             for q in o.quantifiers {
                 self.quantifiers.push(q);
             }
+            self.parent_quantifiers.extend(o.parent_quantifiers);
         }
 
         fn resolve_column(&self, table: Option<&str>, column: &str) -> Option<Box<Expr>> {
@@ -293,11 +307,14 @@ mod qg {
                             break;
                         }
                         let parent_box = parent_box.unwrap();
-                        if parent_box.borrow().id == self.owner_box.borrow().id {
+                        let parent_box_id = parent_box.borrow().id;
+                        if parent_box_id == self.owner_box.borrow().id {
                             break;
                         }
                         // @todo we need ranging quantifiers!
-                        panic!();
+                        let parent_q = self.parent_quantifiers.get(&parent_box_id).expect("must be a valid id");
+                        c.position = parent_q.borrow().input_box.borrow_mut().add_column_if_not_exists(Expr::make_column_ref(Rc::clone(&c.quantifier), c.position));
+                        c.quantifier = Rc::clone(parent_q);
                     }
                     column_ref
                 }
