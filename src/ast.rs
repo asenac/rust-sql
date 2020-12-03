@@ -27,7 +27,7 @@ pub enum JoinType {
 #[derive(Debug)]
 pub enum JoinItem {
     TableRef(Identifier),
-    Join(JoinType, Box<JoinTerm>, Box<JoinTerm>),
+    Join(JoinType, Box<JoinTerm>, Box<JoinTerm>, Option<Expr>),
     DerivedTable(Select),
 }
 
@@ -487,6 +487,35 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
         Ok(JoinTerm { join_item, alias })
     }
 
+    fn parse_join_tree(&mut self) -> Result<JoinTerm, String> {
+        let mut left_item = self.parse_join_term()?;
+        loop {
+            let mut join_type: Option<JoinType> = None;
+            if self.complete_token_and_advance(&lexer::ReservedKeyword::Left) {
+                join_type = Some(JoinType::LeftOuter);
+            } else if self.complete_token_and_advance(&lexer::ReservedKeyword::Right) {
+                join_type = Some(JoinType::RightOuter);
+            }
+            if join_type.is_some() {
+                // optional
+                self.complete_token_and_advance(&lexer::ReservedKeyword::Outer);
+                self.expect_token_and_advance(&lexer::ReservedKeyword::Join)?;
+            } else if self.complete_token_and_advance(&lexer::ReservedKeyword::Join) {
+                join_type = Some(JoinType::Inner);
+            }
+            if !join_type.is_some() {
+                return Ok(left_item);
+            }
+            let right_item = self.parse_join_term()?;
+            let mut on_clause : Option<Expr> = None;
+            if self.complete_token_and_advance(&lexer::ReservedKeyword::On) {
+                on_clause = Some(self.parse_expr()?);
+            }
+            let join = JoinItem::Join(join_type.unwrap(), Box::new(left_item), Box::new(right_item), on_clause);
+            left_item = JoinTerm{join_item: join, alias: None};
+        }
+    }
+
     fn parse_select_body(&mut self) -> Result<Select, String> {
         let mut select = Select::new();
         if !self.complete_substr_and_advance("*") {
@@ -513,7 +542,7 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
         // mandatory from clause
         self.expect_token_and_advance(&lexer::ReservedKeyword::From)?;
         loop {
-            let join_term: JoinTerm = self.parse_join_term()?;
+            let join_term: JoinTerm = self.parse_join_tree()?;
             select.from_clause.push(join_term);
             if !self.complete_substr_and_advance(",") {
                 break;
@@ -554,6 +583,10 @@ mod tests {
 
         test_valid_query("select * from a");
         test_valid_query("select a from a");
+        test_valid_query("select a from a as b");
+        test_valid_query("select a from a as b join c");
+        test_valid_query("select a from a as b join c on a = 1");
+        test_valid_query("select a from a b");
         test_valid_query("select a, b from a");
         test_valid_query("select a, b as c from a");
         test_valid_query("select a, b c from a");
