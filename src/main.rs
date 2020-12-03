@@ -59,12 +59,13 @@ mod qg {
 
     struct ColumnReference {
         quantifier: QuantifierRef,
-        column_position: usize,
+        position: usize,
         data_type: DataType,
     }
 
     struct BaseColumn {
         parent_box: Weak<RefCell<QGBox>>,
+        position: usize,
     }
 
     enum ExprType {
@@ -77,10 +78,33 @@ mod qg {
         operands: Option<Vec<Box<Expr>>>
     }
 
-    impl Expr {}
+    impl Expr {
+        fn make_base_column(parent_box: &BoxRef, position: usize) -> Self {
+            let base_col = BaseColumn {
+                parent_box: Rc::downgrade(&parent_box),
+                position: position
+            };
+            Self {
+                expr_type: ExprType::BaseColumn(base_col),
+                operands: None
+            }
+        }
+
+        fn make_column_ref(quantifier: QuantifierRef, position: usize) -> Self {
+            let col_ref = ColumnReference {
+                quantifier: quantifier,
+                position: position,
+                data_type: DataType::String
+            };
+            Self {
+                expr_type: ExprType::ColumnReference(col_ref),
+                operands: None
+            }
+        }
+    }
 
     struct Column {
-        name: String,
+        name: Option<String>,
         expr: Box<Expr>,
     }
 
@@ -110,6 +134,9 @@ mod qg {
         }
         fn remove_quantifier(&mut self, q: &QuantifierRef) {
             self.quantifiers.remove(q);
+        }
+        fn add_column(&mut self, name: Option<String>, expr: Box<Expr>) {
+            self.columns.push(Column{name : name, expr: expr});
         }
     }
 
@@ -202,7 +229,7 @@ mod qg {
         pub fn process(&mut self, select: &crate::ast::Select) -> Result<Model, String> {
             let top_box = self.process_select(select)?;
             let model = Model{ top_box };
-            return Ok(model);
+            Ok(model)
         }
 
         fn get_box_id(&mut self) -> i32 {
@@ -249,10 +276,14 @@ mod qg {
                     if !metadata.is_some() {
                         return Err(format!("table {} not found", s.get_name()));
                     }
+                    let metadata = metadata.unwrap();
                     // @todo avoid cloning the metadata. The catalog should return a ref counted instance
-                    let base_table = BoxType::BaseTable(metadata.unwrap().clone());
-                    // @todo add the columns of the table
+                    let base_table = BoxType::BaseTable(metadata.clone());
                     let table_box = Rc::new(RefCell::new(QGBox::new(self.get_box_id(), base_table)));
+                    // add the columns of the table
+                    for (i, c) in metadata.columns.iter().enumerate() {
+                        table_box.borrow_mut().add_column(Some(c.name.clone()), Box::new(Expr::make_base_column(&table_box, i)));
+                    }
                     Ok(table_box)
                 }
                 Join(_, l, r, on) => {
