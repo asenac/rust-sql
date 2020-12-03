@@ -92,41 +92,61 @@ pub enum Expr {
     FunctionCall(Identifier, Vec<Box<Expr>>),
 }
 
-/// Traverse an expression tree
-pub fn scan_expr<F: Fn(&Expr) -> bool>(f: F, expr: &Expr) {
-    use Expr::*;
-    let mut stack = vec![expr];
-    while let Some(top) = stack.pop() {
-        if !f(top) {
-            break;
+impl Expr {
+    fn iter(&self) -> ExprIterator {
+        ExprIterator::new(self)
+    }
+}
+
+struct ExprIterator<'a> {
+    stack: Vec<&'a Expr>
+}
+
+impl<'a> ExprIterator<'a> {
+    fn new(expr: &'a Expr) -> Self {
+        let stack = vec![expr];
+        Self {
+            stack: stack
         }
-        match top {
-            Parameter(_) => {},
-            Reference(_) => {},
-            NumericLiteral(_) => {},
-            ScalarSubquery(_)| Exists(_) => {},
-            FunctionCall(_, vec) => {
-                for e in vec.iter() {
-                    stack.push(e);
-                }
-            },
-            InSelect(e, _) => {
-                stack.push(e);
-            },
-            InList(e, vec) => {
-                stack.push(e);
-                for e in vec.iter() {
-                    stack.push(e);
-                }
-            },
-            Unary(e) => {
-                stack.push(e);
-            },
-            Nary(_, vec) => {
-                for e in vec.iter() {
-                    stack.push(e);
-                }
-            },
+    }
+}
+
+impl<'a> Iterator for ExprIterator<'a> {
+    type Item = &'a Expr;
+    fn next(&mut self) -> Option<Self::Item> {
+        use Expr::*;
+        if let Some(top) = self.stack.pop() {
+            match top {
+                Parameter(_) => {},
+                Reference(_) => {},
+                NumericLiteral(_) => {},
+                ScalarSubquery(_)| Exists(_) => {},
+                FunctionCall(_, vec) => {
+                    for e in vec.iter() {
+                        self.stack.push(e);
+                    }
+                },
+                InSelect(e, _) => {
+                    self.stack.push(e);
+                },
+                InList(e, vec) => {
+                    self.stack.push(e);
+                    for e in vec.iter() {
+                        self.stack.push(e);
+                    }
+                },
+                Unary(e) => {
+                    self.stack.push(e);
+                },
+                Nary(_, vec) => {
+                    for e in vec.iter() {
+                        self.stack.push(e);
+                    }
+                },
+            }
+            Some(top)
+        } else {
+            None
         }
     }
 }
@@ -607,5 +627,22 @@ mod tests {
         test_valid_query("select a from a where f1(?)");
         test_valid_query("select a from a where f1(?, ?, ?, ?)");
         test_valid_query("select a from a where exists(select 1 from b)");
+    }
+
+    #[test]
+    fn test_expr_iterator() {
+        let parser = Parser {};
+        let result = parser.parse("select * from a where exists(select 1 from a) and a or b and c = 1 or z in (select a from a)");
+        assert!(result.is_ok());
+        let result = result.unwrap();
+        assert_eq!(result.len(), 1);
+        if let Statement::Select(s) = &result[0] {
+            assert!(s.where_clause.is_some());
+            for expr in s.where_clause.as_ref().unwrap().iter() {
+                println!("{:?}", expr);
+            }
+        } else {
+            assert!(false);
+        }
     }
 }
