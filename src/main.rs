@@ -219,6 +219,19 @@ mod qg {
                     let table_box = Rc::new(RefCell::new(QGBox::new(self.get_box_id(), base_table)));
                     Ok(table_box)
                 }
+                Join(_, l, r, on) => {
+                    let select_box = Rc::new(RefCell::new(QGBox::new(self.get_box_id(), BoxType::Select)));
+                    let l_box = self.process_join_item(&l.join_item)?;
+                    let l_q = Quantifier::new(self.get_quantifier_id(), QuantifierType::Foreach, l_box, &select_box);
+                    let r_box = self.process_join_item(&r.join_item)?;
+                    let r_q = Quantifier::new(self.get_quantifier_id(), QuantifierType::Foreach, r_box, &select_box);
+                    select_box.borrow_mut().add_quantifier(Rc::new(RefCell::new(l_q)));
+                    select_box.borrow_mut().add_quantifier(Rc::new(RefCell::new(r_q)));
+                    if let Some(expr) = &on {
+                        self.add_subqueries(&select_box, expr)?;
+                    }
+                    Ok(select_box)
+                }
                 _ => Err(String::from("not implemented")),
             }
         }
