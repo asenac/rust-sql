@@ -253,6 +253,7 @@ mod qg {
                 }
             } else {
                 for q in &self.quantifiers {
+                    // @todo check for column name ambiguity
                     let r = self.resolve_column_in_quantifier(q, column);
                     if r.is_some() {
                         return r;
@@ -267,11 +268,35 @@ mod qg {
                 // @todo case insensitive comparisons
                 if c.name.is_some() && column == c.name.as_ref().unwrap() {
                     let column_ref = Expr::make_column_ref(Rc::clone(&q), i);
-                    // @todo pull up column ref
+                    let column_ref = self.pullup_column_ref(column_ref);
                     return Some(Box::new(column_ref));
                 }
             }
             None
+        }
+
+        fn pullup_column_ref(&self, column_ref: Expr) -> Expr {
+            let mut column_ref = column_ref;
+            match &mut column_ref.expr_type {
+                ExprType::ColumnReference(c) => {
+                    loop {
+                        let parent_box = c.quantifier.borrow().parent_box.upgrade();
+                        if parent_box.is_none() {
+                            break;
+                        }
+                        let parent_box = parent_box.unwrap();
+                        if parent_box.borrow().id == self.owner_box.borrow().id {
+                            break;
+                        }
+                        // @todo we need ranging quantifiers!
+                        panic!();
+                    }
+                    column_ref
+                }
+                _ => {
+                    panic!();
+                }
+            }
         }
     }
 
@@ -380,7 +405,7 @@ mod qg {
                     if let Some(expr) = &on {
                         // subqueries in the ON clause should not see the siblings in the current context
                         self.add_subqueries(&select_box, expr, &mut child_context)?;
-                        let expr = self.process_expr(expr, &current_context)?;
+                        let expr = self.process_expr(expr, &child_context)?;
                         select_box.borrow_mut().add_predicate(expr);
                     }
 
