@@ -209,8 +209,22 @@ mod qg {
             }
         }
 
-        fn add_quantifier(&mut self, q: QuantifierRef) {
-            self.quantifiers.push(q)
+        fn add_quantifier(&mut self, q: &QuantifierRef) {
+            if q.borrow().alias.is_some() {
+                self.quantifiers.push(Rc::clone(&q));
+            } else {
+                if let BoxType::BaseTable(_) = q.borrow().input_box.borrow().box_type {
+                    self.quantifiers.push(Rc::clone(&q));
+                }
+            }
+            self.quantifiers.push(Rc::clone(q))
+        }
+
+        /// adds all the quantifier from the given context into the current one
+        fn merge_context(&mut self, o: Self) {
+            for q in o.quantifiers {
+                self.quantifiers.push(q);
+            }
         }
     }
 
@@ -251,7 +265,9 @@ mod qg {
                 if join_item.alias.is_some() {
                     q.set_alias(join_item.alias.as_ref().unwrap().clone());
                 }
-                select_box.borrow_mut().add_quantifier(Rc::new(RefCell::new(q)));
+                let q = Rc::new(RefCell::new(q));
+                current_context.add_quantifier(&q);
+                select_box.borrow_mut().add_quantifier(q);
             }
             if let Some(selection_list) = &select.selection_list {
                 for item in selection_list {
@@ -286,30 +302,36 @@ mod qg {
                     Ok(table_box)
                 }
                 Join(_, l, r, on) => {
+                    let mut child_context = NameResolutionContext::new(current_context.parent_context);
                     // @todo outer joins
                     let select_box = Rc::new(RefCell::new(QGBox::new(self.get_box_id(), BoxType::Select)));
 
                     // left term
-                    let l_box = self.process_join_item(&l.join_item, current_context)?;
+                    let l_box = self.process_join_item(&l.join_item, &mut child_context)?;
                     let mut l_q = Quantifier::new(self.get_quantifier_id(), QuantifierType::Foreach, l_box, &select_box);
                     if l.alias.is_some() {
                         l_q.set_alias(l.alias.as_ref().unwrap().clone());
                     }
                     let l_q = Rc::new(RefCell::new(l_q));
+                    child_context.add_quantifier(&l_q);
                     select_box.borrow_mut().add_quantifier(l_q);
 
                     // right term
-                    let r_box = self.process_join_item(&r.join_item, current_context)?;
+                    let r_box = self.process_join_item(&r.join_item, &mut child_context)?;
                     let mut r_q = Quantifier::new(self.get_quantifier_id(), QuantifierType::Foreach, r_box, &select_box);
                     if r.alias.is_some() {
                         r_q.set_alias(r.alias.as_ref().unwrap().clone());
                     }
                     let r_q = Rc::new(RefCell::new(r_q));
+                    child_context.add_quantifier(&r_q);
                     select_box.borrow_mut().add_quantifier(r_q);
 
                     if let Some(expr) = &on {
-                        self.add_subqueries(&select_box, expr, current_context)?;
+                        self.add_subqueries(&select_box, expr, &mut child_context)?;
                     }
+
+                    // merge the temporary context into the current one
+                    current_context.merge_context(child_context);
                     Ok(select_box)
                 }
                 _ => Err(String::from("not implemented")),
