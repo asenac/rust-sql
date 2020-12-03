@@ -86,6 +86,7 @@ pub enum Expr {
     Unary(Box<Expr>),
     Nary(NaryExprType, Vec<Box<Expr>>),
     ScalarSubquery(Box<Select>),
+    Exists(Box<Select>),
     InSelect(Box<Expr>, Box<Select>),
     InList(Box<Expr>, Vec<Box<Expr>>),
     FunctionCall(Identifier, Vec<Box<Expr>>),
@@ -103,7 +104,7 @@ pub fn scan_expr<F: Fn(&Expr) -> bool>(f: F, expr: &Expr) {
             Parameter(_) => {},
             Reference(_) => {},
             NumericLiteral(_) => {},
-            ScalarSubquery(_) => {},
+            ScalarSubquery(_)| Exists(_) => {},
             FunctionCall(_, vec) => {
                 for e in vec.iter() {
                     stack.push(e);
@@ -288,6 +289,12 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
         } else if self.complete_substr_and_advance("?") {
             let result = Expr::Parameter(self.parameter_index);
             self.parameter_index += 1;
+            return Ok(result);
+        } else if self.complete_token_and_advance(&lexer::ReservedKeyword::Exists) {
+            self.expect_substr_and_advance("(")?;
+            self.expect_token_and_advance(&lexer::ReservedKeyword::Select)?;
+            let result = Expr::Exists(Box::new(self.parse_select_body()?));
+            self.expect_substr_and_advance(")")?;
             return Ok(result);
         } else if let Some(id) = self.parse_identifier() {
             if self.complete_substr_and_advance("(") {
@@ -538,25 +545,34 @@ mod tests {
         let parser = Parser {};
         assert!(!parser.parse("select a from a").is_err());
 
-        println!("{:?}", parser.parse("select a from a"));
-        println!("{:?}", parser.parse("select a, b from a"));
-        println!("{:?}", parser.parse("select a, b as c from a"));
-        println!("{:?}", parser.parse("select a, b c from a"));
-        println!("{:?}", parser.parse("select a from a where c"));
-        println!("{:?}", parser.parse("select a from a limit c"));
-        println!("{:?}", parser.parse("select a from a limit 1"));
-        println!("{:?}", parser.parse("select a from a where a or b"));
-        println!("{:?}", parser.parse("select a from a where a or b and c"));
-        println!("{:?}", parser.parse("select a from a where a = 1"));
-        println!("{:?}", parser.parse("select a from a where a = h or b = z and c = 1"));
-        println!("{:?}", parser.parse("select a from a where a in (select b from b)"));
-        println!("{:?}", parser.parse("select a from a where a = (select b from b)"));
-        println!("{:?}", parser.parse("select a from a where a = ?"));
-        println!("{:?}", parser.parse("select a from a where a in (1)"));
-        println!("{:?}", parser.parse("select a from a where a in (1, 2)"));
-        println!("{:?}", parser.parse("select a from a where a in (?, ?, ?, ?)"));
-        println!("{:?}", parser.parse("select a from a where f1()"));
-        println!("{:?}", parser.parse("select a from a where f1(?)"));
-        println!("{:?}", parser.parse("select a from a where f1(?, ?, ?, ?)"));
+        let test_valid_query = |q| {
+            println!("{}", q);
+            let result = parser.parse(q);
+            println!("{:?}", result);
+            assert!(result.is_ok());
+        };
+
+        test_valid_query("select * from a");
+        test_valid_query("select a from a");
+        test_valid_query("select a, b from a");
+        test_valid_query("select a, b as c from a");
+        test_valid_query("select a, b c from a");
+        test_valid_query("select a from a where c");
+        test_valid_query("select a from a limit c");
+        test_valid_query("select a from a limit 1");
+        test_valid_query("select a from a where a or b");
+        test_valid_query("select a from a where a or b and c");
+        test_valid_query("select a from a where a = 1");
+        test_valid_query("select a from a where a = h or b = z and c = 1");
+        test_valid_query("select a from a where a in (select b from b)");
+        test_valid_query("select a from a where a = (select b from b)");
+        test_valid_query("select a from a where a = ?");
+        test_valid_query("select a from a where a in (1)");
+        test_valid_query("select a from a where a in (1, 2)");
+        test_valid_query("select a from a where a in (?, ?, ?, ?)");
+        test_valid_query("select a from a where f1()");
+        test_valid_query("select a from a where f1(?)");
+        test_valid_query("select a from a where f1(?, ?, ?, ?)");
+        test_valid_query("select a from a where exists(select 1 from b)");
     }
 }
