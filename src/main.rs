@@ -225,7 +225,7 @@ mod qg {
         }
 
         pub fn process(&mut self, select: &crate::ast::Select) -> Result<Model, String> {
-            let top_box = self.process_select(select)?;
+            let top_box = self.process_select(select, None)?;
             let model = Model{ top_box };
             Ok(model)
         }
@@ -242,10 +242,11 @@ mod qg {
             id
         }
 
-        fn process_select(&mut self, select: &crate::ast::Select) -> Result<BoxRef, String> {
+        fn process_select(&mut self, select: &crate::ast::Select, parent_context: Option<&NameResolutionContext>) -> Result<BoxRef, String> {
+            let mut current_context = NameResolutionContext::new(parent_context);
             let select_box = Rc::new(RefCell::new(QGBox::new(self.get_box_id(), BoxType::Select)));
             for join_item in &select.from_clause {
-                let b = self.process_join_item(&join_item.join_item)?;
+                let b = self.process_join_item(&join_item.join_item, &mut current_context)?;
                 let mut q = Quantifier::new(self.get_quantifier_id(), QuantifierType::Foreach, b, &select_box);
                 if join_item.alias.is_some() {
                     q.set_alias(join_item.alias.as_ref().unwrap().clone());
@@ -254,19 +255,20 @@ mod qg {
             }
             if let Some(selection_list) = &select.selection_list {
                 for item in selection_list {
-                    self.add_subqueries(&select_box, &item.expr)?;
+                    self.add_subqueries(&select_box, &item.expr, &mut current_context)?;
                 }
             }
             if let Some(where_clause) = &select.where_clause {
-                self.add_subqueries(&select_box, &where_clause)?;
+                self.add_subqueries(&select_box, &where_clause, &mut current_context)?;
             }
             Ok(select_box)
         }
 
-        fn process_join_item(&mut self, item : &crate::ast::JoinItem) -> Result<BoxRef, String> {
+        fn process_join_item(&mut self, item : &crate::ast::JoinItem, current_context : &mut NameResolutionContext) -> Result<BoxRef, String> {
             use crate::ast::JoinItem::*;
             match item {
-                DerivedTable(s) => self.process_select(s),
+                // the derived table should not see its siblings
+                DerivedTable(s) => self.process_select(s, current_context.parent_context),
                 TableRef(s) => {
                     // @todo suport for schemas and catalogs
                     let metadata = self.catalog.get_table(s.get_name());
@@ -286,14 +288,27 @@ mod qg {
                 Join(_, l, r, on) => {
                     // @todo outer joins
                     let select_box = Rc::new(RefCell::new(QGBox::new(self.get_box_id(), BoxType::Select)));
-                    let l_box = self.process_join_item(&l.join_item)?;
-                    let l_q = Quantifier::new(self.get_quantifier_id(), QuantifierType::Foreach, l_box, &select_box);
-                    let r_box = self.process_join_item(&r.join_item)?;
-                    let r_q = Quantifier::new(self.get_quantifier_id(), QuantifierType::Foreach, r_box, &select_box);
-                    select_box.borrow_mut().add_quantifier(Rc::new(RefCell::new(l_q)));
-                    select_box.borrow_mut().add_quantifier(Rc::new(RefCell::new(r_q)));
+
+                    // left term
+                    let l_box = self.process_join_item(&l.join_item, current_context)?;
+                    let mut l_q = Quantifier::new(self.get_quantifier_id(), QuantifierType::Foreach, l_box, &select_box);
+                    if l.alias.is_some() {
+                        l_q.set_alias(l.alias.as_ref().unwrap().clone());
+                    }
+                    let l_q = Rc::new(RefCell::new(l_q));
+                    select_box.borrow_mut().add_quantifier(l_q);
+
+                    // right term
+                    let r_box = self.process_join_item(&r.join_item, current_context)?;
+                    let mut r_q = Quantifier::new(self.get_quantifier_id(), QuantifierType::Foreach, r_box, &select_box);
+                    if r.alias.is_some() {
+                        r_q.set_alias(r.alias.as_ref().unwrap().clone());
+                    }
+                    let r_q = Rc::new(RefCell::new(r_q));
+                    select_box.borrow_mut().add_quantifier(r_q);
+
                     if let Some(expr) = &on {
-                        self.add_subqueries(&select_box, expr)?;
+                        self.add_subqueries(&select_box, expr, current_context)?;
                     }
                     Ok(select_box)
                 }
@@ -302,17 +317,17 @@ mod qg {
         }
 
         /// the suqbueries in the given expressions as quantifiers in the given select box
-        fn add_subqueries(&mut self, select_box: &BoxRef, expr: &crate::ast::Expr) -> Result<(), String>{
+        fn add_subqueries(&mut self, select_box: &BoxRef, expr: &crate::ast::Expr, current_context : &mut NameResolutionContext) -> Result<(), String>{
             use crate::ast::Expr::*;
             for expr in expr.iter() {
                 match expr {
                     ScalarSubquery(e) => {
-                        let subquery_box = self.process_select(e)?;
+                        let subquery_box = self.process_select(e, Some(current_context))?;
                         let q = Quantifier::new(self.get_quantifier_id(), QuantifierType::Scalar, subquery_box, &select_box);
                         select_box.borrow_mut().add_quantifier(Rc::new(RefCell::new(q)));
                     }
                     InSelect(_, e) | Exists(e) => {
-                        let subquery_box = self.process_select(e)?;
+                        let subquery_box = self.process_select(e, Some(current_context))?;
                         let q = Quantifier::new(self.get_quantifier_id(), QuantifierType::Existential, subquery_box, &select_box);
                         select_box.borrow_mut().add_quantifier(Rc::new(RefCell::new(q)));
                     }
