@@ -57,17 +57,20 @@ mod qg {
         fn get_table(&self, name: &str) -> Option<&TableMetadata>;
     }
 
+    #[derive(Clone)]
     struct ColumnReference {
         quantifier: QuantifierRef,
         position: usize,
         data_type: DataType,
     }
 
+    #[derive(Clone)]
     struct BaseColumn {
         parent_box: Weak<RefCell<QGBox>>,
         position: usize,
     }
 
+    #[derive(Clone)]
     enum ExprType {
         BaseColumn(BaseColumn),
         ColumnReference(ColumnReference),
@@ -75,6 +78,7 @@ mod qg {
         InList,
     }
 
+    #[derive(Clone)]
     struct Expr {
         expr_type: ExprType,
         operands: Option<Vec<Box<Expr>>>
