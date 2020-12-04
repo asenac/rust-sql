@@ -72,6 +72,7 @@ mod qg {
         BaseColumn(BaseColumn),
         ColumnReference(ColumnReference),
         Parameter(u64),
+        InList,
     }
 
     struct Expr {
@@ -107,6 +108,15 @@ mod qg {
             Self {
                 expr_type: ExprType::Parameter(index),
                 operands: None
+            }
+        }
+
+        fn make_in_list(term: Box<Expr>, list: Vec<Box<Expr>>) -> Self {
+            let mut operands = vec![term];
+            operands.extend(list);
+            Self {
+                expr_type: ExprType::InList,
+                operands: Some(operands)
             }
         }
 
@@ -520,6 +530,14 @@ mod qg {
                     Err(format!("column {} not found", id.get_name()))
                 }
                 ast::Expr::Parameter(index) => Ok(Box::new(Expr::make_parameter(*index))),
+                ast::Expr::InList(term, list) => {
+                    let term = self.process_expr(term, current_context)?;
+                    let mut list_exprs = Vec::new();
+                    for e in list {
+                        list_exprs.push(self.process_expr(e, current_context)?);
+                    }
+                    Ok(Box::new(Expr::make_in_list(term, list_exprs)))
+                }
                 ast::Expr::ScalarSubquery(e) => {
                     Ok(Box::new(Expr::make_column_ref(current_context.get_subquery_quantifier(e.as_ref() as *const crate::ast::Select), 0)))
                 }
