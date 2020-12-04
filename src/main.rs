@@ -1,7 +1,3 @@
-use std::env;
-use std::iter::*;
-
-
 // lexer
 #[allow(dead_code)]
 mod lexer;
@@ -403,14 +399,7 @@ mod qg {
             let select_box = make_ref(QGBox::new(self.get_box_id(), BoxType::Select));
             let mut current_context = NameResolutionContext::new(Rc::clone(&select_box), parent_context);
             for join_item in &select.from_clause {
-                let b = self.process_join_item(&join_item.join_item, &mut current_context)?;
-                let mut q = Quantifier::new(self.get_quantifier_id(), QuantifierType::Foreach, b, &select_box);
-                if join_item.alias.is_some() {
-                    q.set_alias(join_item.alias.as_ref().unwrap().clone());
-                }
-                let q = make_ref(q);
-                current_context.add_quantifier(&q);
-                select_box.borrow_mut().add_quantifier(q);
+                self.add_join_term_to_select_box(join_item, &select_box, &mut current_context)?
             }
             if let Some(selection_list) = &select.selection_list {
                 for item in selection_list {
@@ -436,6 +425,18 @@ mod qg {
                 select_box.borrow_mut().add_predicate(expr);
             }
             Ok(select_box)
+        }
+
+        fn add_join_term_to_select_box(&mut self, join_term: &crate::ast::JoinTerm, select_box: &BoxRef, current_context : &mut NameResolutionContext) -> Result<(), String> {
+            let b = self.process_join_item(&join_term.join_item, current_context)?;
+            let mut q = Quantifier::new(self.get_quantifier_id(), QuantifierType::Foreach, b, &select_box);
+            if join_term.alias.is_some() {
+                q.set_alias(join_term.alias.as_ref().unwrap().clone());
+            }
+            let q = make_ref(q);
+            current_context.add_quantifier(&q);
+            select_box.borrow_mut().add_quantifier(q);
+            Ok(())
         }
 
         fn process_join_item(&mut self, item : &crate::ast::JoinItem, current_context : &mut NameResolutionContext) -> Result<BoxRef, String> {
@@ -464,25 +465,8 @@ mod qg {
                     let select_box = make_ref(QGBox::new(self.get_box_id(), BoxType::Select));
                     let mut child_context = NameResolutionContext::new(Rc::clone(&select_box), current_context.parent_context);
 
-                    // left term
-                    let l_box = self.process_join_item(&l.join_item, &mut child_context)?;
-                    let mut l_q = Quantifier::new(self.get_quantifier_id(), QuantifierType::Foreach, l_box, &select_box);
-                    if l.alias.is_some() {
-                        l_q.set_alias(l.alias.as_ref().unwrap().clone());
-                    }
-                    let l_q = make_ref(l_q);
-                    child_context.add_quantifier(&l_q);
-                    select_box.borrow_mut().add_quantifier(l_q);
-
-                    // right term
-                    let r_box = self.process_join_item(&r.join_item, &mut child_context)?;
-                    let mut r_q = Quantifier::new(self.get_quantifier_id(), QuantifierType::Foreach, r_box, &select_box);
-                    if r.alias.is_some() {
-                        r_q.set_alias(r.alias.as_ref().unwrap().clone());
-                    }
-                    let r_q = make_ref(r_q);
-                    child_context.add_quantifier(&r_q);
-                    select_box.borrow_mut().add_quantifier(r_q);
+                    self.add_join_term_to_select_box(l, &select_box, &mut child_context)?;
+                    self.add_join_term_to_select_box(r, &select_box, &mut child_context)?;
 
                     if let Some(expr) = &on {
                         // subqueries in the ON clause should not see the siblings in the current context
