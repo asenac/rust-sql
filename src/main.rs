@@ -11,6 +11,7 @@ mod ast;
 
 #[allow(dead_code)]
 mod qg {
+    use std::fmt;
     use std::cell::RefCell;
     use std::cmp::*;
     use std::collections::*;
@@ -135,6 +136,28 @@ mod qg {
         }
     }
 
+    impl fmt::Display for Expr {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            use ExprType::*;
+            match &self.expr_type {
+                InList => {
+                    let operands = self.operands.as_ref().unwrap();
+                    write!(f, "{} IN (", operands[0])?;
+                    let mut sep = "";
+                    for o in &operands[1..] {
+                        write!(f, "{}{}", sep, o)?;
+                        sep = ", ";
+                    }
+                    write!(f, ")")
+                }
+                ColumnReference(c) => write!(f, "Q{}.c{}", c.quantifier.borrow().id, c.position),
+                Parameter(c) => write!(f, "?:{}", c),
+                // @todo print the column name
+                BaseColumn(c) => write!(f, "c{}", c.position),
+            }
+        }
+    }
+
     struct Column {
         name: Option<String>,
         expr: Box<Expr>,
@@ -197,7 +220,6 @@ mod qg {
             }
         }
     }
-
     enum QuantifierType {
         Foreach,
         PreservedForeach,
@@ -612,11 +634,11 @@ mod qg {
 
         fn get_box_head(b: &QGBox) -> String {
             let mut r  = String::new();
-            for c in &b.columns {
+            for (i, c) in b.columns.iter().enumerate() {
                 if r.len() > 0 {
                     r.push('|');
                 }
-                r.push_str("Q*.c*");
+                r.push_str(&format!("{}: {}", i, c.expr));
                 if let Some(c) = &c.name {
                     r.push_str(&format!(" AS {}", c));
                 }
