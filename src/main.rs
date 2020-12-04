@@ -228,6 +228,18 @@ mod qg {
         Scalar,
     }
 
+    impl fmt::Display for QuantifierType {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            match &self {
+                QuantifierType::Foreach => write!(f, "F"),
+                QuantifierType::PreservedForeach => write!(f, "P"),
+                QuantifierType::Existential => write!(f, "E"),
+                QuantifierType::All => write!(f, "A"),
+                QuantifierType::Scalar => write!(f, "S"),
+            }
+        }
+    }
+
     struct Quantifier {
         id: i32,
         quantifier_type: QuantifierType,
@@ -265,6 +277,13 @@ mod qg {
                 return Some(t.name.clone());
             }
             return None
+        }
+
+        fn is_subquery(&self) -> bool {
+            match &self.quantifier_type {
+                QuantifierType::Existential | QuantifierType::Scalar => true,
+                _ => false
+            }
         }
     }
 
@@ -438,15 +457,7 @@ mod qg {
                 }
             } else {
                 // add all columns from all quantifiers
-                let quantifiers = select_box.borrow().quantifiers.clone();
-                for q in quantifiers {
-                    let bq = q.borrow();
-                    let input_box = bq.input_box.borrow();
-                    for (i, c) in input_box.columns.iter().enumerate() {
-                        let expr = Expr::make_column_ref(Rc::clone(&q), i);
-                        select_box.borrow_mut().add_column(c.name.clone(), Box::new(expr));
-                    }
-                }
+                self.add_all_columns(&select_box);
             }
             if let Some(where_clause) = &select.where_clause {
                 self.add_subqueries(&select_box, &where_clause, &mut current_context)?;
@@ -454,6 +465,21 @@ mod qg {
                 select_box.borrow_mut().add_predicate(expr);
             }
             Ok(select_box)
+        }
+
+        fn add_all_columns(&mut self, select_box: &BoxRef) {
+            let quantifiers = select_box.borrow().quantifiers.clone();
+            for q in quantifiers {
+                let bq = q.borrow();
+                if bq.is_subquery() {
+                    continue;
+                }
+                let input_box = bq.input_box.borrow();
+                for (i, c) in input_box.columns.iter().enumerate() {
+                    let expr = Expr::make_column_ref(Rc::clone(&q), i);
+                    select_box.borrow_mut().add_column(c.name.clone(), Box::new(expr));
+                }
+            }
         }
 
         /// adds a quantifier in the given select box with the result of parsing the given join term subtree
@@ -507,6 +533,9 @@ mod qg {
 
                     // merge the temporary context into the current one
                     current_context.merge_quantifiers(child_context);
+
+                    // project all columns from its quantifiers
+                    self.add_all_columns(&select_box);
                     Ok(select_box)
                 }
                 // _ => Err(String::from("not implemented")),
@@ -610,7 +639,7 @@ mod qg {
 
                     let q = q.borrow();
                     box_stack.push(Rc::clone(&q.input_box));
-                    self.new_line(&format!("Q{0} [ label=\"Q{0}\" ]", q.id));
+                    self.new_line(&format!("Q{0} [ label=\"Q{0}({1})\" ]", q.id, q.quantifier_type));
                 }
 
                 self.dec();
@@ -689,7 +718,7 @@ mod qg {
         fn name(&self) -> &'static str {
             "EmptyRule"
         }
-        fn apply_to_down(&self) -> bool {
+        fn apply_top_down(&self) -> bool {
             false
         }
         fn condition(&mut self, _obj: &BoxRef) -> bool {
@@ -736,7 +765,7 @@ mod qg {
         fn name(&self) -> &'static str {
             "MergeRule"
         }
-        fn apply_to_down(&self) -> bool {
+        fn apply_top_down(&self) -> bool {
             false
         }
         fn condition(&mut self, obj: &BoxRef) -> bool {
@@ -770,13 +799,22 @@ mod qg {
     type RuleT = dyn rewrite_engine::Rule<BoxRef>;
     type RuleBox = Box<RuleT>;
 
+    fn apply_rule(m: &mut Model, rule: &mut RuleBox) {
+        let result = rewrite_engine::deep_apply_rule(&mut **rule, &mut m.top_box);
+        if let Some(new_box) = result {
+            m.replace_top_box(new_box);
+        }
+    }
+
     fn apply_rules(m: &mut Model, rules: &mut Vec<RuleBox>) {
         for rule in rules.iter_mut() {
-            let result = rewrite_engine::deep_apply_rule(&mut **rule, &mut m.top_box);
-            if let Some(new_box) = result {
-                m.replace_top_box(new_box);
-            }
+            apply_rule(m, rule);
         }
+    }
+
+    pub fn rewrite_model(m: &mut Model) {
+        let mut rule: RuleBox = Box::new(MergeRule::new());
+        apply_rule(m, &mut rule);
     }
 
     impl rewrite_engine::Traverse<BoxRef> for BoxRef {
@@ -861,7 +899,7 @@ mod qg {
 mod rewrite_engine {
     pub trait Rule<T> {
         fn name(&self) -> &'static str;
-        fn apply_to_down(&self) -> bool;
+        fn apply_top_down(&self) -> bool;
         fn condition(&mut self, obj: &T) -> bool;
         fn action(&mut self, obj: &mut T) -> Option<T>;
         // @todo prune
@@ -883,19 +921,19 @@ mod rewrite_engine {
         rule: &mut dyn Rule<T>,
         target: &mut T,
     ) -> Option<T> {
-        if rule.apply_to_down() {
+        if rule.apply_top_down() {
             T::descend_and_apply(rule, target);
         }
         let result = apply_rule(rule, target);
         match result {
             Some(mut c) => {
-                if !rule.apply_to_down() {
+                if !rule.apply_top_down() {
                     T::descend_and_apply(rule, &mut c);
                 }
                 Some(c)
             }
             None => {
-                if !rule.apply_to_down() {
+                if !rule.apply_top_down() {
                     T::descend_and_apply(rule, target);
                 }
                 None
@@ -962,7 +1000,12 @@ impl Interpreter {
         match stmt {
             Select(e) => {
                 let mut generator = qg::ModelGenerator::new(&self.catalog);
-                let model = generator.process(e)?;
+                let mut model = generator.process(e)?;
+                let output = qg::DotGenerator::new().generate(&model, "@todo")?;
+                println!("{}", output);
+
+                qg::rewrite_model(&mut model);
+
                 let output = qg::DotGenerator::new().generate(&model, "@todo")?;
                 println!("{}", output);
             }
