@@ -75,10 +75,12 @@ mod qg {
         InList,
     }
 
+    type ExprRef = Rc<RefCell<Expr>>;
+
     #[derive(Clone)]
     struct Expr {
         expr_type: ExprType,
-        operands: Option<Vec<Box<Expr>>>
+        operands: Option<Vec<ExprRef>>
     }
 
     impl Expr {
@@ -112,7 +114,7 @@ mod qg {
             }
         }
 
-        fn make_in_list(term: Box<Expr>, list: Vec<Box<Expr>>) -> Self {
+        fn make_in_list(term: ExprRef, list: Vec<ExprRef>) -> Self {
             let mut operands = vec![term];
             operands.extend(list);
             Self {
@@ -134,6 +136,17 @@ mod qg {
                 }
             }
         }
+
+        fn dereference(&self) -> Option<ExprRef> {
+            match &self.expr_type {
+                ExprType::ColumnReference(c) => {
+                    let q = c.quantifier.borrow();
+                    let b = q.input_box.borrow();
+                    Some(Rc::clone(&b.columns[c.position].expr))
+                }
+                _ => None
+            }
+        }
     }
 
     impl fmt::Display for Expr {
@@ -142,10 +155,10 @@ mod qg {
             match &self.expr_type {
                 InList => {
                     let operands = self.operands.as_ref().unwrap();
-                    write!(f, "{} IN (", operands[0])?;
+                    write!(f, "{} IN (", operands[0].borrow())?;
                     let mut sep = "";
                     for o in &operands[1..] {
-                        write!(f, "{}{}", sep, o)?;
+                        write!(f, "{}{}", sep, o.borrow())?;
                         sep = ", ";
                     }
                     write!(f, ")")
@@ -160,7 +173,7 @@ mod qg {
 
     struct Column {
         name: Option<String>,
-        expr: Box<Expr>,
+        expr: ExprRef,
     }
 
     enum BoxType {
@@ -173,7 +186,7 @@ mod qg {
         box_type: BoxType,
         columns: Vec<Column>,
         quantifiers: BTreeSet<QuantifierRef>,
-        predicates: Option<Vec<Box<Expr>>>,
+        predicates: Option<Vec<ExprRef>>,
     }
 
     impl QGBox {
@@ -192,20 +205,20 @@ mod qg {
         fn remove_quantifier(&mut self, q: &QuantifierRef) {
             self.quantifiers.remove(q);
         }
-        fn add_column(&mut self, name: Option<String>, expr: Box<Expr>) {
+        fn add_column(&mut self, name: Option<String>, expr: ExprRef) {
             self.columns.push(Column{name : name, expr: expr});
         }
         fn add_column_if_not_exists(&mut self, expr: Expr) -> usize {
             for (i, c) in self.columns.iter().enumerate() {
-                if c.expr.is_equiv(&expr) {
+                if c.expr.borrow().is_equiv(&expr) {
                     return i;
                 }
             }
             let pos = self.columns.len();
-            self.columns.push(Column{name: None, expr: Box::new(expr)});
+            self.columns.push(Column{name: None, expr: make_ref(expr)});
             pos
         }
-        fn add_predicate(&mut self, predicate: Box<Expr>) {
+        fn add_predicate(&mut self, predicate: ExprRef) {
             if self.predicates.is_some() {
                 self.predicates.as_mut().unwrap().push(predicate);
             } else {
@@ -353,7 +366,7 @@ mod qg {
             self.parent_quantifiers.extend(o.parent_quantifiers);
         }
 
-        fn resolve_column(&self, table: Option<&str>, column: &str) -> Option<Box<Expr>> {
+        fn resolve_column(&self, table: Option<&str>, column: &str) -> Option<ExprRef> {
             if table.is_some() {
                 let tn = table.unwrap();
                 for q in &self.quantifiers {
@@ -375,13 +388,13 @@ mod qg {
             None
         }
 
-        fn resolve_column_in_quantifier(&self, q: &QuantifierRef, column: &str) -> Option<Box<Expr>> {
+        fn resolve_column_in_quantifier(&self, q: &QuantifierRef, column: &str) -> Option<ExprRef> {
             for (i, c) in q.borrow().input_box.borrow().columns.iter().enumerate() {
                 // @todo case insensitive comparisons
                 if c.name.is_some() && column == c.name.as_ref().unwrap() {
                     let column_ref = Expr::make_column_ref(Rc::clone(&q), i);
                     let column_ref = self.pullup_column_ref(column_ref);
-                    return Some(Box::new(column_ref));
+                    return Some(make_ref(column_ref));
                 }
             }
             None
@@ -477,7 +490,7 @@ mod qg {
                 let input_box = bq.input_box.borrow();
                 for (i, c) in input_box.columns.iter().enumerate() {
                     let expr = Expr::make_column_ref(Rc::clone(&q), i);
-                    select_box.borrow_mut().add_column(c.name.clone(), Box::new(expr));
+                    select_box.borrow_mut().add_column(c.name.clone(), make_ref(expr));
                 }
             }
         }
@@ -512,7 +525,7 @@ mod qg {
                     let table_box = make_ref(QGBox::new(self.get_box_id(), base_table));
                     // add the columns of the table
                     for (i, c) in metadata.columns.iter().enumerate() {
-                        table_box.borrow_mut().add_column(Some(c.name.clone()), Box::new(Expr::make_base_column(&table_box, i)));
+                        table_box.borrow_mut().add_column(Some(c.name.clone()), make_ref(Expr::make_base_column(&table_box, i)));
                     }
                     Ok(table_box)
                 }
@@ -570,7 +583,7 @@ mod qg {
             Ok(())
         }
 
-        fn process_expr(&mut self, expr: &crate::ast::Expr, current_context : &NameResolutionContext) -> Result<Box<Expr>, String> {
+        fn process_expr(&mut self, expr: &crate::ast::Expr, current_context : &NameResolutionContext) -> Result<ExprRef, String> {
             use crate::ast;
             match expr {
                 ast::Expr::Reference(id) => {
@@ -580,17 +593,17 @@ mod qg {
                     }
                     Err(format!("column {} not found", id.get_name()))
                 }
-                ast::Expr::Parameter(index) => Ok(Box::new(Expr::make_parameter(*index))),
+                ast::Expr::Parameter(index) => Ok(make_ref(Expr::make_parameter(*index))),
                 ast::Expr::InList(term, list) => {
                     let term = self.process_expr(term, current_context)?;
                     let mut list_exprs = Vec::new();
                     for e in list {
                         list_exprs.push(self.process_expr(e, current_context)?);
                     }
-                    Ok(Box::new(Expr::make_in_list(term, list_exprs)))
+                    Ok(make_ref(Expr::make_in_list(term, list_exprs)))
                 }
                 ast::Expr::ScalarSubquery(e) => {
-                    Ok(Box::new(Expr::make_column_ref(current_context.get_subquery_quantifier(e.as_ref() as *const crate::ast::Select), 0)))
+                    Ok(make_ref(Expr::make_column_ref(current_context.get_subquery_quantifier(e.as_ref() as *const crate::ast::Select), 0)))
                 }
                 _ => {
                     Err(String::from("expression not supported!"))
@@ -667,7 +680,7 @@ mod qg {
                 if r.len() > 0 {
                     r.push('|');
                 }
-                r.push_str(&format!("{}: {}", i, c.expr));
+                r.push_str(&format!("{}: {}", i, c.expr.borrow()));
                 if let Some(c) = &c.name {
                     r.push_str(&format!(" AS {}", c));
                 }
