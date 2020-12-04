@@ -255,6 +255,10 @@ mod qg {
         }
     }
 
+    fn make_ref<T>(t: T) -> Rc<RefCell<T>> {
+        Rc::new(RefCell::new(t))
+    }
+
     /// Generates a query graph model from the AST
     pub struct ModelGenerator<'a>{
         catalog: &'a dyn MetadataCatalog,
@@ -396,7 +400,7 @@ mod qg {
         }
 
         fn process_select(&mut self, select: &crate::ast::Select, parent_context: Option<&NameResolutionContext>) -> Result<BoxRef, String> {
-            let select_box = Rc::new(RefCell::new(QGBox::new(self.get_box_id(), BoxType::Select)));
+            let select_box = make_ref(QGBox::new(self.get_box_id(), BoxType::Select));
             let mut current_context = NameResolutionContext::new(Rc::clone(&select_box), parent_context);
             for join_item in &select.from_clause {
                 let b = self.process_join_item(&join_item.join_item, &mut current_context)?;
@@ -404,7 +408,7 @@ mod qg {
                 if join_item.alias.is_some() {
                     q.set_alias(join_item.alias.as_ref().unwrap().clone());
                 }
-                let q = Rc::new(RefCell::new(q));
+                let q = make_ref(q);
                 current_context.add_quantifier(&q);
                 select_box.borrow_mut().add_quantifier(q);
             }
@@ -448,7 +452,7 @@ mod qg {
                     let metadata = metadata.unwrap();
                     // @todo avoid cloning the metadata. The catalog should return a ref counted instance
                     let base_table = BoxType::BaseTable(metadata.clone());
-                    let table_box = Rc::new(RefCell::new(QGBox::new(self.get_box_id(), base_table)));
+                    let table_box = make_ref(QGBox::new(self.get_box_id(), base_table));
                     // add the columns of the table
                     for (i, c) in metadata.columns.iter().enumerate() {
                         table_box.borrow_mut().add_column(Some(c.name.clone()), Box::new(Expr::make_base_column(&table_box, i)));
@@ -457,7 +461,7 @@ mod qg {
                 }
                 Join(_, l, r, on) => {
                     // @todo outer joins
-                    let select_box = Rc::new(RefCell::new(QGBox::new(self.get_box_id(), BoxType::Select)));
+                    let select_box = make_ref(QGBox::new(self.get_box_id(), BoxType::Select));
                     let mut child_context = NameResolutionContext::new(Rc::clone(&select_box), current_context.parent_context);
 
                     // left term
@@ -466,7 +470,7 @@ mod qg {
                     if l.alias.is_some() {
                         l_q.set_alias(l.alias.as_ref().unwrap().clone());
                     }
-                    let l_q = Rc::new(RefCell::new(l_q));
+                    let l_q = make_ref(l_q);
                     child_context.add_quantifier(&l_q);
                     select_box.borrow_mut().add_quantifier(l_q);
 
@@ -476,7 +480,7 @@ mod qg {
                     if r.alias.is_some() {
                         r_q.set_alias(r.alias.as_ref().unwrap().clone());
                     }
-                    let r_q = Rc::new(RefCell::new(r_q));
+                    let r_q = make_ref(r_q);
                     child_context.add_quantifier(&r_q);
                     select_box.borrow_mut().add_quantifier(r_q);
 
@@ -506,14 +510,14 @@ mod qg {
                             return Err(format!("scalar subqueries must project a single column"))
                         }
                         let q = Quantifier::new(self.get_quantifier_id(), QuantifierType::Scalar, subquery_box, &select_box);
-                        let q = Rc::new(RefCell::new(q));
+                        let q = make_ref(q);
                         current_context.add_subquery_quantifier(e.as_ref() as *const crate::ast::Select, &q);
                         select_box.borrow_mut().add_quantifier(q);
                     }
                     InSelect(_, e) | Exists(e) => {
                         let subquery_box = self.process_select(e, Some(current_context))?;
                         let q = Quantifier::new(self.get_quantifier_id(), QuantifierType::Existential, subquery_box, &select_box);
-                        let q = Rc::new(RefCell::new(q));
+                        let q = make_ref(q);
                         current_context.add_subquery_quantifier(e.as_ref() as *const crate::ast::Select, &q);
                         select_box.borrow_mut().add_quantifier(q);
                     }
@@ -670,7 +674,7 @@ mod qg {
 
         #[test]
         fn test_empty_rule() {
-            let top_box = Rc::new(RefCell::new(QGBox::new(0, BoxType::Select)));
+            let top_box = make_ref(QGBox::new(0, BoxType::Select));
             let mut m = Model { top_box };
             let rule = Box::new(EmptyRule {});
             let mut rules = Vec::<RuleBox>::new();
@@ -680,14 +684,14 @@ mod qg {
 
         #[test]
         fn test_merge_rule() {
-            let top_box = Rc::new(RefCell::new(QGBox::new(0, BoxType::Select)));
-            let nested_box = Rc::new(RefCell::new(QGBox::new(1, BoxType::Select)));
-            let quantifier = Rc::new(RefCell::new(Quantifier::new(
+            let top_box = make_ref(QGBox::new(0, BoxType::Select));
+            let nested_box = make_ref(QGBox::new(1, BoxType::Select));
+            let quantifier = make_ref(Quantifier::new(
                 1,
                 QuantifierType::Foreach,
                 nested_box,
                 &top_box,
-            )));
+            ));
             top_box.borrow_mut().add_quantifier(quantifier);
             let mut m = Model { top_box };
             let mut rule = MergeRule::new();
@@ -701,21 +705,21 @@ mod qg {
 
         #[test]
         fn test_merge_rule_deep_apply() {
-            let top_box = Rc::new(RefCell::new(QGBox::new(0, BoxType::Select)));
-            let nested_box1 = Rc::new(RefCell::new(QGBox::new(1, BoxType::Select)));
-            let quantifier1 = Rc::new(RefCell::new(Quantifier::new(
+            let top_box = make_ref(QGBox::new(0, BoxType::Select));
+            let nested_box1 = make_ref(QGBox::new(1, BoxType::Select));
+            let quantifier1 = make_ref(Quantifier::new(
                 1,
                 QuantifierType::Foreach,
                 Rc::clone(&nested_box1),
                 &top_box,
-            )));
-            let nested_box2 = Rc::new(RefCell::new(QGBox::new(1, BoxType::Select)));
-            let quantifier2 = Rc::new(RefCell::new(Quantifier::new(
+            ));
+            let nested_box2 = make_ref(QGBox::new(1, BoxType::Select));
+            let quantifier2 = make_ref(Quantifier::new(
                 1,
                 QuantifierType::Foreach,
                 nested_box2,
                 &nested_box1,
-            )));
+            ));
             nested_box1.borrow_mut().add_quantifier(quantifier1);
             top_box.borrow_mut().add_quantifier(quantifier2);
             let mut m = Model { top_box };
