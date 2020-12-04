@@ -921,19 +921,19 @@ mod rewrite_engine {
         rule: &mut dyn Rule<T>,
         target: &mut T,
     ) -> Option<T> {
-        if rule.apply_top_down() {
+        if !rule.apply_top_down() {
             T::descend_and_apply(rule, target);
         }
         let result = apply_rule(rule, target);
         match result {
             Some(mut c) => {
-                if !rule.apply_top_down() {
+                if rule.apply_top_down() {
                     T::descend_and_apply(rule, &mut c);
                 }
                 Some(c)
             }
             None => {
-                if !rule.apply_top_down() {
+                if rule.apply_top_down() {
                     T::descend_and_apply(rule, target);
                 }
                 None
