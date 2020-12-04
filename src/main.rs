@@ -189,6 +189,13 @@ mod qg {
                 self.predicates = Some(vec![predicate]);
             }
         }
+
+        fn get_box_type_str(&self) -> &'static str {
+            match self.box_type {
+                BoxType::Select => "Select",
+                BoxType::BaseTable(_) => "BaseTable",
+            }
+        }
     }
 
     enum QuantifierType {
@@ -541,6 +548,114 @@ mod qg {
         }
     }
 
+    pub struct DotGenerator{
+        output : String,
+        indent: u32
+    }
+
+    impl DotGenerator {
+        pub fn new() -> Self {
+            Self{ output: String::new(), indent: 0 }
+        }
+
+        pub fn generate(mut self, m: &Model, sql_string: &str) -> Result<String, String> {
+            self.new_line("digraph G {");
+            self.inc();
+            self.new_line("compound = true");
+            self.new_line("lablejust = l");
+            self.new_line(&format!("lable=\"{}\"", sql_string));
+            self.new_line("node [ shape = box ]");
+
+            let mut box_stack = vec![Rc::clone(&m.top_box)];
+            let mut quantifiers = Vec::new();
+            while let Some(b) = box_stack.pop() {
+                let b = b.borrow();
+                self.new_line(&format!("subgraph cluster{} {{", b.id));
+                self.inc();
+                self.new_line(&format!("label = \"Box{}:{}\"", b.id, b.get_box_type_str()));
+                self.new_line(&format!("boxhead{} [ shape = record, label=\"{}\" ]", b.id, DotGenerator::get_box_head(&b)));
+
+                self.new_line("{");
+                self.inc();
+                self.new_line("rank = same");
+
+                if b.quantifiers.len() > 0 {
+                    self.new_line("node [ shape = circle ]");
+                }
+
+                for q in b.quantifiers.iter() {
+                    quantifiers.push(Rc::clone(&q));
+
+                    let q = q.borrow();
+                    box_stack.push(Rc::clone(&q.input_box));
+                    self.new_line(&format!("Q{0} [ label=\"Q{0}\" ]", q.id));
+                }
+
+                self.dec();
+                self.new_line("}");
+                self.dec();
+                self.new_line("}");
+            }
+
+            if quantifiers.len() > 0 {
+                self.new_line("edge [ arrowhead = none, style = dashed ]");
+                for q in quantifiers.iter() {
+                    let q = q.borrow();
+                    self.new_line(&format!("Q{0} -> boxhead{1} [ lhead = cluster{1} ]", q.id, q.input_box.borrow().id));
+                }
+            }
+
+            self.dec();
+            self.new_line("}");
+            Ok(self.output)
+        }
+
+        fn get_box_head(b: &QGBox) -> String {
+            let mut r  = String::new();
+            for c in &b.columns {
+                if r.len() > 0 {
+                    r.push('|');
+                }
+                r.push_str("Q*.c*");
+                if let Some(c) = &c.name {
+                    r.push_str(&format!(" AS {}", c));
+                }
+            }
+            r
+        }
+
+        fn inc(&mut self) {
+            self.indent += 1;
+        }
+
+        fn dec(&mut self) {
+            self.indent -= 1;
+        }
+
+        fn append(&mut self, s: &str) {
+            self.output.push_str(s);
+        }
+
+        fn new_line(&mut self, s: &str) {
+            if self.output.rfind('\n') != Some(self.output.len()) {
+                self.end_line();
+                for _ in 0..self.indent*4 {
+                    self.output.push(' ');
+                }
+
+            }
+            self.output.push_str(s);
+        }
+
+        fn end_line(&mut self) {
+            self.output.push('\n');
+        }
+    }
+
+    //
+    // Rewrite rules for the graph
+    //
+
     use crate::rewrite_engine;
 
     type BoxRef = Rc<RefCell<QGBox>>;
@@ -825,7 +940,9 @@ impl Interpreter {
         match stmt {
             Select(e) => {
                 let mut generator = qg::ModelGenerator::new(&self.catalog);
-                generator.process(e)?;
+                let model = generator.process(e)?;
+                let output = qg::DotGenerator::new().generate(&model, "@todo")?;
+                println!("{}", output);
             }
             CreateTable(c) => {
                 let mut metadata = qg::TableMetadata::new(c.name.get_name());
