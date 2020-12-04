@@ -427,6 +427,7 @@ mod qg {
             Ok(select_box)
         }
 
+        /// adds a quantifier in the given select box with the result of parsing the given join term subtree
         fn add_join_term_to_select_box(&mut self, join_term: &crate::ast::JoinTerm, select_box: &BoxRef, current_context : &mut NameResolutionContext) -> Result<(), String> {
             let b = self.process_join_item(&join_term.join_item, current_context)?;
             let mut q = Quantifier::new(self.get_quantifier_id(), QuantifierType::Foreach, b, &select_box);
