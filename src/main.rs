@@ -737,6 +737,12 @@ mod qg {
                     r.push_str(&format!(" AS {}", c));
                 }
             }
+            // @todo those predicates with one or two quantifiers must be printed as arrows
+            if let Some(p) = &b.predicates {
+                for expr in p {
+                    r.push_str(&format!("| {}", expr.borrow()));
+                }
+            }
             r
         }
 
@@ -1003,6 +1009,9 @@ mod qg {
             test_valid_query("select b.a from (select * from a) b");
             test_valid_query("select z from (select a as z from a) b");
             test_valid_query("select b.z from (select a as z from a) b");
+            test_valid_query("select b.z from (select a as z from a) b join a");
+            test_valid_query("select a from a where a");
+            test_valid_query("select a from a where a in (?, ?)");
         }
     }
 }
