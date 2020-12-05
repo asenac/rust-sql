@@ -50,8 +50,32 @@ mod qg {
         }
     }
 
+    /// interface for resolving metadata definitions
     pub trait MetadataCatalog {
         fn get_table(&self, name: &str) -> Option<&TableMetadata>;
+    }
+
+    /// fake metadata catalog used for testing
+    pub struct FakeCatalog {
+        tables : HashMap<String, TableMetadata>
+    }
+
+    impl FakeCatalog {
+        pub fn new() -> Self {
+            Self {
+                tables: HashMap::new()
+            }
+        }
+
+        pub fn add_table(&mut self, table: TableMetadata) {
+            self.tables.insert(table.name.clone(), table);
+        }
+    }
+
+    impl MetadataCatalog for FakeCatalog {
+        fn get_table(&self, name: &str) -> Option<&TableMetadata> {
+            self.tables.get(name)
+        }
     }
 
     #[derive(Clone)]
@@ -990,39 +1014,15 @@ mod rewrite_engine {
 
 // interpreter
 
-use std::collections::*;
-
-struct FakeCatalog {
-    tables : HashMap<String, qg::TableMetadata>
-}
-
-impl FakeCatalog {
-    fn new() -> Self {
-        Self {
-            tables: HashMap::new()
-        }
-    }
-
-    fn add_table(&mut self, table: qg::TableMetadata) {
-        self.tables.insert(table.name.clone(), table);
-    }
-}
-
-impl qg::MetadataCatalog for FakeCatalog
-{
-    fn get_table(&self, name: &str) -> Option<&qg::TableMetadata> {
-        self.tables.get(name)
-    }
-}
 
 /// simple interpreter to manually test the rewrite engine
 struct Interpreter {
-    catalog: FakeCatalog
+    catalog: qg::FakeCatalog
 }
 
 impl Interpreter {
     pub fn new() -> Self {
-        Self { catalog: FakeCatalog::new() }
+        Self { catalog: qg::FakeCatalog::new() }
     }
 
     pub fn process_line(&mut self, line: &str) -> Result<(), String> {
