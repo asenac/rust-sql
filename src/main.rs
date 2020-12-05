@@ -199,6 +199,7 @@ mod qg {
                 predicates: None
             }
         }
+        /// use add_quantifier_to_box instead to properly set the parent box of the quantifier
         fn add_quantifier(&mut self, q: QuantifierRef) {
             self.quantifiers.insert(q);
         }
@@ -233,6 +234,14 @@ mod qg {
             }
         }
     }
+
+    fn add_quantifier_to_box(b: &BoxRef, q: &QuantifierRef) {
+        let mut bb = b.borrow_mut();
+        bb.add_quantifier(Rc::clone(q));
+        let mut bq = q.borrow_mut();
+        bq.parent_box = Rc::downgrade(&b);
+    }
+
     enum QuantifierType {
         Foreach,
         PreservedForeach,
@@ -797,12 +806,11 @@ mod qg {
             !self.to_merge.is_empty()
         }
         fn action(&mut self, obj: &mut BoxRef) -> Option<BoxRef> {
-            let mut borrowed_obj = obj.borrow_mut();
             for q in &self.to_merge {
                 for oq in &q.borrow().input_box.borrow().quantifiers {
-                    borrowed_obj.add_quantifier(Rc::clone(oq));
+                    add_quantifier_to_box(obj, oq);
                 }
-                borrowed_obj.remove_quantifier(q);
+                obj.borrow_mut().remove_quantifier(q);
             }
             self.to_merge.clear();
             None
