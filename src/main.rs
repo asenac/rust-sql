@@ -171,6 +171,7 @@ mod qg {
         }
     }
 
+    #[derive(Clone)]
     struct Column {
         name: Option<String>,
         expr: ExprRef,
@@ -399,11 +400,29 @@ mod qg {
 
         fn resolve_column_in_quantifier(&self, q: &QuantifierRef, column: &str) -> Option<ExprRef> {
             for (i, c) in q.borrow().input_box.borrow().columns.iter().enumerate() {
-                // @todo case insensitive comparisons
-                if c.name.is_some() && column == c.name.as_ref().unwrap() {
-                    let column_ref = Expr::make_column_ref(Rc::clone(&q), i);
-                    let column_ref = self.pullup_column_ref(column_ref);
-                    return Some(make_ref(column_ref));
+                // ideally, this should be a reference to avoid the cloning... (*)
+                let mut c : Option<Column> = Some(c.clone());
+                while let Some(col) = c {
+                    if col.name.is_some() {
+                        // @todo case insensitive comparisons
+                        if column == col.name.as_ref().unwrap() {
+                            let column_ref = Expr::make_column_ref(Rc::clone(&q), i);
+                            let column_ref = self.pullup_column_ref(column_ref);
+                            return Some(make_ref(column_ref));
+                        } else {
+                            c = None;
+                        }
+                    } else {
+                        if let ExprType::ColumnReference(cref) = &col.expr.borrow().expr_type {
+                            let q = cref.quantifier.borrow();
+                            let b = q.input_box.borrow();
+                            // (*) but this makes the compiler complain about the reference being to a temporary value
+                            // c = Some(&b.columns[cref.position]);
+                            c = Some(b.columns[cref.position].clone());
+                        } else {
+                            c = None;
+                        }
+                    }
                 }
             }
             None
