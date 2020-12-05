@@ -92,11 +92,18 @@ mod qg {
     }
 
     #[derive(Clone)]
+    enum LogicalExprType {
+        And,
+        Or
+    }
+
+    #[derive(Clone)]
     enum ExprType {
         BaseColumn(BaseColumn),
         ColumnReference(ColumnReference),
         Parameter(u64),
         InList,
+        Logical(LogicalExprType)
     }
 
     type ExprRef = Rc<RefCell<Expr>>;
@@ -147,6 +154,13 @@ mod qg {
             }
         }
 
+        fn make_logical(type_: LogicalExprType, list: Vec<ExprRef>) -> Self {
+            Self {
+                expr_type: ExprType::Logical(type_),
+                operands: Some(list)
+            }
+        }
+
         fn is_equiv(&self, o: &Self) -> bool {
             match (&self.expr_type, &o.expr_type) {
                 (ExprType::ColumnReference(l), ExprType::ColumnReference(r)) => {
@@ -191,6 +205,22 @@ mod qg {
                 Parameter(c) => write!(f, "?:{}", c),
                 // @todo print the column name
                 BaseColumn(c) => write!(f, "c{}", c.position),
+                Logical(t) => {
+                    let operands = self.operands.as_ref().unwrap();
+                    let sep = {
+                        match t {
+                            LogicalExprType::And => "AND",
+                            LogicalExprType::Or => "OR",
+                        }
+                    };
+                    for (i, o) in operands.iter().enumerate() {
+                        if i > 0 {
+                            write!(f, " {} ", sep)?;
+                        }
+                        write!(f, "({})", o.borrow())?;
+                    }
+                    Ok(())
+                }
             }
         }
     }
@@ -657,6 +687,17 @@ mod qg {
                 ast::Expr::ScalarSubquery(e) => {
                     Ok(make_ref(Expr::make_column_ref(current_context.get_subquery_quantifier(e.as_ref() as *const crate::ast::Select), 0)))
                 }
+                ast::Expr::Nary(t, list) => {
+                    let mut list_exprs = Vec::new();
+                    for e in list {
+                        list_exprs.push(self.process_expr(e, current_context)?);
+                    }
+                    match t {
+                        ast::NaryExprType::And => Ok(make_ref(Expr::make_logical(LogicalExprType::And, list_exprs))),
+                        ast::NaryExprType::Or => Ok(make_ref(Expr::make_logical(LogicalExprType::Or, list_exprs))),
+                        _ => Err(String::from("expression not supported!"))
+                    }
+                }
                 _ => {
                     Err(String::from("expression not supported!"))
                 }
@@ -1012,6 +1053,8 @@ mod qg {
             test_valid_query("select b.z from (select a as z from a) b join a");
             test_valid_query("select a from a where a");
             test_valid_query("select a from a where a in (?, ?)");
+            test_valid_query("select a from (select a from a) where a in (?, ?)");
+            test_valid_query("select a from (select a from a) where a or ?");
         }
     }
 }
