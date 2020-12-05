@@ -678,8 +678,8 @@ mod qg {
             self.new_line("digraph G {");
             self.inc();
             self.new_line("compound = true");
-            self.new_line("lablejust = l");
-            self.new_line(&format!("lable=\"{}\"", sql_string));
+            self.new_line("labeljust = l");
+            self.new_line(&format!("label=\"{}\"", sql_string));
             self.new_line("node [ shape = box ]");
 
             let mut box_stack = vec![Rc::clone(&m.top_box)];
@@ -954,6 +954,55 @@ mod qg {
                 m.replace_top_box(new_box);
             }
             assert_eq!(m.top_box.borrow().quantifiers.len(), 0);
+        }
+
+        #[test]
+        fn test_name_resolution() {
+            let mut table_a = TableMetadata::new("A");
+            for c in &["A", "B", "C"] {
+                table_a.add_column(&c);
+            }
+            let mut catalog = FakeCatalog::new();
+            catalog.add_table(table_a);
+
+            let parser = crate::ast::Parser {};
+            let test_valid_query = |q| {
+                println!("{}", q);
+                let result = parser.parse(q);
+                println!("{:?}", result);
+                assert!(result.is_ok());
+                let stmts = result.ok().unwrap();
+                assert_eq!(stmts.len(), 1);
+                if let crate::ast::Statement::Select(c) = &stmts[0] {
+                    let mut generator = ModelGenerator::new(&catalog);
+                    let model = generator.process(&c);
+                    assert!(model.is_ok());
+                    let mut model = model.ok().unwrap();
+
+                    let output = DotGenerator::new().generate(&model, q);
+                    assert!(output.is_ok());
+                    let output = output.ok().unwrap();
+                    println!("{}", output);
+
+                    rewrite_model(&mut model);
+
+                    let output = DotGenerator::new().generate(&model, q);
+                    assert!(output.is_ok());
+                    let output = output.ok().unwrap();
+                    println!("{}", output);
+                } else {
+                    assert!(false);
+                }
+            };
+
+            test_valid_query("select * from a");
+            test_valid_query("select a from a");
+            test_valid_query("select a, b, c from a");
+            test_valid_query("select a, b, c from (select * from a)");
+            test_valid_query("select a, b, c from (select * from a) b");
+            test_valid_query("select b.a from (select * from a) b");
+            test_valid_query("select z from (select a as z from a) b");
+            test_valid_query("select b.z from (select a as z from a) b");
         }
     }
 }
