@@ -175,14 +175,21 @@ mod qg {
             }
         }
 
+        fn is_column_ref(&self) -> bool {
+            if let ExprType::ColumnReference(_) = &self.expr_type {
+                true
+            } else {
+                false
+            }
+        }
+
         fn dereference(&self) -> Option<ExprRef> {
-            match &self.expr_type {
-                ExprType::ColumnReference(c) => {
-                    let q = c.quantifier.borrow();
-                    let b = q.input_box.borrow();
-                    Some(Rc::clone(&b.columns[c.position].expr))
-                }
-                _ => None
+            if let ExprType::ColumnReference(c) = &self.expr_type {
+                let q = c.quantifier.borrow();
+                let b = q.input_box.borrow();
+                Some(Rc::clone(&b.columns[c.position].expr))
+            } else {
+                None
             }
         }
     }
@@ -921,8 +928,32 @@ mod qg {
         }
     }
 
-    type RuleT = dyn rewrite_engine::Rule<BoxRef>;
-    type RuleBox = Box<RuleT>;
+    type BoxRule = dyn rewrite_engine::Rule<BoxRef>;
+    type RuleBox = Box<BoxRule>;
+
+    struct DereferenceRule<'a> {
+        to_dereference: &'a BTreeSet<QuantifierRef>,
+    }
+
+    impl<'a> rewrite_engine::Rule<ExprRef> for DereferenceRule<'a> {
+        fn name(&self) -> &'static str {
+            "EmptyRule"
+        }
+        fn apply_top_down(&self) -> bool {
+            false
+        }
+        fn condition(&mut self, obj: &ExprRef) -> bool {
+            let o = obj.borrow();
+            if let ExprType::ColumnReference(c) = &o.expr_type {
+                self.to_dereference.contains(&c.quantifier)
+            } else {
+                false
+            }
+        }
+        fn action(&mut self, obj: &mut ExprRef) -> Option<ExprRef> {
+            obj.borrow().dereference()
+        }
+    }
 
     fn apply_rule(m: &mut Model, rule: &mut RuleBox) {
         let result = rewrite_engine::deep_apply_rule(&mut **rule, &mut m.top_box);
@@ -948,6 +979,22 @@ mod qg {
                 let mut borrowed_q = q.borrow_mut();
                 if let Some(c) = rewrite_engine::deep_apply_rule(rule, &mut borrowed_q.input_box) {
                     borrowed_q.input_box = c;
+                }
+            }
+        }
+    }
+
+    type ExprRule = dyn rewrite_engine::Rule<ExprRef>;
+    type RuleExpr = Box<ExprRule>;
+
+    impl rewrite_engine::Traverse<ExprRef> for ExprRef {
+        fn descend_and_apply(rule: &mut dyn rewrite_engine::Rule<ExprRef>, target: &mut ExprRef) {
+            if let Some(operands) = &mut target.borrow_mut().operands {
+                // @todo probably there is a better way of doing this
+                for i in 0..operands.len() {
+                    if let Some(c) = rewrite_engine::deep_apply_rule(rule, &mut operands[i]) {
+                        operands[i] = c;
+                    }
                 }
             }
         }
