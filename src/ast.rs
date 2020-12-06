@@ -557,8 +557,13 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
                 // optional
                 self.complete_token_and_advance(&lexer::ReservedKeyword::Outer);
                 self.expect_token_and_advance(&lexer::ReservedKeyword::Join)?;
-            } else if self.complete_token_and_advance(&lexer::ReservedKeyword::Join) {
-                join_type = Some(JoinType::Inner);
+            } else {
+                if self.complete_token_and_advance(&lexer::ReservedKeyword::Inner) {
+                    self.expect_token_and_advance(&lexer::ReservedKeyword::Join)?;
+                    join_type = Some(JoinType::Inner);
+                } else if self.complete_token_and_advance(&lexer::ReservedKeyword::Join) {
+                    join_type = Some(JoinType::Inner);
+                }
             }
             if !join_type.is_some() {
                 return Ok(left_item);
