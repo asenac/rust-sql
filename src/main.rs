@@ -288,6 +288,20 @@ mod qg {
                 BoxType::BaseTable(_) => "BaseTable",
             }
         }
+
+        /// returns a collection to mutable references of all expressions owned by the box
+        fn mut_expr_list(&mut self) -> vec<&mut exprref> {
+            let mut v = Vec::new();
+            for c in &mut self.columns {
+                v.push(&mut c.expr);
+            }
+            if let Some(predicates) = &mut self.predicates {
+                for p in predicates.iter_mut() {
+                    v.push(p);
+                }
+            }
+            v
+        }
     }
 
     fn add_quantifier_to_box(b: &BoxRef, q: &QuantifierRef) {
