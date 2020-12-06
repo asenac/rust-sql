@@ -97,6 +97,7 @@ pub enum Expr {
     Parameter(u64),
     Reference(Identifier),
     NumericLiteral(u64),
+    BooleanLiteral(bool),
     Unary(Box<Expr>),
     Nary(NaryExprType, Vec<Box<Expr>>),
     ScalarSubquery(Box<Select>),
@@ -133,7 +134,7 @@ impl<'a> Iterator for ExprIterator<'a> {
             match top {
                 Parameter(_) => {},
                 Reference(_) => {},
-                NumericLiteral(_) => {},
+                BooleanLiteral(_) | NumericLiteral(_) => {},
                 ScalarSubquery(_)| Exists(_) => {},
                 FunctionCall(_, vec) => {
                     for e in vec.iter() {
@@ -353,6 +354,10 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
             let result = Expr::Exists(Box::new(self.parse_select_body()?));
             self.expect_substr_and_advance(")")?;
             return Ok(result);
+        } else if self.complete_token_and_advance(&lexer::ReservedKeyword::True) {
+            return Ok(Expr::BooleanLiteral(true));
+        } else if self.complete_token_and_advance(&lexer::ReservedKeyword::False) {
+            return Ok(Expr::BooleanLiteral(false));
         } else if let Some(id) = self.parse_identifier() {
             if self.complete_substr_and_advance("(") {
                 let mut params : Vec<Box<Expr>> = Vec::new();
