@@ -783,22 +783,11 @@ mod qg {
 
             let mut box_stack = vec![Rc::clone(&m.top_box)];
             let mut quantifiers = Vec::new();
-            let mut arrows: Vec<(ExprRef, QuantifierRef, QuantifierRef)> = Vec::new();
             while let Some(b) = box_stack.pop() {
+                let mut arrows: Vec<(ExprRef, QuantifierRef, QuantifierRef)> = Vec::new();
+                let mut other_predicates: Vec<ExprRef> = Vec::new();
+
                 let b = b.borrow();
-                self.new_line(&format!("subgraph cluster{} {{", b.id));
-                self.inc();
-                self.new_line(&format!("label = \"Box{}:{}\"", b.id, b.get_box_type_str()));
-                self.new_line(&format!("boxhead{} [ shape = record, label=\"{}\" ]", b.id, DotGenerator::get_box_head(&b)));
-
-                self.new_line("{");
-                self.inc();
-                self.new_line("rank = same");
-
-                if b.quantifiers.len() > 0 {
-                    self.new_line("node [ shape = circle ]");
-                }
-
                 if let Some(predicates) = &b.predicates {
                     for p in predicates {
                         let q = collect_quantifiers(p);
@@ -814,9 +803,24 @@ mod qg {
                                 let q2 = it.next().unwrap();
                                 arrows.push((Rc::clone(p), Rc::clone(q1), Rc::clone(q2)));
                             }
-                            _ => {}
+                            _ => {
+                                other_predicates.push(Rc::clone(p));
+                            }
                         }
                     }
+                }
+
+                self.new_line(&format!("subgraph cluster{} {{", b.id));
+                self.inc();
+                self.new_line(&format!("label = \"Box{}:{}\"", b.id, b.get_box_type_str()));
+                self.new_line(&format!("boxhead{} [ shape = record, label=\"{}\" ]", b.id, DotGenerator::get_box_head(&b, &other_predicates[..])));
+
+                self.new_line("{");
+                self.inc();
+                self.new_line("rank = same");
+
+                if b.quantifiers.len() > 0 {
+                    self.new_line("node [ shape = circle ]");
                 }
 
                 for q in b.quantifiers.iter() {
@@ -825,6 +829,13 @@ mod qg {
                     let q = q.borrow();
                     box_stack.push(Rc::clone(&q.input_box));
                     self.new_line(&format!("Q{0} [ label=\"Q{0}({1})\" ]", q.id, q.quantifier_type));
+                }
+
+                if arrows.len() > 0 {
+                    self.new_line("edge [ arrowhead = none, style = solid ]");
+                    for (e, q1, q2) in &arrows {
+                        self.new_line(&format!("Q{0} -> Q{1} [ label=\"{2}\" ]", q1.borrow().id, q2.borrow().id, e.borrow()));
+                    }
                 }
 
                 self.dec();
@@ -846,7 +857,7 @@ mod qg {
             Ok(self.output)
         }
 
-        fn get_box_head(b: &QGBox) -> String {
+        fn get_box_head(b: &QGBox, predicates: &[ExprRef]) -> String {
             let mut r  = String::new();
             for (i, c) in b.columns.iter().enumerate() {
                 if r.len() > 0 {
@@ -857,11 +868,8 @@ mod qg {
                     r.push_str(&format!(" AS {}", c));
                 }
             }
-            // @todo those predicates with one or two quantifiers must be printed as arrows
-            if let Some(p) = &b.predicates {
-                for expr in p {
-                    r.push_str(&format!("| {}", expr.borrow()));
-                }
+            for expr in predicates {
+                r.push_str(&format!("| {}", expr.borrow()));
             }
             r
         }
