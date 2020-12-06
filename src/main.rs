@@ -296,18 +296,15 @@ mod qg {
             }
         }
 
-        /// returns a collection to mutable references of all expressions owned by the box
-        fn mut_expr_list(&mut self) -> vec<&mut exprref> {
-            let mut v = Vec::new();
+        fn visit_expressions<F>(&mut self, f: &mut F) where F: FnMut(&mut ExprRef) -> () {
             for c in &mut self.columns {
-                v.push(&mut c.expr);
+                f(&mut c.expr);
             }
             if let Some(predicates) = &mut self.predicates {
                 for p in predicates.iter_mut() {
-                    v.push(p);
+                    f(p);
                 }
             }
-            v
         }
     }
 
@@ -923,6 +920,13 @@ mod qg {
                 }
                 obj.borrow_mut().remove_quantifier(q);
             }
+            let mut rule = DereferenceRule{to_dereference: &self.to_merge};
+            let mut f = |e: &mut ExprRef| {
+                if let Some(c) = rewrite_engine::deep_apply_rule(&mut rule, e) {
+                    *e = c;
+                }
+            };
+            obj.borrow_mut().visit_expressions(&mut f);
             self.to_merge.clear();
             None
         }
