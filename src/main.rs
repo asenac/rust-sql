@@ -183,6 +183,14 @@ mod qg {
             }
         }
 
+        fn get_quantifier(&self) -> Option<QuantifierRef> {
+            if let ExprType::ColumnReference(c) = &self.expr_type {
+                Some(Rc::clone(&c.quantifier))
+            } else {
+                None
+            }
+        }
+
         fn dereference(&self) -> Option<ExprRef> {
             if let ExprType::ColumnReference(c) = &self.expr_type {
                 let q = c.quantifier.borrow();
@@ -192,6 +200,38 @@ mod qg {
                 None
             }
         }
+    }
+
+    fn collect_column_refs(expr: &ExprRef) -> Vec<ExprRef> {
+        let mut stack = vec![Rc::clone(expr)];
+        let mut result = Vec::new();
+        while let Some(expr) = stack.pop() {
+            let e = expr.borrow();
+            if e.is_column_ref() {
+                result.push(Rc::clone(&expr));
+            } else if let Some(operands) = &e.operands {
+                for o in operands {
+                    stack.push(Rc::clone(&o));
+                }
+            }
+        }
+        result
+    }
+
+    fn collect_quantifiers(expr: &ExprRef) -> BTreeSet<QuantifierRef> {
+        let mut stack = vec![Rc::clone(expr)];
+        let mut result: BTreeSet<QuantifierRef> = BTreeSet::new();
+        while let Some(expr) = stack.pop() {
+            let e = expr.borrow();
+            if let Some(q) = e.get_quantifier() {
+                result.insert(q);
+            } else if let Some(operands) = &e.operands {
+                for o in operands {
+                    stack.push(Rc::clone(&o));
+                }
+            }
+        }
+        result
     }
 
     impl fmt::Display for Expr {
@@ -743,6 +783,7 @@ mod qg {
 
             let mut box_stack = vec![Rc::clone(&m.top_box)];
             let mut quantifiers = Vec::new();
+            let mut arrows: Vec<(ExprRef, QuantifierRef, QuantifierRef)> = Vec::new();
             while let Some(b) = box_stack.pop() {
                 let b = b.borrow();
                 self.new_line(&format!("subgraph cluster{} {{", b.id));
@@ -756,6 +797,26 @@ mod qg {
 
                 if b.quantifiers.len() > 0 {
                     self.new_line("node [ shape = circle ]");
+                }
+
+                if let Some(predicates) = &b.predicates {
+                    for p in predicates {
+                        let q = collect_quantifiers(p);
+                        match q.len() {
+                            1 => {
+                                let mut it = q.iter();
+                                let q1 = it.next().unwrap();
+                                arrows.push((Rc::clone(p), Rc::clone(q1), Rc::clone(q1)));
+                            }
+                            2 => {
+                                let mut it = q.iter();
+                                let q1 = it.next().unwrap();
+                                let q2 = it.next().unwrap();
+                                arrows.push((Rc::clone(p), Rc::clone(q1), Rc::clone(q2)));
+                            }
+                            _ => {}
+                        }
+                    }
                 }
 
                 for q in b.quantifiers.iter() {
@@ -1120,6 +1181,7 @@ mod qg {
             test_valid_query("select a from a where a in (?, ?)");
             test_valid_query("select a from (select a from a) where a in (?, ?)");
             test_valid_query("select a from (select a from a) where a or ?");
+            test_valid_query("select a from (select * from a) where a in (a, b, c)");
         }
     }
 }
