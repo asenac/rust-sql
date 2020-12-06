@@ -983,7 +983,12 @@ mod qg {
             !self.to_merge.is_empty()
         }
         fn action(&mut self, obj: &mut BoxRef) -> Option<BoxRef> {
+            // predicates in the boxes being removed that will be added to the current box
+            let mut pred_to_add = Vec::new();
             for q in &self.to_merge {
+                if let Some(pred_to_merge) = &q.borrow().input_box.borrow().predicates {
+                    pred_to_add.extend(pred_to_merge.clone());
+                }
                 for oq in &q.borrow().input_box.borrow().quantifiers {
                     add_quantifier_to_box(obj, oq);
                 }
@@ -996,6 +1001,12 @@ mod qg {
                 }
             };
             obj.borrow_mut().visit_expressions(&mut f);
+            let mut mut_obj = obj.borrow_mut();
+            if mut_obj.predicates.is_none() {
+                mut_obj.predicates = Some(pred_to_add);
+            } else {
+                mut_obj.predicates.as_mut().unwrap().extend(pred_to_add);
+            }
             self.to_merge.clear();
             None
         }
@@ -1190,6 +1201,7 @@ mod qg {
             test_valid_query("select a from (select a from a) where a in (?, ?)");
             test_valid_query("select a from (select a from a) where a or ?");
             test_valid_query("select a from (select * from a) where a in (a, b, c)");
+            test_valid_query("select a from (select * from a where b in (?, ?)) where a in (a, b, c)");
         }
     }
 }
