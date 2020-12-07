@@ -98,12 +98,30 @@ mod qg {
     }
 
     #[derive(Clone)]
+    enum Value {
+        BigInt(i64),
+        Boolean(bool),
+    }
+
+    impl fmt::Display for Value {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            use Value::*;
+            match &self {
+                BigInt(v) => write!(f, "{}", v),
+                Boolean(v) if *v => write!(f, "TRUE"),
+                Boolean(_) => write!(f, "FALSE"),
+            }
+        }
+    }
+
+    #[derive(Clone)]
     enum ExprType {
         BaseColumn(BaseColumn),
         ColumnReference(ColumnReference),
         Parameter(u64),
         InList,
-        Logical(LogicalExprType)
+        Logical(LogicalExprType),
+        Literal(Value),
     }
 
     type ExprRef = Rc<RefCell<Expr>>;
@@ -158,6 +176,13 @@ mod qg {
             Self {
                 expr_type: ExprType::Logical(type_),
                 operands: Some(list)
+            }
+        }
+
+        fn make_literal(value: Value) -> Self {
+            Self {
+                expr_type: ExprType::Literal(value),
+                operands: None
             }
         }
 
@@ -252,6 +277,7 @@ mod qg {
                 Parameter(c) => write!(f, "?:{}", c),
                 // @todo print the column name
                 BaseColumn(c) => write!(f, "c{}", c.position),
+                Literal(c) => write!(f, "{}", c),
                 Logical(t) => {
                     let operands = self.operands.as_ref().unwrap();
                     let sep = {
