@@ -1349,7 +1349,7 @@ fn main() {
         println!("No previous history.");
     }
     loop {
-        let readline = rl.readline("SQL> ");
+        let readline = rl.readline("RS-SQL> ");
         match readline {
             Ok(line) => {
                 rl.add_history_entry(line.as_str());
