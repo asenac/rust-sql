@@ -16,6 +16,7 @@ mod qg {
     use std::cmp::*;
     use std::collections::*;
     use std::rc::*;
+    use crate::ast;
 
     #[derive(Clone)]
     pub enum DataType {
@@ -132,7 +133,7 @@ mod qg {
         }
 
         fn as_string(&self) -> Result<String, String> {
-            format!("{}", self)
+            Ok(format!("{}", self))
         }
     }
 
@@ -497,7 +498,7 @@ mod qg {
         owner_box: BoxRef,
         quantifiers: Vec<QuantifierRef>,
         parent_quantifiers: HashMap<i32, QuantifierRef>,
-        subquery_quantifiers: Option<HashMap<*const crate::ast::Select, QuantifierRef>>,
+        subquery_quantifiers: Option<HashMap<*const ast::Select, QuantifierRef>>,
         parent_context: Option<&'a NameResolutionContext<'a>>
     }
 
@@ -517,14 +518,14 @@ mod qg {
             self.quantifiers.push(Rc::clone(q))
         }
 
-        fn add_subquery_quantifier(&mut self, s: *const crate::ast::Select, q: &QuantifierRef) {
+        fn add_subquery_quantifier(&mut self, s: *const ast::Select, q: &QuantifierRef) {
             if self.subquery_quantifiers.is_none() {
                 self.subquery_quantifiers = Some(HashMap::new());
             }
             self.subquery_quantifiers.as_mut().unwrap().insert(s, Rc::clone(q));
         }
 
-        fn get_subquery_quantifier(&self, s: *const crate::ast::Select) -> QuantifierRef {
+        fn get_subquery_quantifier(&self, s: *const ast::Select) -> QuantifierRef {
             Rc::clone(self.subquery_quantifiers.as_ref().unwrap().get(&s).expect("bug"))
         }
 
@@ -626,7 +627,7 @@ mod qg {
             }
         }
 
-        pub fn process(&mut self, select: &crate::ast::Select) -> Result<Model, String> {
+        pub fn process(&mut self, select: &ast::Select) -> Result<Model, String> {
             let top_box = self.process_select(select, None)?;
             let model = Model{ top_box };
             Ok(model)
@@ -644,7 +645,7 @@ mod qg {
             id
         }
 
-        fn process_select(&mut self, select: &crate::ast::Select, parent_context: Option<&NameResolutionContext>) -> Result<BoxRef, String> {
+        fn process_select(&mut self, select: &ast::Select, parent_context: Option<&NameResolutionContext>) -> Result<BoxRef, String> {
             let select_box = make_ref(QGBox::new(self.get_box_id(), BoxType::Select));
             let mut current_context = NameResolutionContext::new(Rc::clone(&select_box), parent_context);
             for join_item in &select.from_clause {
@@ -684,7 +685,7 @@ mod qg {
         }
 
         /// adds a quantifier in the given select box with the result of parsing the given join term subtree
-        fn add_join_term_to_select_box(&mut self, join_term: &crate::ast::JoinTerm, select_box: &BoxRef, current_context : &mut NameResolutionContext) -> Result<(), String> {
+        fn add_join_term_to_select_box(&mut self, join_term: &ast::JoinTerm, select_box: &BoxRef, current_context : &mut NameResolutionContext) -> Result<(), String> {
             let b = self.process_join_item(&join_term.join_item, current_context)?;
             let mut q = Quantifier::new(self.get_quantifier_id(), QuantifierType::Foreach, b, &select_box);
             if join_term.alias.is_some() {
@@ -696,8 +697,8 @@ mod qg {
             Ok(())
         }
 
-        fn process_join_item(&mut self, item : &crate::ast::JoinItem, current_context : &mut NameResolutionContext) -> Result<BoxRef, String> {
-            use crate::ast::JoinItem::*;
+        fn process_join_item(&mut self, item : &ast::JoinItem, current_context : &mut NameResolutionContext) -> Result<BoxRef, String> {
+            use ast::JoinItem::*;
             match item {
                 // the derived table should not see its siblings
                 DerivedTable(s) => self.process_select(s, current_context.parent_context),
@@ -744,8 +745,8 @@ mod qg {
         }
 
         /// the suqbueries in the given expressions as quantifiers in the given select box
-        fn add_subqueries(&mut self, select_box: &BoxRef, expr: &crate::ast::Expr, current_context : &mut NameResolutionContext) -> Result<(), String>{
-            use crate::ast::Expr::*;
+        fn add_subqueries(&mut self, select_box: &BoxRef, expr: &ast::Expr, current_context : &mut NameResolutionContext) -> Result<(), String>{
+            use ast::Expr::*;
             for expr in expr.iter() {
                 match expr {
                     ScalarSubquery(e) => {
@@ -755,14 +756,14 @@ mod qg {
                         }
                         let q = Quantifier::new(self.get_quantifier_id(), QuantifierType::Scalar, subquery_box, &select_box);
                         let q = make_ref(q);
-                        current_context.add_subquery_quantifier(e.as_ref() as *const crate::ast::Select, &q);
+                        current_context.add_subquery_quantifier(e.as_ref() as *const ast::Select, &q);
                         select_box.borrow_mut().add_quantifier(q);
                     }
                     InSelect(_, e) | Exists(e) => {
                         let subquery_box = self.process_select(e, Some(current_context))?;
                         let q = Quantifier::new(self.get_quantifier_id(), QuantifierType::Existential, subquery_box, &select_box);
                         let q = make_ref(q);
-                        current_context.add_subquery_quantifier(e.as_ref() as *const crate::ast::Select, &q);
+                        current_context.add_subquery_quantifier(e.as_ref() as *const ast::Select, &q);
                         select_box.borrow_mut().add_quantifier(q);
                     }
                     _ => {}
@@ -771,8 +772,7 @@ mod qg {
             Ok(())
         }
 
-        fn process_expr(&mut self, expr: &crate::ast::Expr, current_context : &NameResolutionContext) -> Result<ExprRef, String> {
-            use crate::ast;
+        fn process_expr(&mut self, expr: &ast::Expr, current_context : &NameResolutionContext) -> Result<ExprRef, String> {
             match expr {
                 ast::Expr::Reference(id) => {
                     let expr = current_context.resolve_column(id.get_qualifier_before_name(), &id.get_name());
@@ -791,7 +791,7 @@ mod qg {
                     Ok(make_ref(Expr::make_in_list(term, list_exprs)))
                 }
                 ast::Expr::ScalarSubquery(e) => {
-                    Ok(make_ref(Expr::make_column_ref(current_context.get_subquery_quantifier(e.as_ref() as *const crate::ast::Select), 0)))
+                    Ok(make_ref(Expr::make_column_ref(current_context.get_subquery_quantifier(e.as_ref() as *const ast::Select), 0)))
                 }
                 ast::Expr::BooleanLiteral(e) => {
                     Ok(make_ref(Expr::make_literal(Value::Boolean(*e))))
@@ -1208,7 +1208,7 @@ mod qg {
             let mut catalog = FakeCatalog::new();
             catalog.add_table(table_a);
 
-            let parser = crate::ast::Parser {};
+            let parser = ast::Parser {};
             let test_valid_query = |q| {
                 println!("{}", q);
                 let result = parser.parse(q);
@@ -1216,7 +1216,7 @@ mod qg {
                 assert!(result.is_ok());
                 let stmts = result.ok().unwrap();
                 assert_eq!(stmts.len(), 1);
-                if let crate::ast::Statement::Select(c) = &stmts[0] {
+                if let ast::Statement::Select(c) = &stmts[0] {
                     let mut generator = ModelGenerator::new(&catalog);
                     let model = generator.process(&c);
                     assert!(model.is_ok());
