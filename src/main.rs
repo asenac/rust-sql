@@ -114,6 +114,28 @@ mod qg {
         }
     }
 
+    impl Value {
+        fn as_bigint(&self) -> Result<i64, String> {
+            match &self {
+                Value::BigInt(i) => Ok(*i),
+                Value::Boolean(i) if *i => Ok(1),
+                Value::Boolean(_) => Ok(0),
+            }
+        }
+
+        fn as_bool(&self) -> Result<bool, String> {
+            match &self {
+                Value::BigInt(i) if *i != 0 => Ok(true),
+                Value::BigInt(_) => Ok(false),
+                Value::Boolean(i) => Ok(*i),
+            }
+        }
+
+        fn as_string(&self) -> Result<String, String> {
+            format!("{}", self)
+        }
+    }
+
     #[derive(Clone)]
     enum ExprType {
         BaseColumn(BaseColumn),
