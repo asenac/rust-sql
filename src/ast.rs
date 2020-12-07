@@ -4,6 +4,8 @@ use std::iter::*;
 pub enum Statement {
     Select(Select),
     Insert(Insert),
+    Update(Update),
+    Delete(Delete),
     CreateTable(CreateTable),
 }
 
@@ -76,6 +78,27 @@ impl Select {
         }
         self.selection_list.as_mut().unwrap().push(item);
     }
+}
+
+#[derive(Debug)]
+pub struct Delete {
+    pub target: Identifier,
+    pub where_clause: Option<Expr>,
+    pub limit_clause: Option<Expr>,
+}
+
+#[derive(Debug)]
+pub struct Update {
+    pub target: Identifier,
+    pub assignments: Vec<Assignment>,
+    pub where_clause: Option<Expr>,
+    pub limit_clause: Option<Expr>,
+}
+
+#[derive(Debug)]
+pub struct Assignment {
+    pub name: String,
+    pub expr: Expr,
 }
 
 #[derive(Debug)]
@@ -241,6 +264,9 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
             } else if self.complete_token_and_advance(&ReservedKeyword::Insert) {
                 self.expect_token_and_advance(&ReservedKeyword::Into)?;
                 result.push(Statement::Insert(self.parse_insert_body()?));
+            } else if self.complete_token_and_advance(&ReservedKeyword::Delete) {
+                self.expect_token_and_advance(&ReservedKeyword::From)?;
+                result.push(Statement::Delete(self.parse_delete_body()?));
             } else if self.complete_token_and_advance(&ReservedKeyword::Create) {
                 self.expect_token_and_advance(&ReservedKeyword::Table)?;
                 result.push(Statement::CreateTable(self.parse_create_table_body()?));
@@ -648,6 +674,19 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
         Ok(select)
     }
 
+    fn parse_delete_body(&mut self) -> Result<Delete, String> {
+        let identifier = self.expect_identifier()?;
+        let mut where_clause: Option<_> = None;
+        if self.complete_token_and_advance(&lexer::ReservedKeyword::Where) {
+            where_clause = Some(self.parse_expr()?);
+        }
+        let mut limit_clause: Option<_> = None;
+        if self.complete_token_and_advance(&lexer::ReservedKeyword::Limit) {
+            limit_clause = Some(self.parse_expr()?);
+        }
+        Ok(Delete{target: identifier, where_clause: where_clause, limit_clause: limit_clause})
+    }
+
     fn parse_insert_body(&mut self) -> Result<Insert, String> {
         let identifier = self.expect_identifier()?;
         let mut columns: Option<Vec<String>> = None;
@@ -753,6 +792,9 @@ mod tests {
         test_valid_query("insert into a(a) values (1)");
         test_valid_query("insert into a(a, b, c) values (1, 2, 3)");
         test_valid_query("insert into a select a from a");
+        test_valid_query("delete from a");
+        test_valid_query("delete from a where a = 1");
+        test_valid_query("delete from a where a = 1 limit 10");
     }
 
     #[test]
