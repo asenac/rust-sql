@@ -771,6 +771,9 @@ mod qg {
                 ast::Expr::ScalarSubquery(e) => {
                     Ok(make_ref(Expr::make_column_ref(current_context.get_subquery_quantifier(e.as_ref() as *const crate::ast::Select), 0)))
                 }
+                ast::Expr::BooleanLiteral(e) => {
+                    Ok(make_ref(Expr::make_literal(Value::Boolean(*e))))
+                }
                 ast::Expr::Nary(t, list) => {
                     let mut list_exprs = Vec::new();
                     for e in list {
