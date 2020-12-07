@@ -10,6 +10,7 @@ pub enum ReservedKeyword {
     Inner,
     Insert,
     Int,
+    Into,
     False,
     From,
     Join,
@@ -22,6 +23,7 @@ pub enum ReservedKeyword {
     Select,
     Table,
     True,
+    Values,
     Where,
 }
 
@@ -88,6 +90,7 @@ fn get_reserved_keyword(input: &str) -> Option<ReservedKeyword> {
         "INNER" => Some(Inner),
         "INSERT" => Some(Insert),
         "INT" => Some(Int),
+        "INTO" => Some(Into),
         "FROM" => Some(From),
         "JOIN" => Some(Join),
         "LEFT" => Some(Left),
@@ -99,6 +102,7 @@ fn get_reserved_keyword(input: &str) -> Option<ReservedKeyword> {
         "SELECT" => Some(Select),
         "TABLE" => Some(Table),
         "TRUE" => Some(True),
+        "VALUES" => Some(Values),
         "WHERE" => Some(Where),
         _ => None,
     }

@@ -238,6 +238,9 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
         loop {
             if self.complete_token_and_advance(&ReservedKeyword::Select) {
                 result.push(Statement::Select(self.parse_select_body()?));
+            } else if self.complete_token_and_advance(&ReservedKeyword::Insert) {
+                self.expect_token_and_advance(&ReservedKeyword::Into)?;
+                result.push(Statement::Insert(self.parse_insert_body()?));
             } else if self.complete_token_and_advance(&ReservedKeyword::Create) {
                 self.expect_token_and_advance(&ReservedKeyword::Table)?;
                 result.push(Statement::CreateTable(self.parse_create_table_body()?));
@@ -645,6 +648,47 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
         Ok(select)
     }
 
+    fn parse_insert_body(&mut self) -> Result<Insert, String> {
+        let identifier = self.expect_identifier()?;
+        let mut columns: Option<Vec<String>> = None;
+        if self.complete_substr_and_advance("(") {
+            let mut cols = Vec::new();
+            loop {
+                let name = self.expect_name()?;
+                cols.push(name);
+                if !self.complete_substr_and_advance(",") {
+                    break;
+                }
+            }
+            self.expect_substr_and_advance(")")?;
+            columns = Some(cols);
+        }
+        if self.complete_token_and_advance(&lexer::ReservedKeyword::Select) {
+            let select = self.parse_select_body()?;
+            Ok(Insert{target: identifier, columns, source: InsertSource::Select(select)})
+        } else {
+            self.expect_token_and_advance(&lexer::ReservedKeyword::Values)?;
+            let mut rows = Vec::new();
+            loop {
+                self.expect_substr_and_advance("(")?;
+                let mut values = Vec::new();
+                loop {
+                    let expr = self.parse_expr()?;
+                    values.push(expr);
+                    if !self.complete_substr_and_advance(",") {
+                        break;
+                    }
+                }
+                self.expect_substr_and_advance(")")?;
+                rows.push(values);
+                if !self.complete_substr_and_advance(",") {
+                    break;
+                }
+            }
+            Ok(Insert{target: identifier, columns, source: InsertSource::Values(rows)})
+        }
+    }
+
     fn parse_create_table_body(&mut self) -> Result<CreateTable, String> {
         let identifier = self.expect_identifier()?;
         self.expect_substr_and_advance("(")?;
@@ -704,6 +748,11 @@ mod tests {
         test_valid_query("select a from a where f1(?)");
         test_valid_query("select a from a where f1(?, ?, ?, ?)");
         test_valid_query("select a from a where exists(select 1 from b)");
+
+        test_valid_query("insert into a values (1)");
+        test_valid_query("insert into a(a) values (1)");
+        test_valid_query("insert into a(a, b, c) values (1, 2, 3)");
+        test_valid_query("insert into a select a from a");
     }
 
     #[test]
