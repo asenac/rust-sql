@@ -3,6 +3,7 @@ use std::iter::*;
 #[derive(Debug)]
 pub enum Statement {
     Select(Select),
+    Insert(Insert),
     CreateTable(CreateTable),
 }
 
@@ -75,6 +76,19 @@ impl Select {
         }
         self.selection_list.as_mut().unwrap().push(item);
     }
+}
+
+#[derive(Debug)]
+pub struct Insert {
+    pub target: Identifier,
+    pub columns: Option<Vec<String>>,
+    pub source: InsertSource,
+}
+
+#[derive(Debug)]
+pub enum InsertSource {
+    Values(Vec<Vec<Expr>>),
+    Select(Select),
 }
 
 #[derive(Debug, PartialEq)]

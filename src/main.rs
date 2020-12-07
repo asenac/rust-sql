@@ -63,7 +63,7 @@ impl Interpreter {
                 }
                 self.catalog.add_table(metadata);
             }
-            // _ => return Err(format!("unsupported statement: {:?}", stmt)),
+            _ => return Err(format!("unsupported statement: {:?}", stmt)),
         }
         Ok(())
     }
