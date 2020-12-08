@@ -67,6 +67,7 @@ impl Value {
 #[derive(Clone)]
 enum CmpOpType {
     Eq,
+    Neq,
     Less,
     LessEq,
     Greater,
@@ -231,6 +232,7 @@ impl fmt::Display for CmpOpType {
         use CmpOpType::*;
         match &self {
             Eq => write!(f, "="),
+            Neq => write!(f, "!="),
             LessEq => write!(f, "<="),
             GreaterEq => write!(f, ">="),
             Less => write!(f, "<"),
@@ -757,6 +759,19 @@ impl<'a> ModelGenerator<'a> {
             ast::Expr::BooleanLiteral(e) => {
                 Ok(make_ref(Expr::make_literal(Value::Boolean(*e))))
             }
+            ast::Expr::Binary(t, l, r) => {
+                let op = match t {
+                    ast::BinaryExprType::Eq => CmpOpType::Eq,
+                    ast::BinaryExprType::Neq => CmpOpType::Neq,
+                    ast::BinaryExprType::Less=> CmpOpType::Less,
+                    ast::BinaryExprType::LessEq => CmpOpType::LessEq,
+                    ast::BinaryExprType::Greater=> CmpOpType::Greater,
+                    ast::BinaryExprType::GreaterEq => CmpOpType::GreaterEq,
+                };
+                let l = self.process_expr(l, current_context)?;
+                let r = self.process_expr(r, current_context)?;
+                Ok(make_ref(Expr::make_cmp(op, l, r)))
+            }
             ast::Expr::Nary(t, list) => {
                 let mut list_exprs = Vec::new();
                 for e in list {
@@ -1201,6 +1216,12 @@ mod tests {
 
         test_valid_query("select * from a");
         test_valid_query("select a from a");
+        test_valid_query("select a from a where a = ?");
+        test_valid_query("select a from a where a != ?");
+        test_valid_query("select a from a where a < ?");
+        test_valid_query("select a from a where a <= ?");
+        test_valid_query("select a from a where a > ?");
+        test_valid_query("select a from a where a >= ?");
         test_valid_query("select a, b, c from a");
         test_valid_query("select a, b, c from (select * from a)");
         test_valid_query("select a, b, c from (select * from a) b");

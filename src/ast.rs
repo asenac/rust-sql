@@ -115,6 +115,16 @@ pub enum InsertSource {
 }
 
 #[derive(Debug, PartialEq)]
+pub enum BinaryExprType {
+    Eq,
+    Neq,
+    Less,
+    LessEq,
+    Greater,
+    GreaterEq,
+}
+
+#[derive(Debug, PartialEq)]
 pub enum NaryExprType {
     And,
     Or,
@@ -122,11 +132,6 @@ pub enum NaryExprType {
     Sub,
     Mul,
     Div,
-    Eq,
-    Less,
-    LessEq,
-    Greater,
-    GreaterEq,
 }
 
 #[derive(Debug)]
@@ -137,6 +142,7 @@ pub enum Expr {
     BooleanLiteral(bool),
     Unary(Box<Expr>),
     Nary(NaryExprType, Vec<Box<Expr>>),
+    Binary(BinaryExprType, Box<Expr>, Box<Expr>),
     ScalarSubquery(Box<Select>),
     Exists(Box<Select>),
     InSelect(Box<Expr>, Box<Select>),
@@ -190,6 +196,10 @@ impl<'a> Iterator for ExprIterator<'a> {
                 Unary(e) => {
                     self.stack.push(e);
                 },
+                Binary(_, l, r) => {
+                    self.stack.push(l);
+                    self.stack.push(r);
+                }
                 Nary(_, vec) => {
                     for e in vec.iter() {
                         self.stack.push(e);
@@ -483,16 +493,29 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
     }
 
     fn parse_expr_cmp(&mut self) -> Result<Expr, String> {
-        // @todo this is not n-ary, but binary
-        let op = |s: &mut Self| {
-            if s.complete_substr_and_advance("=") {
-                Some(NaryExprType::Eq)
+        let left = self.parse_expr_add()?;
+        let op = {
+            if self.complete_substr_and_advance("=") {
+                Some(BinaryExprType::Eq)
+            } else if self.complete_substr_and_advance("!=") {
+                Some(BinaryExprType::Neq)
+            } else if self.complete_substr_and_advance(">") {
+                Some(BinaryExprType::Greater)
+            } else if self.complete_substr_and_advance(">=") {
+                Some(BinaryExprType::GreaterEq)
+            } else if self.complete_substr_and_advance("<") {
+                Some(BinaryExprType::Less)
+            } else if self.complete_substr_and_advance("<=") {
+                Some(BinaryExprType::LessEq)
             } else {
                 None
             }
         };
-        let term = |s: &mut Self| s.parse_expr_add();
-        self.parse_nary_expr(&op, &term)
+        if op.is_none() {
+            return Ok(left);
+        }
+        let right = self.parse_expr_add()?;
+        Ok(Expr::Binary(op.unwrap(), Box::new(left), Box::new(right)))
     }
 
     fn parse_expr_and(&mut self) -> Result<Expr, String> {
