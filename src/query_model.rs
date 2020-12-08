@@ -65,13 +65,23 @@ impl Value {
 }
 
 #[derive(Clone)]
+enum CmpOpType {
+    Eq,
+    Less,
+    LessEq,
+    Greater,
+    GreaterEq,
+}
+
+#[derive(Clone)]
 enum ExprType {
     BaseColumn(BaseColumn),
+    Cmp(CmpOpType),
     ColumnReference(ColumnReference),
-    Parameter(u64),
     InList,
-    Logical(LogicalExprType),
     Literal(Value),
+    Logical(LogicalExprType),
+    Parameter(u64),
 }
 
 type ExprRef = Rc<RefCell<Expr>>;
@@ -133,6 +143,13 @@ impl Expr {
         Self {
             expr_type: ExprType::Literal(value),
             operands: None
+        }
+    }
+
+    fn make_cmp(cmp_type: CmpOpType, left: ExprRef, right: ExprRef) -> Self {
+        Self {
+            expr_type: ExprType::Cmp(cmp_type),
+            operands: Some(vec![left, right]),
         }
     }
 
@@ -209,6 +226,19 @@ fn collect_quantifiers(expr: &ExprRef) -> BTreeSet<QuantifierRef> {
     result
 }
 
+impl fmt::Display for CmpOpType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use CmpOpType::*;
+        match &self {
+            Eq => write!(f, "="),
+            LessEq => write!(f, "<="),
+            GreaterEq => write!(f, ">="),
+            Less => write!(f, "<"),
+            Greater => write!(f, ">"),
+        }
+    }
+}
+
 impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use ExprType::*;
@@ -228,6 +258,10 @@ impl fmt::Display for Expr {
             // @todo print the column name
             BaseColumn(c) => write!(f, "c{}", c.position),
             Literal(c) => write!(f, "{}", c),
+            Cmp(t) => {
+                let operands = self.operands.as_ref().unwrap();
+                write!(f, "({}) {} ({})", operands[0].borrow(), t, operands[1].borrow())
+            }
             Logical(t) => {
                 let operands = self.operands.as_ref().unwrap();
                 let sep = {
