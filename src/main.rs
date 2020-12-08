@@ -6,6 +6,10 @@ mod lexer;
 #[allow(dead_code)]
 mod ast;
 
+// system metadata
+#[allow(dead_code)]
+mod metadata;
+
 // query graph model
 #[allow(dead_code)]
 mod query_model;
@@ -27,12 +31,12 @@ mod storage_engine;
 
 /// simple interpreter to manually test the rewrite engine
 struct Interpreter {
-    catalog: query_model::FakeCatalog
+    catalog: metadata::FakeCatalog
 }
 
 impl Interpreter {
     pub fn new() -> Self {
-        Self { catalog: query_model::FakeCatalog::new() }
+        Self { catalog: metadata::FakeCatalog::new() }
     }
 
     pub fn process_line(&mut self, line: &str) -> Result<(), String> {
@@ -60,7 +64,7 @@ impl Interpreter {
                 println!("{}", output);
             }
             CreateTable(c) => {
-                let mut metadata = query_model::TableMetadata::new(c.name.get_name());
+                let mut metadata = metadata::TableMetadata::new(c.name.get_name());
                 for c in &c.columns {
                     metadata.add_column(&c.name);
                 }
