@@ -148,9 +148,8 @@ pub fn lex<'a>(input: &'a str) -> Result<Vec<Lexeme<'a>>, String> {
                     offset: i,
                 });
             }
-            '*' | '+' | '-' | '/' | '=' | '(' | ')' | '?' => {
-                it.next();
-                let len = 1;
+            '*' | '+' | '-' | '/' | '=' | '(' | ')' | '?' | '<' | '>' | '!' => {
+                let len = symbol_length(&mut it)?;
                 result.push(Lexeme {
                     type_: Symbol,
                     substring: &input[i..i + len],
@@ -195,6 +194,27 @@ pub fn lex<'a>(input: &'a str) -> Result<Vec<Lexeme<'a>>, String> {
     Ok(result)
 }
 
+fn symbol_length<T: Iterator<Item = (usize, char)>>(it: &mut Peekable<T>) -> Result<usize, String> {
+    let mut len: usize = 1;
+    let (_, c) = *it.peek().unwrap();
+    it.next();
+    if let Some((_, n)) = it.peek() {
+        match (c, n) {
+            ('>', '=') |
+            ('<', '=') |
+            ('!', '=') => {
+                it.next();
+                len = len + 1;
+            }
+            ('!', _) => {
+                return Err(format!("unexpected character {}", n));
+            }
+            _ => (),
+        }
+    }
+    Ok(len)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -228,5 +248,11 @@ mod tests {
         assert_eq!(vec[4].type_, Number);
         assert_eq!(vec[5].type_, Symbol);
         assert_eq!(vec[6].type_, Word(String::from("ASENAC")));
+    }
+
+    #[test]
+    fn test_symbols() {
+        let result = lex("!= >= > < <= =");
+        println!("{:?}", result);
     }
 }
