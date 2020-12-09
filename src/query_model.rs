@@ -710,6 +710,12 @@ impl<'a> ModelGenerator<'a> {
     /// the suqbueries in the given expressions as quantifiers in the given select box
     fn add_subqueries(&mut self, select_box: &BoxRef, expr: &ast::Expr, current_context : &mut NameResolutionContext) -> Result<(), String>{
         use ast::Expr::*;
+        let add_subquery = |s: &mut Self, current_context : &mut NameResolutionContext, quantifier_type: QuantifierType, e: &ast::Select, subquery_box: BoxRef| {
+            let q = Quantifier::new(s.get_quantifier_id(), quantifier_type, subquery_box, &select_box);
+            let q = make_ref(q);
+            current_context.add_subquery_quantifier(e as *const ast::Select, &q);
+            select_box.borrow_mut().add_quantifier(q);
+        };
         for expr in expr.iter() {
             match expr {
                 ScalarSubquery(e) => {
@@ -717,17 +723,23 @@ impl<'a> ModelGenerator<'a> {
                     if subquery_box.borrow().columns.len() != 1 {
                         return Err(format!("scalar subqueries must project a single column"))
                     }
-                    let q = Quantifier::new(self.get_quantifier_id(), QuantifierType::Scalar, subquery_box, &select_box);
-                    let q = make_ref(q);
-                    current_context.add_subquery_quantifier(e.as_ref() as *const ast::Select, &q);
-                    select_box.borrow_mut().add_quantifier(q);
+                    add_subquery(self, current_context, QuantifierType::Scalar, e.as_ref(), subquery_box);
                 }
-                InSelect(_, e) | Exists(e) => {
+                InSelect(_, e) => {
                     let subquery_box = self.process_select(e, Some(current_context))?;
-                    let q = Quantifier::new(self.get_quantifier_id(), QuantifierType::Existential, subquery_box, &select_box);
-                    let q = make_ref(q);
-                    current_context.add_subquery_quantifier(e.as_ref() as *const ast::Select, &q);
-                    select_box.borrow_mut().add_quantifier(q);
+                    if subquery_box.borrow().columns.len() != 1 {
+                        return Err(format!("scalar subqueries must project a single column"))
+                    }
+                    add_subquery(self, current_context, QuantifierType::Existential, e.as_ref(), subquery_box);
+                }
+                Exists(e) => {
+                    let subquery_box = self.process_select(e, Some(current_context))?;
+                    {
+                        let mut mutable_box = subquery_box.borrow_mut();
+                        mutable_box.columns.clear();
+                        mutable_box.columns.push(Column{name: None, expr: make_ref(Expr::make_literal(Value::BigInt(1)))});
+                    }
+                    add_subquery(self, current_context, QuantifierType::Existential, e.as_ref(), subquery_box);
                 }
                 _ => {}
             }
@@ -755,6 +767,16 @@ impl<'a> ModelGenerator<'a> {
             }
             ast::Expr::ScalarSubquery(e) => {
                 Ok(make_ref(Expr::make_column_ref(current_context.get_subquery_quantifier(e.as_ref() as *const ast::Select), 0)))
+            }
+            ast::Expr::InSelect(l, e) => {
+                let left = self.process_expr(l, current_context)?;
+                let col_ref = Expr::make_column_ref(current_context.get_subquery_quantifier(e.as_ref() as *const ast::Select), 0);
+                Ok(make_ref(Expr::make_cmp(CmpOpType::Eq, left, make_ref(col_ref))))
+            }
+            ast::Expr::Exists(e) => {
+                let left = make_ref(Expr::make_literal(Value::BigInt(1)));
+                let col_ref = Expr::make_column_ref(current_context.get_subquery_quantifier(e.as_ref() as *const ast::Select), 0);
+                Ok(make_ref(Expr::make_cmp(CmpOpType::Eq, left, make_ref(col_ref))))
             }
             ast::Expr::BooleanLiteral(e) => {
                 Ok(make_ref(Expr::make_literal(Value::Boolean(*e))))
