@@ -334,10 +334,20 @@ impl QGBox {
         pos
     }
     fn add_predicate(&mut self, predicate: ExprRef) {
+        let predicates = {
+            let borrowed = predicate.borrow();
+            if let ExprType::Logical(LogicalExprType::And) = &borrowed.expr_type {
+                drop(borrowed);
+                predicate.borrow_mut().operands.as_ref().unwrap().clone()
+            } else {
+                drop(borrowed);
+                vec![predicate]
+            }
+        };
         if self.predicates.is_some() {
-            self.predicates.as_mut().unwrap().push(predicate);
+            self.predicates.as_mut().unwrap().extend(predicates);
         } else {
-            self.predicates = Some(vec![predicate]);
+            self.predicates = Some(predicates);
         }
     }
 
