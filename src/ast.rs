@@ -138,7 +138,7 @@ pub enum NaryExprType {
 pub enum Expr {
     Parameter(u64),
     Reference(Identifier),
-    NumericLiteral(u64),
+    NumericLiteral(i64),
     BooleanLiteral(bool),
     Unary(Box<Expr>),
     Nary(NaryExprType, Vec<Box<Expr>>),
@@ -430,9 +430,11 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
         } else if let Some(&lexeme) = self.it.peek() {
             if lexeme.type_ == lexer::LexemeType::Number {
                 self.it.next();
-                return Ok(Expr::NumericLiteral(
-                    lexeme.substring.to_string().parse::<u64>().unwrap(),
-                ));
+                let value = lexeme.substring.to_string().parse::<i64>();
+                if value.is_err() {
+                    return Err(format!("{}", value.err().unwrap()));
+                }
+                return Ok(Expr::NumericLiteral(value.unwrap()));
             }
         }
         Err(String::from("invalid expression"))
@@ -784,6 +786,16 @@ mod tests {
             assert!(result.is_ok());
         };
 
+        let test_invalid_query = |q, t: Option<String>| {
+            println!("{}", q);
+            let result = parser.parse(q);
+            println!("{:?}", result);
+            assert!(result.is_err());
+            if t.is_some() {
+                assert_eq!(t.unwrap(), result.err().unwrap());
+            }
+        };
+
         test_valid_query("select * from a");
         test_valid_query("select a from a");
         test_valid_query("select a from a as b");
@@ -818,6 +830,10 @@ mod tests {
         test_valid_query("delete from a");
         test_valid_query("delete from a where a = 1");
         test_valid_query("delete from a where a = 1 limit 10");
+
+        test_invalid_query("delete from a where a = 18446744073709551615", Some("number too large to fit in target type".to_string()));
+        test_invalid_query("delete from a where a = 9223372036854775808", Some("number too large to fit in target type".to_string()));
+        test_valid_query("delete from a where a = 9223372036854775807");
     }
 
     #[test]

@@ -759,6 +759,9 @@ impl<'a> ModelGenerator<'a> {
             ast::Expr::BooleanLiteral(e) => {
                 Ok(make_ref(Expr::make_literal(Value::Boolean(*e))))
             }
+            ast::Expr::NumericLiteral(e) => {
+                Ok(make_ref(Expr::make_literal(Value::BigInt(*e))))
+            }
             ast::Expr::Binary(t, l, r) => {
                 let op = match t {
                     ast::BinaryExprType::Eq => CmpOpType::Eq,
@@ -1216,6 +1219,7 @@ mod tests {
 
         test_valid_query("select * from a");
         test_valid_query("select a from a");
+        test_valid_query("select a from a where a = 10");
         test_valid_query("select a from a where a = ?");
         test_valid_query("select a from a where a != ?");
         test_valid_query("select a from a where a < ?");
