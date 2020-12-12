@@ -295,6 +295,12 @@ macro_rules! parse_list {
     };
 }
 
+macro_rules! complete_keyword {
+    ($sel:ident, $keyword:ident) => {
+        $sel.complete_token_and_advance(&lexer::ReservedKeyword::$keyword)
+    };
+}
+
 impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
     fn new(input: &'a str, it: Peekable<T>) -> Self {
         Self { input, it, parameter_index: 0 }
@@ -305,15 +311,15 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
 
         let mut result: Vec<Statement> = Vec::new();
         loop {
-            if self.complete_token_and_advance(&ReservedKeyword::Select) {
+            if complete_keyword!(self, Select) {
                 result.push(Statement::Select(self.parse_select_body()?));
-            } else if self.complete_token_and_advance(&ReservedKeyword::Insert) {
+            } else if complete_keyword!(self, Insert) {
                 self.expect_token_and_advance(&ReservedKeyword::Into)?;
                 result.push(Statement::Insert(self.parse_insert_body()?));
-            } else if self.complete_token_and_advance(&ReservedKeyword::Delete) {
+            } else if complete_keyword!(self, Delete) {
                 self.expect_token_and_advance(&ReservedKeyword::From)?;
                 result.push(Statement::Delete(self.parse_delete_body()?));
-            } else if self.complete_token_and_advance(&ReservedKeyword::Create) {
+            } else if complete_keyword!(self, Create) {
                 self.expect_token_and_advance(&ReservedKeyword::Table)?;
                 result.push(Statement::CreateTable(self.parse_create_table_body()?));
             }
@@ -421,7 +427,7 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
 
     /// scalar subqueries are allowed within parenthesis
     fn parse_expr_within_parenthesis(&mut self) -> Result<Expr, String> {
-        if self.complete_token_and_advance(&lexer::ReservedKeyword::Select) {
+        if complete_keyword!(self, Select) {
             Ok(Expr::ScalarSubquery(Box::new(self.parse_select_body()?)))
         } else {
             self.parse_expr()
@@ -437,15 +443,15 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
             let result = Expr::Parameter(self.parameter_index);
             self.parameter_index += 1;
             return Ok(result);
-        } else if self.complete_token_and_advance(&lexer::ReservedKeyword::Exists) {
+        } else if complete_keyword!(self, Exists) {
             self.expect_substr_and_advance("(")?;
             self.expect_token_and_advance(&lexer::ReservedKeyword::Select)?;
             let result = Expr::Exists(Box::new(self.parse_select_body()?));
             self.expect_substr_and_advance(")")?;
             return Ok(result);
-        } else if self.complete_token_and_advance(&lexer::ReservedKeyword::True) {
+        } else if complete_keyword!(self, True) {
             return Ok(Expr::BooleanLiteral(true));
-        } else if self.complete_token_and_advance(&lexer::ReservedKeyword::False) {
+        } else if complete_keyword!(self, False) {
             return Ok(Expr::BooleanLiteral(false));
         } else if let Some(id) = self.parse_identifier() {
             if self.complete_substr_and_advance("(") {
@@ -476,11 +482,11 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
     /// handles IN-lists and IN SELECT expressions
     fn parse_expr_in(&mut self) -> Result<Expr, String> {
         let result = self.parse_expr_term()?;
-        if !self.complete_token_and_advance(&lexer::ReservedKeyword::In) {
+        if !complete_keyword!(self, In) {
             Ok(result)
         } else {
             self.expect_substr_and_advance("(")?;
-            if self.complete_token_and_advance(&lexer::ReservedKeyword::Select) {
+            if complete_keyword!(self, Select) {
                 let select = self.parse_select_body()?;
                 self.expect_substr_and_advance(")")?;
                 Ok(Expr::InSelect(Box::new(result), Box::new(select)))
@@ -635,7 +641,7 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
     fn parse_join_term(&mut self) -> Result<JoinTerm, String> {
         let join_item: JoinItem = self.parse_join_item()?;
         let alias: Option<String>;
-        if self.complete_token_and_advance(&lexer::ReservedKeyword::As) {
+        if complete_keyword!(self, As) {
             alias = self.parse_name();
             if !alias.is_some() {
                 return Err(String::from("expected table alias"));
@@ -651,20 +657,20 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
         let mut left_item = self.parse_join_term()?;
         loop {
             let mut join_type: Option<JoinType> = None;
-            if self.complete_token_and_advance(&lexer::ReservedKeyword::Left) {
+            if complete_keyword!(self, Left) {
                 join_type = Some(JoinType::LeftOuter);
-            } else if self.complete_token_and_advance(&lexer::ReservedKeyword::Right) {
+            } else if complete_keyword!(self, Right) {
                 join_type = Some(JoinType::RightOuter);
             }
             if join_type.is_some() {
                 // optional
-                self.complete_token_and_advance(&lexer::ReservedKeyword::Outer);
+                complete_keyword!(self, Outer);
                 self.expect_token_and_advance(&lexer::ReservedKeyword::Join)?;
             } else {
-                if self.complete_token_and_advance(&lexer::ReservedKeyword::Inner) {
+                if complete_keyword!(self, Inner) {
                     self.expect_token_and_advance(&lexer::ReservedKeyword::Join)?;
                     join_type = Some(JoinType::Inner);
-                } else if self.complete_token_and_advance(&lexer::ReservedKeyword::Join) {
+                } else if complete_keyword!(self, Join) {
                     join_type = Some(JoinType::Inner);
                 }
             }
@@ -673,7 +679,7 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
             }
             let right_item = self.parse_join_term()?;
             let mut on_clause : Option<Expr> = None;
-            if self.complete_token_and_advance(&lexer::ReservedKeyword::On) {
+            if complete_keyword!(self, On) {
                 on_clause = Some(self.parse_expr()?);
             }
             let join = JoinItem::Join(join_type.unwrap(), Box::new(left_item), Box::new(right_item), on_clause);
@@ -687,7 +693,7 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
             parse_list!(self {
                 let expr: Expr = self.parse_expr()?;
                 let alias: Option<String>;
-                if self.complete_token_and_advance(&lexer::ReservedKeyword::As) {
+                if complete_keyword!(self, As) {
                     alias = self.parse_name();
                     if !alias.is_some() {
                         return Err(String::from("expected column alias"));
@@ -709,23 +715,23 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
         });
 
         // where clause
-        if self.complete_token_and_advance(&lexer::ReservedKeyword::Where) {
+        if complete_keyword!(self, Where) {
             let expr: Expr = self.parse_expr()?;
             select.where_clause = Some(expr);
         }
 
-        if self.complete_token_and_advance(&lexer::ReservedKeyword::Group) {
+        if complete_keyword!(self, Group) {
             self.expect_token_and_advance(&lexer::ReservedKeyword::By)?;
             select.grouping = Some(self.parse_group_by_body()?);
         }
 
-        if self.complete_token_and_advance(&lexer::ReservedKeyword::Order) {
+        if complete_keyword!(self, Order) {
             self.expect_token_and_advance(&lexer::ReservedKeyword::By)?;
             select.order_by_clause = Some(self.parse_order_by_keys()?);
         }
 
         // limit clause
-        if self.complete_token_and_advance(&lexer::ReservedKeyword::Limit) {
+        if complete_keyword!(self, Limit) {
             let expr: Expr = self.parse_expr()?;
             select.limit_clause = Some(expr);
         }
@@ -736,7 +742,7 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
     fn parse_group_by_body(&mut self) -> Result<Grouping, String> {
         let keys = self.parse_order_by_keys()?;
         let mut having = None;
-        if self.complete_token_and_advance(&lexer::ReservedKeyword::Having) {
+        if complete_keyword!(self, Having) {
             having = Some(self.parse_expr()?);
         }
         Ok(Grouping{groups: keys, having_clause: having})
@@ -747,10 +753,10 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
         parse_list!(self {
             let expr: Expr = self.parse_expr()?;
             let mut direction = Direction::Ascending;
-            if self.complete_token_and_advance(&lexer::ReservedKeyword::Desc) {
+            if complete_keyword!(self, Desc) {
                 direction = Direction::Descending;
             } else {
-                self.complete_token_and_advance(&lexer::ReservedKeyword::Asc);
+                complete_keyword!(self, Asc);
             }
             clause.push(OrderByItem{expr, direction});
         });
@@ -760,11 +766,11 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
     fn parse_delete_body(&mut self) -> Result<Delete, String> {
         let identifier = self.expect_identifier()?;
         let mut where_clause: Option<_> = None;
-        if self.complete_token_and_advance(&lexer::ReservedKeyword::Where) {
+        if complete_keyword!(self, Where) {
             where_clause = Some(self.parse_expr()?);
         }
         let mut limit_clause: Option<_> = None;
-        if self.complete_token_and_advance(&lexer::ReservedKeyword::Limit) {
+        if complete_keyword!(self, Limit) {
             limit_clause = Some(self.parse_expr()?);
         }
         Ok(Delete{target: identifier, where_clause: where_clause, limit_clause: limit_clause})
@@ -782,7 +788,7 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
             self.expect_substr_and_advance(")")?;
             columns = Some(cols);
         }
-        if self.complete_token_and_advance(&lexer::ReservedKeyword::Select) {
+        if complete_keyword!(self, Select) {
             let select = self.parse_select_body()?;
             Ok(Insert{target: identifier, columns, source: InsertSource::Select(select)})
         } else {
