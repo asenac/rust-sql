@@ -70,10 +70,17 @@ pub struct OrderByItem {
 type OrderByClause = Vec<OrderByItem>;
 
 #[derive(Debug)]
+pub struct Grouping {
+    pub groups: OrderByClause,
+    pub having_clause: Option<Expr>,
+}
+
+#[derive(Debug)]
 pub struct Select {
     pub selection_list: Option<Vec<SelectItem>>,
     pub from_clause: Vec<JoinTerm>,
     pub where_clause: Option<Expr>,
+    pub grouping: Option<Grouping>,
     pub order_by_clause: Option<OrderByClause>,
     pub limit_clause: Option<Expr>,
 }
@@ -84,6 +91,7 @@ impl Select {
             selection_list: None,
             from_clause: Vec::new(),
             where_clause: None,
+            grouping: None,
             order_by_clause: None,
             limit_clause: None,
         }
@@ -707,9 +715,14 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
             select.where_clause = Some(expr);
         }
 
+        if self.complete_token_and_advance(&lexer::ReservedKeyword::Group) {
+            self.expect_token_and_advance(&lexer::ReservedKeyword::By)?;
+            select.grouping = Some(self.parse_group_by_body()?);
+        }
+
         if self.complete_token_and_advance(&lexer::ReservedKeyword::Order) {
             self.expect_token_and_advance(&lexer::ReservedKeyword::By)?;
-            select.order_by_clause = Some(self.parse_order_by_body()?);
+            select.order_by_clause = Some(self.parse_order_by_keys()?);
         }
 
         // limit clause
@@ -721,7 +734,16 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
         Ok(select)
     }
 
-    fn parse_order_by_body(&mut self) -> Result<OrderByClause, String> {
+    fn parse_group_by_body(&mut self) -> Result<Grouping, String> {
+        let keys = self.parse_order_by_keys()?;
+        let mut having = None;
+        if self.complete_token_and_advance(&lexer::ReservedKeyword::Having) {
+            having = Some(self.parse_expr()?);
+        }
+        Ok(Grouping{groups: keys, having_clause: having})
+    }
+
+    fn parse_order_by_keys(&mut self) -> Result<OrderByClause, String> {
         let mut clause = OrderByClause::new();
         loop {
             let expr: Expr = self.parse_expr()?;
