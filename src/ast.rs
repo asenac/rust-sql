@@ -284,6 +284,17 @@ struct ParserImpl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> {
     parameter_index: u64
 }
 
+macro_rules! parse_list {
+    ($sel:ident $body:block) => {
+        loop {
+            $body;
+            if !$sel.complete_substr_and_advance(",") {
+                break;
+            }
+        }
+    };
+}
+
 impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
     fn new(input: &'a str, it: Peekable<T>) -> Self {
         Self { input, it, parameter_index: 0 }
@@ -440,13 +451,10 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
             if self.complete_substr_and_advance("(") {
                 let mut params : Vec<Box<Expr>> = Vec::new();
                 if !self.complete_substr_and_advance(")") {
-                    loop {
+                    parse_list! (self {
                         let param = self.parse_expr()?;
-                        if !self.complete_substr_and_advance(",") {
-                            break;
-                        }
                         params.push(Box::new(param));
-                    }
+                    });
                     self.expect_substr_and_advance(")")?;
                 }
                 return Ok(Expr::FunctionCall(id, params));
@@ -478,13 +486,10 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
                 Ok(Expr::InSelect(Box::new(result), Box::new(select)))
             } else {
                 let mut terms = Vec::new();
-                loop {
+                parse_list!(self {
                     let term = self.parse_expr()?;
                     terms.push(Box::new(term));
-                    if !self.complete_substr_and_advance(",") {
-                        break;
-                    }
-                }
+                });
                 self.expect_substr_and_advance(")")?;
                 Ok(Expr::InList(Box::new(result), terms))
             }
@@ -679,7 +684,7 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
     fn parse_select_body(&mut self) -> Result<Select, String> {
         let mut select = Select::new();
         if !self.complete_substr_and_advance("*") {
-            loop {
+            parse_list!(self {
                 let expr: Expr = self.parse_expr()?;
                 let alias: Option<String>;
                 if self.complete_token_and_advance(&lexer::ReservedKeyword::As) {
@@ -693,21 +698,15 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
                 }
                 let select_item = SelectItem { expr, alias };
                 select.add_select_item(select_item);
-                if !self.complete_substr_and_advance(",") {
-                    break;
-                }
-            }
+            });
         }
 
         // mandatory from clause
         self.expect_token_and_advance(&lexer::ReservedKeyword::From)?;
-        loop {
+        parse_list!(self {
             let join_term: JoinTerm = self.parse_join_tree()?;
             select.from_clause.push(join_term);
-            if !self.complete_substr_and_advance(",") {
-                break;
-            }
-        }
+        });
 
         // where clause
         if self.complete_token_and_advance(&lexer::ReservedKeyword::Where) {
@@ -745,7 +744,7 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
 
     fn parse_order_by_keys(&mut self) -> Result<OrderByClause, String> {
         let mut clause = OrderByClause::new();
-        loop {
+        parse_list!(self {
             let expr: Expr = self.parse_expr()?;
             let mut direction = Direction::Ascending;
             if self.complete_token_and_advance(&lexer::ReservedKeyword::Desc) {
@@ -754,10 +753,7 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
                 self.complete_token_and_advance(&lexer::ReservedKeyword::Asc);
             }
             clause.push(OrderByItem{expr, direction});
-            if !self.complete_substr_and_advance(",") {
-                break;
-            }
-        }
+        });
         Ok(clause)
     }
 
@@ -779,13 +775,10 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
         let mut columns: Option<Vec<String>> = None;
         if self.complete_substr_and_advance("(") {
             let mut cols = Vec::new();
-            loop {
+            parse_list!(self {
                 let name = self.expect_name()?;
                 cols.push(name);
-                if !self.complete_substr_and_advance(",") {
-                    break;
-                }
-            }
+            });
             self.expect_substr_and_advance(")")?;
             columns = Some(cols);
         }
@@ -795,22 +788,16 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
         } else {
             self.expect_token_and_advance(&lexer::ReservedKeyword::Values)?;
             let mut rows = Vec::new();
-            loop {
+            parse_list!(self {
                 self.expect_substr_and_advance("(")?;
                 let mut values = Vec::new();
-                loop {
+                parse_list!(self {
                     let expr = self.parse_expr()?;
                     values.push(expr);
-                    if !self.complete_substr_and_advance(",") {
-                        break;
-                    }
-                }
+                });
                 self.expect_substr_and_advance(")")?;
                 rows.push(values);
-                if !self.complete_substr_and_advance(",") {
-                    break;
-                }
-            }
+            });
             Ok(Insert{target: identifier, columns, source: InsertSource::Values(rows)})
         }
     }
@@ -819,14 +806,11 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
         let identifier = self.expect_identifier()?;
         self.expect_substr_and_advance("(")?;
         let mut columns = Vec::new();
-        loop {
+        parse_list!(self {
             let name = self.expect_name()?;
             // @todo parse type
             columns.push(ColumnDef{name: name, data_type: TypeDef::String});
-            if !self.complete_substr_and_advance(",") {
-                break;
-            }
-        }
+        });
         self.expect_substr_and_advance(")")?;
         Ok(CreateTable{name: identifier, columns: columns})
     }
