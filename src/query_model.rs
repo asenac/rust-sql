@@ -619,6 +619,9 @@ impl<'a> ModelGenerator<'a> {
     }
 
     fn process_select(&mut self, select: &ast::Select, parent_context: Option<&NameResolutionContext>) -> Result<BoxRef, String> {
+        if select.limit_clause.is_some() || select.order_by_clause.is_some() {
+            return Err("unsupported SQL construct".to_string());
+        }
         let select_box = make_ref(QGBox::new(self.get_box_id(), BoxType::Select));
         let mut current_context = NameResolutionContext::new(Rc::clone(&select_box), parent_context);
         for join_item in &select.from_clause {

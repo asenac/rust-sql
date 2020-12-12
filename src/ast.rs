@@ -54,11 +54,27 @@ pub struct JoinTerm {
     pub alias: Option<String>,
 }
 
+
+#[derive(Debug)]
+pub enum Direction {
+    Ascending,
+    Descending
+}
+
+#[derive(Debug)]
+pub struct OrderByItem {
+    pub expr: Expr,
+    pub direction: Direction,
+}
+
+type OrderByClause = Vec<OrderByItem>;
+
 #[derive(Debug)]
 pub struct Select {
     pub selection_list: Option<Vec<SelectItem>>,
     pub from_clause: Vec<JoinTerm>,
     pub where_clause: Option<Expr>,
+    pub order_by_clause: Option<OrderByClause>,
     pub limit_clause: Option<Expr>,
 }
 
@@ -68,6 +84,7 @@ impl Select {
             selection_list: None,
             from_clause: Vec::new(),
             where_clause: None,
+            order_by_clause: None,
             limit_clause: None,
         }
     }
@@ -690,6 +707,11 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
             select.where_clause = Some(expr);
         }
 
+        if self.complete_token_and_advance(&lexer::ReservedKeyword::Order) {
+            self.expect_token_and_advance(&lexer::ReservedKeyword::By)?;
+            select.order_by_clause = Some(self.parse_order_by_body()?);
+        }
+
         // limit clause
         if self.complete_token_and_advance(&lexer::ReservedKeyword::Limit) {
             let expr: Expr = self.parse_expr()?;
@@ -697,6 +719,24 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
         }
 
         Ok(select)
+    }
+
+    fn parse_order_by_body(&mut self) -> Result<OrderByClause, String> {
+        let mut clause = OrderByClause::new();
+        loop {
+            let expr: Expr = self.parse_expr()?;
+            let mut direction = Direction::Ascending;
+            if self.complete_token_and_advance(&lexer::ReservedKeyword::Desc) {
+                direction = Direction::Descending;
+            } else {
+                self.complete_token_and_advance(&lexer::ReservedKeyword::Asc);
+            }
+            clause.push(OrderByItem{expr, direction});
+            if !self.complete_substr_and_advance(",") {
+                break;
+            }
+        }
+        Ok(clause)
     }
 
     fn parse_delete_body(&mut self) -> Result<Delete, String> {
@@ -822,6 +862,9 @@ mod tests {
         test_valid_query("select a from a where f1(?)");
         test_valid_query("select a from a where f1(?, ?, ?, ?)");
         test_valid_query("select a from a where exists(select 1 from b)");
+        test_valid_query("select a from a where c = 1 order by a");
+        test_valid_query("select a from a where c = 1 order by a, c desc");
+        test_valid_query("select a from a where c = 1 order by a asc, c");
 
         test_valid_query("insert into a values (1)");
         test_valid_query("insert into a(a) values (1)");
