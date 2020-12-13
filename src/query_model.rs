@@ -290,9 +290,35 @@ struct Column {
     expr: ExprRef,
 }
 
+use ast::Direction;
+
+struct KeyItem {
+    expr: ExprRef,
+    dir: Direction,
+}
+
+struct Select {
+    limit: Option<ExprRef>,
+    order_by: Option<Vec<KeyItem>>
+}
+
+impl Select {
+    fn new() -> Self {
+        Self {
+            limit: None,
+            order_by: None,
+        }
+    }
+}
+
+struct Grouping {
+    groups: Vec<KeyItem>
+}
+
 enum BoxType {
-    Select,
+    Select(Select),
     BaseTable(TableMetadata),
+    Grouping(Grouping),
 }
 
 struct QGBox {
@@ -353,10 +379,21 @@ impl QGBox {
 
     fn get_box_type_str(&self) -> &'static str {
         match self.box_type {
-            BoxType::Select => "Select",
+            BoxType::Select(_) => "Select",
             BoxType::BaseTable(_) => "BaseTable",
+            BoxType::Grouping(_) => "Grouping",
         }
     }
+
+    fn set_order_by(&mut self, order_by: Vec<KeyItem>) {
+        match &mut self.box_type {
+            BoxType::Select(a) => {
+                a.order_by = Some(order_by);
+            }
+            _ => panic!()
+        }
+    }
+
 
     fn visit_expressions<F>(&mut self, f: &mut F) where F: FnMut(&mut ExprRef) -> () {
         for c in &mut self.columns {
@@ -618,11 +655,15 @@ impl<'a> ModelGenerator<'a> {
         id
     }
 
+    fn make_select_box(&mut self) -> BoxRef {
+        make_ref(QGBox::new(self.get_box_id(), BoxType::Select(Select::new())))
+    }
+
     fn process_select(&mut self, select: &ast::Select, parent_context: Option<&NameResolutionContext>) -> Result<BoxRef, String> {
-        if select.limit_clause.is_some() || select.order_by_clause.is_some() {
+        if select.limit_clause.is_some() {
             return Err("unsupported SQL construct".to_string());
         }
-        let select_box = make_ref(QGBox::new(self.get_box_id(), BoxType::Select));
+        let select_box = self.make_select_box();
         let mut current_context = NameResolutionContext::new(Rc::clone(&select_box), parent_context);
         for join_item in &select.from_clause {
             self.add_join_term_to_select_box(join_item, &select_box, &mut current_context)?
@@ -641,6 +682,14 @@ impl<'a> ModelGenerator<'a> {
             self.add_subqueries(&select_box, &where_clause, &mut current_context)?;
             let expr = self.process_expr(&where_clause, &current_context)?;
             select_box.borrow_mut().add_predicate(expr);
+        }
+        if let Some(order_by_clause) = &select.order_by_clause {
+            let mut keys = Vec::new();
+            for key in order_by_clause {
+                let expr = self.process_expr(&key.expr, &current_context)?;
+                keys.push(KeyItem{expr, dir: key.direction});
+            }
+            select_box.borrow_mut().set_order_by(keys);
         }
         Ok(select_box)
     }
@@ -696,7 +745,7 @@ impl<'a> ModelGenerator<'a> {
             }
             Join(_, l, r, on) => {
                 // @todo outer joins
-                let select_box = make_ref(QGBox::new(self.get_box_id(), BoxType::Select));
+                let select_box = self.make_select_box();
                 let mut child_context = NameResolutionContext::new(Rc::clone(&select_box), current_context.parent_context);
 
                 self.add_join_term_to_select_box(l, &select_box, &mut child_context)?;
@@ -1035,11 +1084,11 @@ impl rewrite_engine::Rule<BoxRef> for MergeRule {
     fn condition(&mut self, obj: &BoxRef) -> bool {
         self.to_merge.clear();
         let borrowed_obj = obj.borrow();
-        if let BoxType::Select = borrowed_obj.box_type {
+        if let BoxType::Select(_) = borrowed_obj.box_type {
             for q in &borrowed_obj.quantifiers {
                 let borrowed_q = q.borrow();
                 if let QuantifierType::Foreach = borrowed_q.quantifier_type {
-                    if let BoxType::Select = borrowed_q.input_box.borrow().box_type {
+                    if let BoxType::Select(_) = borrowed_q.input_box.borrow().box_type {
                         self.to_merge.insert(Rc::clone(q));
                     }
                 }
@@ -1155,7 +1204,7 @@ mod tests {
 
     #[test]
     fn test_empty_rule() {
-        let top_box = make_ref(QGBox::new(0, BoxType::Select));
+        let top_box = make_ref(QGBox::new(0, BoxType::Select(Select::new())));
         let mut m = Model { top_box };
         let rule = Box::new(EmptyRule {});
         let mut rules = Vec::<RuleBox>::new();
@@ -1165,8 +1214,8 @@ mod tests {
 
     #[test]
     fn test_merge_rule() {
-        let top_box = make_ref(QGBox::new(0, BoxType::Select));
-        let nested_box = make_ref(QGBox::new(1, BoxType::Select));
+        let top_box = make_ref(QGBox::new(0, BoxType::Select(Select::new())));
+        let nested_box = make_ref(QGBox::new(1, BoxType::Select(Select::new())));
         let quantifier = make_ref(Quantifier::new(
             1,
             QuantifierType::Foreach,
@@ -1186,15 +1235,15 @@ mod tests {
 
     #[test]
     fn test_merge_rule_deep_apply() {
-        let top_box = make_ref(QGBox::new(0, BoxType::Select));
-        let nested_box1 = make_ref(QGBox::new(1, BoxType::Select));
+        let top_box = make_ref(QGBox::new(0, BoxType::Select(Select::new())));
+        let nested_box1 = make_ref(QGBox::new(1, BoxType::Select(Select::new())));
         let quantifier1 = make_ref(Quantifier::new(
             1,
             QuantifierType::Foreach,
             Rc::clone(&nested_box1),
             &top_box,
         ));
-        let nested_box2 = make_ref(QGBox::new(1, BoxType::Select));
+        let nested_box2 = make_ref(QGBox::new(1, BoxType::Select(Select::new())));
         let quantifier2 = make_ref(Quantifier::new(
             1,
             QuantifierType::Foreach,

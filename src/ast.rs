@@ -55,7 +55,7 @@ pub struct JoinTerm {
 }
 
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum Direction {
     Ascending,
     Descending
