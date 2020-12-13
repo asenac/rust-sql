@@ -316,6 +316,8 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
             } else if complete_keyword!(self, Insert) {
                 self.expect_token_and_advance(&ReservedKeyword::Into)?;
                 result.push(Statement::Insert(self.parse_insert_body()?));
+            } else if complete_keyword!(self, Update) {
+                result.push(Statement::Update(self.parse_update_body()?));
             } else if complete_keyword!(self, Delete) {
                 self.expect_token_and_advance(&ReservedKeyword::From)?;
                 result.push(Statement::Delete(self.parse_delete_body()?));
@@ -806,6 +808,32 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
             });
             Ok(Insert{target: identifier, columns, source: InsertSource::Values(rows)})
         }
+    }
+
+    fn parse_update_body(&mut self) -> Result<Update, String> {
+        let target = self.expect_identifier()?;
+        self.expect_token_and_advance(&lexer::ReservedKeyword::Set)?;
+        let mut assignments = Vec::new();
+        parse_list!(self {
+            let col = self.expect_name()?;
+            self.expect_substr_and_advance("=")?;
+            let expr: Expr = self.parse_expr()?;
+            assignments.push(Assignment{name: col, expr});
+        });
+
+        let mut where_clause = None;
+        if complete_keyword!(self, Where) {
+            let expr: Expr = self.parse_expr()?;
+            where_clause = Some(expr);
+        }
+
+        let mut limit_clause = None;
+        if complete_keyword!(self, Limit) {
+            let expr: Expr = self.parse_expr()?;
+            limit_clause = Some(expr);
+        }
+
+        Ok(Update{target, assignments, where_clause, limit_clause})
     }
 
     fn parse_create_table_body(&mut self) -> Result<CreateTable, String> {
