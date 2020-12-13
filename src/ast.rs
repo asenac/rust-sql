@@ -717,10 +717,7 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
         });
 
         // where clause
-        if complete_keyword!(self, Where) {
-            let expr: Expr = self.parse_expr()?;
-            select.where_clause = Some(expr);
-        }
+        select.where_clause = self.parse_where_clause()?;
 
         if complete_keyword!(self, Group) {
             self.expect_token_and_advance(&lexer::ReservedKeyword::By)?;
@@ -733,10 +730,7 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
         }
 
         // limit clause
-        if complete_keyword!(self, Limit) {
-            let expr: Expr = self.parse_expr()?;
-            select.limit_clause = Some(expr);
-        }
+        select.limit_clause = self.parse_limit_clause()?;
 
         Ok(select)
     }
@@ -767,14 +761,8 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
 
     fn parse_delete_body(&mut self) -> Result<Delete, String> {
         let identifier = self.expect_identifier()?;
-        let mut where_clause: Option<_> = None;
-        if complete_keyword!(self, Where) {
-            where_clause = Some(self.parse_expr()?);
-        }
-        let mut limit_clause: Option<_> = None;
-        if complete_keyword!(self, Limit) {
-            limit_clause = Some(self.parse_expr()?);
-        }
+        let where_clause = self.parse_where_clause()?;
+        let limit_clause = self.parse_limit_clause()?;
         Ok(Delete{target: identifier, where_clause: where_clause, limit_clause: limit_clause})
     }
 
@@ -821,19 +809,27 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
             assignments.push(Assignment{name: col, expr});
         });
 
+        let where_clause = self.parse_where_clause()?;
+        let limit_clause = self.parse_limit_clause()?;
+        Ok(Update{target, assignments, where_clause, limit_clause})
+    }
+
+    fn parse_where_clause(&mut self) -> Result<Option<Expr>, String> {
         let mut where_clause = None;
         if complete_keyword!(self, Where) {
             let expr: Expr = self.parse_expr()?;
             where_clause = Some(expr);
         }
+        Ok(where_clause)
+    }
 
+    fn parse_limit_clause(&mut self) -> Result<Option<Expr>, String> {
         let mut limit_clause = None;
         if complete_keyword!(self, Limit) {
             let expr: Expr = self.parse_expr()?;
             limit_clause = Some(expr);
         }
-
-        Ok(Update{target, assignments, where_clause, limit_clause})
+        Ok(limit_clause)
     }
 
     fn parse_create_table_body(&mut self) -> Result<CreateTable, String> {
