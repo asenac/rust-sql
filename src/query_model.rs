@@ -402,6 +402,15 @@ impl QGBox {
         }
     }
 
+    fn set_limit(&mut self, limit: ExprRef) {
+        match &mut self.box_type {
+            BoxType::Select(a) => {
+                a.limit = Some(limit);
+            }
+            _ => panic!()
+        }
+    }
+
     fn add_group(&mut self, group: KeyItem) {
         match &mut self.box_type {
             BoxType::Grouping(g) => {
@@ -422,6 +431,9 @@ impl QGBox {
         }
         match &mut self.box_type {
             BoxType::Select(s) => {
+                if s.limit.is_some() {
+                    f(s.limit.as_mut().unwrap());
+                }
                 if s.order_by.is_some() {
                     for p in s.order_by.as_mut().unwrap().iter_mut() {
                         f(&mut p.expr);
@@ -691,9 +703,6 @@ impl<'a> ModelGenerator<'a> {
     }
 
     fn process_select(&mut self, select: &ast::Select, parent_context: Option<&NameResolutionContext>) -> Result<BoxRef, String> {
-        if select.limit_clause.is_some() {
-            return Err("unsupported SQL construct".to_string());
-        }
         let mut current_box = self.make_select_box();
         let mut current_context = NameResolutionContext::new(Rc::clone(&current_box), parent_context);
         for join_item in &select.from_clause {
@@ -746,6 +755,11 @@ impl<'a> ModelGenerator<'a> {
         } else {
             // add all columns from all quantifiers
             self.add_all_columns(&current_box);
+        }
+
+        if let Some(limit_clause) = &select.limit_clause {
+            let expr = self.process_expr(&limit_clause, &current_context)?;
+            current_box.borrow_mut().set_limit(expr);
         }
         Ok(current_box)
     }
@@ -1048,6 +1062,9 @@ impl DotGenerator {
                     for p in s.order_by.as_ref().unwrap().iter() {
                         r.push_str(&format!(" {} {:?}", p.expr.borrow(), p.dir));
                     }
+                }
+                if s.limit.is_some() {
+                    r.push_str(&format!("| LIMIT {}", s.limit.as_ref().unwrap().borrow()));
                 }
             }
             BoxType::Grouping(g) => {
@@ -1401,5 +1418,6 @@ mod tests {
         test_valid_query("select a, b from a group by a asc, b");
         test_valid_query("select a, b from a group by a asc, b having b > 1");
         test_valid_query("select a, b from a group by a asc, b having b > (select a from a)");
+        test_valid_query("select a, b from a group by a asc, b having b > (select a from a) limit 1");
     }
 }
