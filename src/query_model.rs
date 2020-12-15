@@ -315,6 +315,14 @@ struct Grouping {
     groups: Vec<KeyItem>
 }
 
+impl Grouping {
+    fn new() -> Self {
+        Self {
+            groups: Vec::new(),
+        }
+    }
+}
+
 enum BoxType {
     Select(Select),
     BaseTable(TableMetadata),
@@ -394,6 +402,14 @@ impl QGBox {
         }
     }
 
+    fn add_group(&mut self, group: KeyItem) {
+        match &mut self.box_type {
+            BoxType::Grouping(g) => {
+                g.groups.push(group);
+            }
+            _ => panic!()
+        }
+    }
 
     fn visit_expressions<F>(&mut self, f: &mut F) where F: FnMut(&mut ExprRef) -> () {
         for c in &mut self.columns {
@@ -403,6 +419,21 @@ impl QGBox {
             for p in predicates.iter_mut() {
                 f(p);
             }
+        }
+        match &mut self.box_type {
+            BoxType::Select(s) => {
+                if s.order_by.is_some() {
+                    for p in s.order_by.as_mut().unwrap().iter_mut() {
+                        f(&mut p.expr);
+                    }
+                }
+            }
+            BoxType::Grouping(g) => {
+                for p in g.groups.iter_mut() {
+                    f(&mut p.expr);
+                }
+            }
+            _ => panic!()
         }
     }
 }
@@ -663,15 +694,39 @@ impl<'a> ModelGenerator<'a> {
         if select.limit_clause.is_some() {
             return Err("unsupported SQL construct".to_string());
         }
-        let select_box = self.make_select_box();
-        let mut current_context = NameResolutionContext::new(Rc::clone(&select_box), parent_context);
+        let mut current_box = self.make_select_box();
+        let mut current_context = NameResolutionContext::new(Rc::clone(&current_box), parent_context);
         for join_item in &select.from_clause {
-            self.add_join_term_to_select_box(join_item, &select_box, &mut current_context)?
+            self.add_join_term_to_select_box(join_item, &current_box, &mut current_context)?
         }
         if let Some(where_clause) = &select.where_clause {
-            self.add_subqueries(&select_box, &where_clause, &mut current_context)?;
+            self.add_subqueries(&current_box, &where_clause, &mut current_context)?;
             let expr = self.process_expr(&where_clause, &current_context)?;
-            select_box.borrow_mut().add_predicate(expr);
+            current_box.borrow_mut().add_predicate(expr);
+        }
+        if let Some(grouping) = &select.grouping {
+            self.add_all_columns(&current_box);
+
+            let grouping_box = make_ref(QGBox::new(self.get_box_id(), BoxType::Grouping(Grouping::new())));
+            for key in &grouping.groups {
+                let expr = self.process_expr(&key.expr, &current_context)?;
+                grouping_box.borrow_mut().add_column(None, expr.clone());
+                grouping_box.borrow_mut().add_group(KeyItem{expr, dir: key.direction});
+            }
+            let q = Quantifier::new(self.get_quantifier_id(), QuantifierType::Foreach, current_box, &grouping_box);
+            grouping_box.borrow_mut().add_quantifier(make_ref(q));
+
+            // put a select box on top of the grouping box and use the grouping quantifier for name resolution
+            current_box = self.make_select_box();
+            let q = make_ref(Quantifier::new(self.get_quantifier_id(), QuantifierType::Foreach, grouping_box, &current_box));
+            current_context = NameResolutionContext::new(Rc::clone(&current_box), parent_context);
+            current_context.add_quantifier(&q);
+            current_box.borrow_mut().add_quantifier(q);
+
+            if let Some(having_clause) = &grouping.having_clause {
+                let expr = self.process_expr(&having_clause, &current_context)?;
+                current_box.borrow_mut().add_predicate(expr);
+            }
         }
         if let Some(order_by_clause) = &select.order_by_clause {
             let mut keys = Vec::new();
@@ -679,19 +734,19 @@ impl<'a> ModelGenerator<'a> {
                 let expr = self.process_expr(&key.expr, &current_context)?;
                 keys.push(KeyItem{expr, dir: key.direction});
             }
-            select_box.borrow_mut().set_order_by(keys);
+            current_box.borrow_mut().set_order_by(keys);
         }
         if let Some(selection_list) = &select.selection_list {
             for item in selection_list {
-                self.add_subqueries(&select_box, &item.expr, &mut current_context)?;
+                self.add_subqueries(&current_box, &item.expr, &mut current_context)?;
                 let expr = self.process_expr(&item.expr, &current_context)?;
-                select_box.borrow_mut().add_column(item.alias.clone(), expr);
+                current_box.borrow_mut().add_column(item.alias.clone(), expr);
             }
         } else {
             // add all columns from all quantifiers
-            self.add_all_columns(&select_box);
+            self.add_all_columns(&current_box);
         }
-        Ok(select_box)
+        Ok(current_box)
     }
 
     fn add_all_columns(&mut self, select_box: &BoxRef) {
@@ -1323,5 +1378,9 @@ mod tests {
         test_valid_query("select a from (select a from a) where a or ?");
         test_valid_query("select a from (select * from a) where a in (a, b, c)");
         test_valid_query("select a from (select * from a where b in (?, ?)) where a in (a, b, c)");
+        test_valid_query("select a from a group by a asc");
+        test_valid_query("select a from a group by a asc, b");
+        test_valid_query("select a, b from a group by a asc, b");
+        test_valid_query("select a, b from a group by a asc, b having b > 1");
     }
 }
