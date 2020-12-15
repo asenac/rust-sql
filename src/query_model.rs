@@ -724,6 +724,7 @@ impl<'a> ModelGenerator<'a> {
             current_box.borrow_mut().add_quantifier(q);
 
             if let Some(having_clause) = &grouping.having_clause {
+                self.add_subqueries(&current_box, &having_clause, &mut current_context)?;
                 let expr = self.process_expr(&having_clause, &current_context)?;
                 current_box.borrow_mut().add_predicate(expr);
             }
@@ -1039,6 +1040,23 @@ impl DotGenerator {
         }
         for expr in predicates {
             r.push_str(&format!("| {}", expr.borrow()));
+        }
+        match &b.box_type {
+            BoxType::Select(s) => {
+                if s.order_by.is_some() {
+                    r.push_str("| ORDER");
+                    for p in s.order_by.as_ref().unwrap().iter() {
+                        r.push_str(&format!(" {} {:?}", p.expr.borrow(), p.dir));
+                    }
+                }
+            }
+            BoxType::Grouping(g) => {
+                r.push_str("| GROUP");
+                for p in g.groups.iter() {
+                    r.push_str(&format!(" {} {:?}", p.expr.borrow(), p.dir));
+                }
+            }
+            _ => {}
         }
         r
     }
@@ -1382,5 +1400,6 @@ mod tests {
         test_valid_query("select a from a group by a asc, b");
         test_valid_query("select a, b from a group by a asc, b");
         test_valid_query("select a, b from a group by a asc, b having b > 1");
+        test_valid_query("select a, b from a group by a asc, b having b > (select a from a)");
     }
 }
