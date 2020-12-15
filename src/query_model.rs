@@ -668,16 +668,6 @@ impl<'a> ModelGenerator<'a> {
         for join_item in &select.from_clause {
             self.add_join_term_to_select_box(join_item, &select_box, &mut current_context)?
         }
-        if let Some(selection_list) = &select.selection_list {
-            for item in selection_list {
-                self.add_subqueries(&select_box, &item.expr, &mut current_context)?;
-                let expr = self.process_expr(&item.expr, &current_context)?;
-                select_box.borrow_mut().add_column(item.alias.clone(), expr);
-            }
-        } else {
-            // add all columns from all quantifiers
-            self.add_all_columns(&select_box);
-        }
         if let Some(where_clause) = &select.where_clause {
             self.add_subqueries(&select_box, &where_clause, &mut current_context)?;
             let expr = self.process_expr(&where_clause, &current_context)?;
@@ -690,6 +680,16 @@ impl<'a> ModelGenerator<'a> {
                 keys.push(KeyItem{expr, dir: key.direction});
             }
             select_box.borrow_mut().set_order_by(keys);
+        }
+        if let Some(selection_list) = &select.selection_list {
+            for item in selection_list {
+                self.add_subqueries(&select_box, &item.expr, &mut current_context)?;
+                let expr = self.process_expr(&item.expr, &current_context)?;
+                select_box.borrow_mut().add_column(item.alias.clone(), expr);
+            }
+        } else {
+            // add all columns from all quantifiers
+            self.add_all_columns(&select_box);
         }
         Ok(select_box)
     }
