@@ -1178,8 +1178,10 @@ impl rewrite_engine::Rule<BoxRef> for MergeRule {
             for q in &borrowed_obj.quantifiers {
                 let borrowed_q = q.borrow();
                 if let QuantifierType::Foreach = borrowed_q.quantifier_type {
-                    if let BoxType::Select(_) = borrowed_q.input_box.borrow().box_type {
-                        self.to_merge.insert(Rc::clone(q));
+                    if let BoxType::Select(s) = &borrowed_q.input_box.borrow().box_type {
+                        if s.order_by.is_none() && s.limit.is_none() {
+                            self.to_merge.insert(Rc::clone(q));
+                        }
                     }
                 }
             }
