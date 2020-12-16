@@ -540,9 +540,9 @@ impl Model {
     }
 
     fn validate(&self) -> Result<(), String> {
-        let mut box_stack = vec![Rc::clone(&self.top_box)];
+        let mut box_stack = vec![(Rc::clone(&self.top_box), BTreeSet::<QuantifierRef>::new())];
         let mut visited = HashSet::new();
-        while let Some(b) = box_stack.pop() {
+        while let Some((b, parent_scope)) = box_stack.pop() {
             visited.insert(b.as_ptr());
 
             let mut b = b.borrow_mut();
@@ -552,17 +552,26 @@ impl Model {
             };
             b.visit_expressions(&mut f);
 
-            for q in b.quantifiers.iter() {
-                collected_quantifiers.remove(q);
-                let q = q.borrow();
+            for uq in b.quantifiers.iter() {
+                collected_quantifiers.remove(uq);
+                let q = uq.borrow();
                 let input_box = Rc::clone(&q.input_box);
                 if visited.contains(&input_box.as_ptr()) {
                     return Err(format!("box in quantifier {} already visited, loop in the model", q.id));
                 }
-                box_stack.push(input_box);
+
+                // add all the sibling quantifiers of the current one but not the current one
+                let mut nested_scope = parent_scope.clone();
+                for oq in b.quantifiers.iter() {
+                    if oq.as_ptr() != uq.as_ptr() {
+                        nested_scope.insert(Rc::clone(&oq));
+                    }
+                }
+                box_stack.push((input_box, nested_scope));
             }
 
-            if !collected_quantifiers.is_empty() {
+            let diff : Vec<QuantifierRef> = collected_quantifiers.difference(&parent_scope).cloned().collect();
+            if !diff.is_empty() {
                 // Note: this is valid for quantifiers from the outer context
                 // return Err(format!("box {} contains references to external quantifiers", b.id));
             }
