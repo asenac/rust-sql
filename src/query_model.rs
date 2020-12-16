@@ -1029,13 +1029,24 @@ impl DotGenerator {
             if let Some(predicates) = &b.predicates {
                 for p in predicates {
                     let q = get_quantifiers(p);
-                    match q.len() {
-                        1 => {
+
+                    // at least one quantifier must belong to the current box in order for the predicate to be displayed
+                    // as an arrow
+                    let mut any : bool = false;
+                    for iq in b.quantifiers.iter() {
+                        if q.contains(iq) {
+                            any = true;
+                            break;
+                        }
+                    }
+
+                    match (any, q.len()) {
+                        (true, 1) => {
                             let mut it = q.iter();
                             let q1 = it.next().unwrap();
                             arrows.push((Rc::clone(p), Rc::clone(q1), Rc::clone(q1)));
                         }
-                        2 => {
+                        (true, 2) => {
                             let mut it = q.iter();
                             let q1 = it.next().unwrap();
                             let q2 = it.next().unwrap();
@@ -1129,7 +1140,7 @@ impl DotGenerator {
             }
             _ => {}
         }
-        r
+        r.replace("<", "\\<").replace(">", "\\>")
     }
 
     fn inc(&mut self) {
