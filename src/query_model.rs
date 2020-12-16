@@ -1335,15 +1335,15 @@ mod tests {
             Rc::clone(&nested_box1),
             &top_box,
         ));
-        let nested_box2 = make_ref(QGBox::new(1, BoxType::Select(Select::new())));
+        let nested_box2 = make_ref(QGBox::new(2, BoxType::Select(Select::new())));
         let quantifier2 = make_ref(Quantifier::new(
-            1,
+            2,
             QuantifierType::Foreach,
             nested_box2,
             &nested_box1,
         ));
-        nested_box1.borrow_mut().add_quantifier(quantifier1);
-        top_box.borrow_mut().add_quantifier(quantifier2);
+        nested_box1.borrow_mut().add_quantifier(quantifier2);
+        top_box.borrow_mut().add_quantifier(quantifier1);
         let mut m = Model { top_box };
         let mut rule = MergeRule::new();
         assert_eq!(m.top_box.borrow().quantifiers.len(), 1);
