@@ -211,20 +211,24 @@ fn collect_column_refs(expr: &ExprRef) -> Vec<ExprRef> {
     result
 }
 
-fn collect_quantifiers(expr: &ExprRef) -> BTreeSet<QuantifierRef> {
-    let mut stack = vec![Rc::clone(expr)];
+fn get_quantifiers(expr: &ExprRef) -> BTreeSet<QuantifierRef> {
     let mut result: BTreeSet<QuantifierRef> = BTreeSet::new();
+    collect_quantifiers(&mut result, expr);
+    result
+}
+
+fn collect_quantifiers(quantifiers: &mut BTreeSet<QuantifierRef>, expr: &ExprRef) {
+    let mut stack = vec![Rc::clone(expr)];
     while let Some(expr) = stack.pop() {
         let e = expr.borrow();
         if let Some(q) = e.get_quantifier() {
-            result.insert(q);
+            quantifiers.insert(q);
         } else if let Some(operands) = &e.operands {
             for o in operands {
                 stack.push(Rc::clone(&o));
             }
         }
     }
-    result
 }
 
 impl fmt::Display for CmpOpType {
@@ -445,7 +449,7 @@ impl QGBox {
                     f(&mut p.expr);
                 }
             }
-            _ => panic!()
+            _ => {}
         }
     }
 }
@@ -541,14 +545,26 @@ impl Model {
         while let Some(b) = box_stack.pop() {
             visited.insert(b.as_ptr());
 
-            let b = b.borrow();
+            let mut b = b.borrow_mut();
+            let mut collected_quantifiers = BTreeSet::new();
+            let mut f = |e: &mut ExprRef| {
+                collect_quantifiers(&mut collected_quantifiers, e);
+            };
+            b.visit_expressions(&mut f);
+
             for q in b.quantifiers.iter() {
+                collected_quantifiers.remove(q);
                 let q = q.borrow();
                 let input_box = Rc::clone(&q.input_box);
                 if visited.contains(&input_box.as_ptr()) {
                     return Err(format!("box in quantifier {} already visited, loop in the model", q.id));
                 }
                 box_stack.push(input_box);
+            }
+
+            if !collected_quantifiers.is_empty() {
+                // Note: this is valid for quantifiers from the outer context
+                // return Err(format!("box {} contains references to external quantifiers", b.id));
             }
         }
         Ok(())
@@ -993,7 +1009,7 @@ impl DotGenerator {
             let b = b.borrow();
             if let Some(predicates) = &b.predicates {
                 for p in predicates {
-                    let q = collect_quantifiers(p);
+                    let q = get_quantifiers(p);
                     match q.len() {
                         1 => {
                             let mut it = q.iter();
