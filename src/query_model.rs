@@ -557,14 +557,18 @@ impl Model {
                 let q = uq.borrow();
                 let input_box = Rc::clone(&q.input_box);
                 if visited.contains(&input_box.as_ptr()) {
+                    // @todo we should break the loop here, to avoid memory leaks
                     return Err(format!("box in quantifier {} already visited, loop in the model", q.id));
                 }
 
-                // add all the sibling quantifiers of the current one but not the current one
+                // @todo perhaps use a COW wrapper
                 let mut nested_scope = parent_scope.clone();
-                for oq in b.quantifiers.iter() {
-                    if oq.as_ptr() != uq.as_ptr() {
-                        nested_scope.insert(Rc::clone(&oq));
+                if q.is_subquery() {
+                    // add all the sibling quantifiers of the current one but not the current one
+                    for oq in b.quantifiers.iter() {
+                        if oq.as_ptr() != uq.as_ptr() {
+                            nested_scope.insert(Rc::clone(&oq));
+                        }
                     }
                 }
                 box_stack.push((input_box, nested_scope));
@@ -573,7 +577,7 @@ impl Model {
             let diff : Vec<QuantifierRef> = collected_quantifiers.difference(&parent_scope).cloned().collect();
             if !diff.is_empty() {
                 // Note: this is valid for quantifiers from the outer context
-                // return Err(format!("box {} contains references to external quantifiers", b.id));
+                return Err(format!("box {} contains references to external quantifiers", b.id));
             }
         }
         Ok(())
@@ -761,13 +765,16 @@ impl<'a> ModelGenerator<'a> {
             self.add_all_columns(&current_box);
 
             let grouping_box = make_ref(QGBox::new(self.get_box_id(), BoxType::Grouping(Grouping::new())));
+            let q = make_ref(Quantifier::new(self.get_quantifier_id(), QuantifierType::Foreach, current_box, &grouping_box));
+            grouping_box.borrow_mut().add_quantifier(Rc::clone(&q));
+            // context for resolving the grouping keys
+            current_context = NameResolutionContext::new(Rc::clone(&grouping_box), parent_context);
+            current_context.add_quantifier(&q);
             for key in &grouping.groups {
                 let expr = self.process_expr(&key.expr, &current_context)?;
                 grouping_box.borrow_mut().add_column(None, expr.clone());
                 grouping_box.borrow_mut().add_group(KeyItem{expr, dir: key.direction});
             }
-            let q = Quantifier::new(self.get_quantifier_id(), QuantifierType::Foreach, current_box, &grouping_box);
-            grouping_box.borrow_mut().add_quantifier(make_ref(q));
 
             // put a select box on top of the grouping box and use the grouping quantifier for name resolution
             current_box = self.make_select_box();
