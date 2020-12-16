@@ -1495,5 +1495,6 @@ mod tests {
         test_valid_query("select a, b from a z where (select z.a from a) > 1");
         test_valid_query("select a, b from a z where (select a from a where a = z.a) > 1");
         test_valid_query("select a, b from a z where (select a from a where a = (select a from a where z.a > 2)) > 1");
+        test_valid_query("select a, b from a z where (select a from (select a from a where z.a > 2))");
     }
 }
