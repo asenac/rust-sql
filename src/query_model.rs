@@ -657,6 +657,9 @@ impl<'a> NameResolutionContext<'a> {
                 }
             }
         }
+        if let Some(parent) = &self.parent_context {
+            return parent.resolve_column(table, column);
+        }
         None
     }
 
@@ -1427,7 +1430,7 @@ mod tests {
             if let ast::Statement::Select(c) = &stmts[0] {
                 let mut generator = ModelGenerator::new(&catalog);
                 let model = generator.process(&c);
-                assert!(model.is_ok());
+                assert!(model.is_ok(), model.err().unwrap());
                 let mut model = model.ok().unwrap();
                 assert!(model.validate().is_ok());
 
@@ -1476,5 +1479,9 @@ mod tests {
         test_valid_query("select a, b from a group by a asc, b having b > 1");
         test_valid_query("select a, b from a group by a asc, b having b > (select a from a)");
         test_valid_query("select a, b from a group by a asc, b having b > (select a from a) limit 1");
+
+        test_valid_query("select a, b from a z where z.a > 1");
+        test_valid_query("select a, b from a z where (select z.a from a) > 1");
+        test_valid_query("select a, b from a z where (select a from a where a = z.a) > 1");
     }
 }
