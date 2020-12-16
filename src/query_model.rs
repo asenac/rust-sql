@@ -534,6 +534,25 @@ impl Model {
         self.top_box = new_box;
         other
     }
+
+    fn validate(&self) -> Result<(), String> {
+        let mut box_stack = vec![Rc::clone(&self.top_box)];
+        let mut visited = HashSet::new();
+        while let Some(b) = box_stack.pop() {
+            visited.insert(b.as_ptr());
+
+            let b = b.borrow();
+            for q in b.quantifiers.iter() {
+                let q = q.borrow();
+                let input_box = Rc::clone(&q.input_box);
+                if visited.contains(&input_box.as_ptr()) {
+                    return Err(format!("box in quantifier {} already visited, loop in the model", q.id));
+                }
+                box_stack.push(input_box);
+            }
+        }
+        Ok(())
+    }
 }
 
 fn make_ref<T>(t: T) -> Rc<RefCell<T>> {
@@ -1345,12 +1364,14 @@ mod tests {
         nested_box1.borrow_mut().add_quantifier(quantifier2);
         top_box.borrow_mut().add_quantifier(quantifier1);
         let mut m = Model { top_box };
+        assert!(m.validate().is_ok());
         let mut rule = MergeRule::new();
         assert_eq!(m.top_box.borrow().quantifiers.len(), 1);
         let result = rewrite_engine::deep_apply_rule(&mut rule, &mut m.top_box);
         if let Some(new_box) = result {
             m.replace_top_box(new_box);
         }
+        assert!(m.validate().is_ok());
         assert_eq!(m.top_box.borrow().quantifiers.len(), 0);
     }
 
@@ -1376,6 +1397,7 @@ mod tests {
                 let model = generator.process(&c);
                 assert!(model.is_ok());
                 let mut model = model.ok().unwrap();
+                assert!(model.validate().is_ok());
 
                 let output = DotGenerator::new().generate(&model, q);
                 assert!(output.is_ok());
@@ -1383,6 +1405,7 @@ mod tests {
                 println!("{}", output);
 
                 rewrite_model(&mut model);
+                assert!(model.validate().is_ok());
 
                 let output = DotGenerator::new().generate(&model, q);
                 assert!(output.is_ok());
