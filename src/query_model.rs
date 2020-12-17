@@ -1217,6 +1217,11 @@ impl Ord for Quantifier {
     }
 }
 
+
+//
+// MergeRule
+//
+
 struct MergeRule {
     to_merge: BTreeSet<QuantifierRef>,
 }
@@ -1279,6 +1284,56 @@ impl rewrite_engine::Rule<BoxRef> for MergeRule {
             mut_obj.predicates.as_mut().unwrap().extend(pred_to_add);
         }
         self.to_merge.clear();
+        None
+    }
+}
+
+//
+// PushDownPredicates
+//
+
+struct PushDownPredicatesRule {
+    to_pushdown : HashMap<ExprRef, BTreeSet<QuantifierRef>>
+
+}
+
+impl PushDownPredicatesRule {
+    fn new() -> Self {
+        Self {
+            to_pushdown : HashMap::new(),
+        }
+    }
+}
+
+impl rewrite_engine::Rule<BoxRef> for PushDownPredicatesRule {
+    fn name(&self) -> &'static str {
+        "PushDownPredicatesRule"
+    }
+    fn apply_top_down(&self) -> bool {
+        false
+    }
+    fn condition(&mut self, obj: &BoxRef) -> bool {
+        self.to_pushdown.clear();
+        let borrowed_obj = obj.borrow();
+        if let Some(predicates) = &borrowed_obj.predicates {
+            for predicate in predicates {
+                // we need to check if the quantifier belongs to the current box
+                let quantifiers = get_quantifiers(predicate);
+                if quantifiers.len() == 1 {
+                    let only_quantifier = quantifiers.iter().next().unwrap();
+                    for q in &borrowed_obj.quantifiers {
+                        if q == only_quantifier {
+                            // @todo
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        !self.to_pushdown.is_empty()
+    }
+    fn action(&mut self, obj: &mut BoxRef) -> Option<BoxRef> {
+        // @todo
         None
     }
 }
