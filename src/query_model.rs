@@ -1306,7 +1306,14 @@ impl<'a> rewrite_engine::Rule<ExprRef> for DereferenceRule<'a> {
         }
     }
     fn action(&mut self, obj: &mut ExprRef) -> Option<ExprRef> {
-        obj.borrow().dereference()
+        let mut last;
+        loop {
+            last = obj.borrow().dereference();
+            if !last.is_some() || !self.condition(last.as_ref().unwrap()) {
+                break;
+            }
+        }
+        last
     }
 }
 
