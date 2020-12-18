@@ -24,9 +24,6 @@ mod rewrite_engine;
 
 // execution engine
 
-// storage engine
-mod storage_engine;
-
 // interpreter
 
 /// simple interpreter to manually test the rewrite engine
