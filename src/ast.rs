@@ -160,6 +160,12 @@ pub enum NaryExprType {
 }
 
 #[derive(Debug)]
+pub struct CaseExpr {
+    pub case_branches: Vec<(Box<Expr>, Box<Expr>)>,
+    pub else_branch: Option<Box<Expr>>,
+}
+
+#[derive(Debug)]
 pub enum Expr {
     Parameter(u64),
     Reference(Identifier),
@@ -173,6 +179,7 @@ pub enum Expr {
     InSelect(Box<Expr>, Box<Select>),
     InList(Box<Expr>, Vec<Box<Expr>>),
     FunctionCall(Identifier, Vec<Box<Expr>>),
+    Case(CaseExpr),
 }
 
 impl Expr {
@@ -230,6 +237,15 @@ impl<'a> Iterator for ExprIterator<'a> {
                         self.stack.push(e);
                     }
                 },
+                Case(case_expr) => {
+                    for (c, t) in case_expr.case_branches.iter() {
+                        self.stack.push(c);
+                        self.stack.push(t);
+                    }
+                    for e in case_expr.else_branch.iter() {
+                        self.stack.push(e);
+                    }
+                }
             }
             Some(top)
         } else {
@@ -298,6 +314,11 @@ macro_rules! parse_list {
 macro_rules! complete_keyword {
     ($sel:ident, $keyword:ident) => {
         $sel.complete_token_and_advance(&lexer::ReservedKeyword::$keyword)
+    };
+}
+macro_rules! expect_keyword {
+    ($sel:ident, $keyword:ident) => {
+        $sel.expect_token_and_advance(&lexer::ReservedKeyword::$keyword)
     };
 }
 
@@ -455,6 +476,24 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
             return Ok(Expr::BooleanLiteral(true));
         } else if complete_keyword!(self, False) {
             return Ok(Expr::BooleanLiteral(false));
+        } else if complete_keyword!(self, Case) {
+            let mut case_expr = CaseExpr{case_branches: Vec::new(), else_branch: None};
+            expect_keyword!(self, When)?;
+            loop {
+                let case = self.parse_expr()?;
+                expect_keyword!(self, Then)?;
+                let then = self.parse_expr()?;
+                case_expr.case_branches.push((Box::new(case), Box::new(then)));
+                if !complete_keyword!(self, When) {
+                    break;
+                }
+            }
+            if complete_keyword!(self, Else) {
+                let else_branch = self.parse_expr()?;
+                case_expr.else_branch = Some(Box::new(else_branch));
+            }
+            expect_keyword!(self, End)?;
+            return Ok(Expr::Case(case_expr));
         } else if let Some(id) = self.parse_identifier() {
             if self.complete_substr_and_advance("(") {
                 let mut params : Vec<Box<Expr>> = Vec::new();
@@ -913,6 +952,9 @@ mod tests {
         test_invalid_query("delete from a where a = 18446744073709551615", Some("number too large to fit in target type".to_string()));
         test_invalid_query("delete from a where a = 9223372036854775808", Some("number too large to fit in target type".to_string()));
         test_valid_query("delete from a where a = 9223372036854775807");
+
+        test_valid_query("select case when a = 1 then 1 end from a");
+        test_valid_query("select case when a = 1 then 1 else 2 end from a");
     }
 
     #[test]
