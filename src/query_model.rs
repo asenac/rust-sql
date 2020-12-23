@@ -83,6 +83,7 @@ enum ExprType {
     Literal(Value),
     Logical(LogicalExprType),
     Parameter(u64),
+    Case,
 }
 
 type ExprRef = Rc<RefCell<Expr>>;
@@ -151,6 +152,13 @@ impl Expr {
         Self {
             expr_type: ExprType::Cmp(cmp_type),
             operands: Some(vec![left, right]),
+        }
+    }
+
+    fn make_case(operands: Vec<ExprRef>) -> Self {
+        Self {
+            expr_type: ExprType::Case,
+            operands: Some(operands),
         }
     }
 
@@ -282,6 +290,22 @@ impl fmt::Display for Expr {
                     }
                     write!(f, "({})", o.borrow())?;
                 }
+                Ok(())
+            }
+            Case => {
+                let operands = self.operands.as_ref().unwrap();
+                write!(f, "CASE")?;
+                for (i, o) in operands.iter().enumerate() {
+                    let word = if i % 2 == 1 {
+                        "THEN"
+                    } else if i == operands.len() - 1 {
+                        "ELSE"
+                    } else {
+                        "WHEN"
+                    };
+                    write!(f, " {} {}", word, o.borrow())?;
+                }
+                write!(f, " END")?;
                 Ok(())
             }
         }
@@ -994,6 +1018,17 @@ impl<'a> ModelGenerator<'a> {
                     _ => Err(String::from("expression not supported!"))
                 }
             }
+            ast::Expr::Case(case_expr) => {
+                let mut operands = Vec::new();
+                for (c, t) in case_expr.case_branches.iter() {
+                    operands.push(self.process_expr(c, current_context)?);
+                    operands.push(self.process_expr(t, current_context)?);
+                }
+                for e in case_expr.else_branch.iter() {
+                    operands.push(self.process_expr(e, current_context)?);
+                }
+                Ok(make_ref(Expr::make_case(operands)))
+            }
             _ => {
                 Err(String::from("expression not supported!"))
             }
@@ -1558,5 +1593,7 @@ mod tests {
         test_valid_query("select a, b from a z where (select a from a where a = z.a) > 1");
         test_valid_query("select a, b from a z where (select a from a where a = (select a from a where z.a > 2)) > 1");
         test_valid_query("select a, b from a z where (select a from (select a from a where z.a > 2))");
+
+        test_valid_query("select case when a = 1 then true else false end as caseexpr from a");
     }
 }
