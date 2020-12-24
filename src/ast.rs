@@ -180,6 +180,7 @@ pub enum Expr {
     InList(Box<Expr>, Vec<Box<Expr>>),
     FunctionCall(Identifier, Vec<Box<Expr>>),
     Case(CaseExpr),
+    IsNull(Box<Expr>),
 }
 
 impl Expr {
@@ -225,7 +226,7 @@ impl<'a> Iterator for ExprIterator<'a> {
                         self.stack.push(e);
                     }
                 },
-                Unary(e) => {
+                IsNull(e) | Unary(e) => {
                     self.stack.push(e);
                 },
                 Binary(_, l, r) => {
@@ -523,9 +524,7 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
     /// handles IN-lists and IN SELECT expressions
     fn parse_expr_in(&mut self) -> Result<Expr, String> {
         let result = self.parse_expr_term()?;
-        if !complete_keyword!(self, In) {
-            Ok(result)
-        } else {
+        if complete_keyword!(self, In) {
             self.expect_substr_and_advance("(")?;
             if complete_keyword!(self, Select) {
                 let select = self.parse_select_body()?;
@@ -540,6 +539,11 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
                 self.expect_substr_and_advance(")")?;
                 Ok(Expr::InList(Box::new(result), terms))
             }
+        } else if complete_keyword!(self, Is) {
+            expect_keyword!(self, Null)?;
+            Ok(Expr::IsNull(Box::new(result)))
+        } else {
+            Ok(result)
         }
     }
 

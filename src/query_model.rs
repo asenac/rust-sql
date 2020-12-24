@@ -84,6 +84,7 @@ enum ExprType {
     Logical(LogicalExprType),
     Parameter(u64),
     Case,
+    IsNull,
 }
 
 type ExprRef = Rc<RefCell<Expr>>;
@@ -159,6 +160,13 @@ impl Expr {
         Self {
             expr_type: ExprType::Case,
             operands: Some(operands),
+        }
+    }
+
+    fn make_is_null(operand: ExprRef) -> Self {
+        Self {
+            expr_type: ExprType::IsNull,
+            operands: Some(vec![operand]),
         }
     }
 
@@ -305,8 +313,11 @@ impl fmt::Display for Expr {
                     };
                     write!(f, " {} {}", word, o.borrow())?;
                 }
-                write!(f, " END")?;
-                Ok(())
+                write!(f, " END")
+            }
+            IsNull => {
+                let operands = self.operands.as_ref().unwrap();
+                write!(f, "({}) IS NULL", operands[0].borrow())
             }
         }
     }
@@ -1029,6 +1040,10 @@ impl<'a> ModelGenerator<'a> {
                 }
                 Ok(make_ref(Expr::make_case(operands)))
             }
+            ast::Expr::IsNull(operand) => {
+                let operand = self.process_expr(operand, current_context)?;
+                Ok(make_ref(Expr::make_is_null(operand)))
+            }
             _ => {
                 Err(String::from("expression not supported!"))
             }
@@ -1367,7 +1382,7 @@ impl rewrite_engine::Rule<BoxRef> for PushDownPredicatesRule {
         }
         !self.to_pushdown.is_empty()
     }
-    fn action(&mut self, obj: &mut BoxRef) -> Option<BoxRef> {
+    fn action(&mut self, _obj: &mut BoxRef) -> Option<BoxRef> {
         // @todo
         None
     }
