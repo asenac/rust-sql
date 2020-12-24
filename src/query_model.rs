@@ -563,6 +563,26 @@ impl Quantifier {
     }
 }
 
+impl PartialEq for Quantifier {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+
+impl Eq for Quantifier {}
+
+impl PartialOrd for Quantifier {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.id.cmp(&other.id))
+    }
+}
+
+impl Ord for Quantifier {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.id.cmp(&other.id)
+    }
+}
+
 pub struct Model {
     top_box: BoxRef,
 }
@@ -1246,27 +1266,6 @@ impl rewrite_engine::Rule<BoxRef> for EmptyRule {
         None
     }
 }
-
-impl PartialEq for Quantifier {
-    fn eq(&self, other: &Self) -> bool {
-        self.id == other.id
-    }
-}
-
-impl Eq for Quantifier {}
-
-impl PartialOrd for Quantifier {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.id.cmp(&other.id))
-    }
-}
-
-impl Ord for Quantifier {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.id.cmp(&other.id)
-    }
-}
-
 
 //
 // MergeRule
