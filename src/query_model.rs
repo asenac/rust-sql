@@ -1277,11 +1277,15 @@ impl DotGenerator {
 
             self.new_line(&format!("subgraph cluster{} {{", b.id));
             self.inc();
-            self.new_line(&format!("label = \"Box{}:{}\"", b.id, b.get_box_type_str()));
+            self.new_line(&format!(
+                "label = \"Box{}:{}\"",
+                b.id,
+                Self::get_box_title(&b)
+            ));
             self.new_line(&format!(
                 "boxhead{} [ shape = record, label=\"{}\" ]",
                 b.id,
-                DotGenerator::get_box_head(&b, &other_predicates[..])
+                Self::get_box_head(&b, &other_predicates[..])
             ));
 
             self.new_line("{");
@@ -1373,6 +1377,13 @@ impl DotGenerator {
             _ => {}
         }
         r.replace("<", "\\<").replace(">", "\\>")
+    }
+
+    fn get_box_title(b: &QGBox) -> String {
+        match &b.box_type {
+            BoxType::BaseTable(metadata) => format!("{} {}", b.get_box_type_str(), metadata.name),
+            _ => b.get_box_type_str().to_string(),
+        }
     }
 
     fn inc(&mut self) {
