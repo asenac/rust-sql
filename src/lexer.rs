@@ -2,6 +2,7 @@ use std::iter::*;
 
 #[derive(Debug, PartialEq)]
 pub enum ReservedKeyword {
+    All,
     And,
     As,
     Asc,
@@ -38,6 +39,7 @@ pub enum ReservedKeyword {
     Table,
     Then,
     True,
+    Union,
     Update,
     Values,
     When,

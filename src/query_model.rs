@@ -367,6 +367,7 @@ enum BoxType {
     BaseTable(TableMetadata),
     Grouping(Grouping),
     OuterJoin(Select),
+    Union,
 }
 
 struct QGBox {
@@ -437,6 +438,7 @@ impl QGBox {
             BoxType::OuterJoin(_) => "OuterJoin",
             BoxType::BaseTable(_) => "BaseTable",
             BoxType::Grouping(_) => "Grouping",
+            BoxType::Union => "Union",
         }
     }
 
