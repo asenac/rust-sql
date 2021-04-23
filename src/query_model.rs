@@ -196,6 +196,13 @@ impl Expr {
         }
     }
 
+    fn is_runtime_constant(&self) -> bool {
+        match self.expr_type {
+            ExprType::Parameter(_) | ExprType::Literal(_) => true,
+            _ => false,
+        }
+    }
+
     fn dereference(&self) -> Option<ExprRef> {
         if let ExprType::ColumnReference(c) = &self.expr_type {
             let q = c.quantifier.borrow();
