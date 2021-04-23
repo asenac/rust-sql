@@ -331,7 +331,7 @@ struct Column {
     expr: ExprRef,
 }
 
-use ast::Direction;
+use ast::{Direction, JoinType};
 
 struct KeyItem {
     expr: ExprRef,
@@ -366,6 +366,7 @@ enum BoxType {
     Select(Select),
     BaseTable(TableMetadata),
     Grouping(Grouping),
+    OuterJoin(Select),
 }
 
 struct QGBox {
@@ -433,6 +434,7 @@ impl QGBox {
     fn get_box_type_str(&self) -> &'static str {
         match self.box_type {
             BoxType::Select(_) => "Select",
+            BoxType::OuterJoin(_) => "OuterJoin",
             BoxType::BaseTable(_) => "BaseTable",
             BoxType::Grouping(_) => "Grouping",
         }
@@ -849,6 +851,13 @@ impl<'a> ModelGenerator<'a> {
         ))
     }
 
+    fn make_outer_join_box(&mut self) -> BoxRef {
+        make_ref(QGBox::new(
+            self.get_box_id(),
+            BoxType::OuterJoin(Select::new()),
+        ))
+    }
+
     fn process_select(
         &mut self,
         select: &ast::Select,
@@ -858,7 +867,7 @@ impl<'a> ModelGenerator<'a> {
         let mut current_context =
             NameResolutionContext::new(Rc::clone(&current_box), parent_context);
         for join_item in &select.from_clause {
-            self.add_join_term_to_select_box(join_item, &current_box, &mut current_context)?
+            self.add_join_term_to_select_box(join_item, &current_box, &mut current_context)?;
         }
         if let Some(where_clause) = &select.where_clause {
             self.add_subqueries(&current_box, &where_clause, &mut current_context)?;
@@ -963,7 +972,7 @@ impl<'a> ModelGenerator<'a> {
         join_term: &ast::JoinTerm,
         select_box: &BoxRef,
         current_context: &mut NameResolutionContext,
-    ) -> Result<(), String> {
+    ) -> Result<QuantifierRef, String> {
         let b = self.process_join_item(&join_term.join_item, current_context)?;
         let mut q = Quantifier::new(
             self.get_quantifier_id(),
@@ -976,8 +985,8 @@ impl<'a> ModelGenerator<'a> {
         }
         let q = make_ref(q);
         current_context.add_quantifier(&q);
-        select_box.borrow_mut().add_quantifier(q);
-        Ok(())
+        select_box.borrow_mut().add_quantifier(Rc::clone(&q));
+        Ok(q)
     }
 
     fn process_join_item(
@@ -1008,16 +1017,24 @@ impl<'a> ModelGenerator<'a> {
                 }
                 Ok(table_box)
             }
-            Join(_, l, r, on) => {
-                // @todo outer joins
-                let select_box = self.make_select_box();
+            Join(join_type, l, r, on) => {
+                let select_box = match join_type {
+                    JoinType::LeftOuter | JoinType::RightOuter => self.make_outer_join_box(),
+                    JoinType::Inner => self.make_select_box(),
+                };
                 let mut child_context = NameResolutionContext::new(
                     Rc::clone(&select_box),
                     current_context.parent_context,
                 );
 
-                self.add_join_term_to_select_box(l, &select_box, &mut child_context)?;
-                self.add_join_term_to_select_box(r, &select_box, &mut child_context)?;
+                let lq = self.add_join_term_to_select_box(l, &select_box, &mut child_context)?;
+                if let JoinType::LeftOuter = join_type {
+                    lq.borrow_mut().quantifier_type = QuantifierType::PreservedForeach;
+                }
+                let rq = self.add_join_term_to_select_box(r, &select_box, &mut child_context)?;
+                if let JoinType::RightOuter = join_type {
+                    rq.borrow_mut().quantifier_type = QuantifierType::PreservedForeach;
+                }
 
                 if let Some(expr) = &on {
                     // subqueries in the ON clause should not see the siblings in the current context
