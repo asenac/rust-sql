@@ -24,12 +24,15 @@ impl TableMetadata {
     pub fn new(name: &str) -> Self {
         Self {
             name: name.to_string(),
-            columns: Vec::new()
+            columns: Vec::new(),
         }
     }
 
     pub fn add_column(&mut self, name: &str) {
-        self.columns.push(ColumnMetadata{name: name.to_string(), data_type: DataType::String});
+        self.columns.push(ColumnMetadata {
+            name: name.to_string(),
+            data_type: DataType::String,
+        });
     }
 }
 
@@ -40,13 +43,13 @@ pub trait MetadataCatalog {
 
 /// fake metadata catalog used for testing
 pub struct FakeCatalog {
-    tables : HashMap<String, TableMetadata>
+    tables: HashMap<String, TableMetadata>,
 }
 
 impl FakeCatalog {
     pub fn new() -> Self {
         Self {
-            tables: HashMap::new()
+            tables: HashMap::new(),
         }
     }
 

@@ -1,10 +1,10 @@
-use std::fmt;
+use crate::ast;
+use crate::metadata::*;
 use std::cell::RefCell;
 use std::cmp::*;
 use std::collections::*;
+use std::fmt;
 use std::rc::*;
-use crate::ast;
-use crate::metadata::*;
 
 #[derive(Clone)]
 struct ColumnReference {
@@ -22,7 +22,7 @@ struct BaseColumn {
 #[derive(Clone)]
 enum LogicalExprType {
     And,
-    Or
+    Or,
 }
 
 #[derive(Clone)]
@@ -92,18 +92,18 @@ type ExprRef = Rc<RefCell<Expr>>;
 #[derive(Clone)]
 struct Expr {
     expr_type: ExprType,
-    operands: Option<Vec<ExprRef>>
+    operands: Option<Vec<ExprRef>>,
 }
 
 impl Expr {
     fn make_base_column(parent_box: &BoxRef, position: usize) -> Self {
         let base_col = BaseColumn {
             parent_box: Rc::downgrade(&parent_box),
-            position: position
+            position: position,
         };
         Self {
             expr_type: ExprType::BaseColumn(base_col),
-            operands: None
+            operands: None,
         }
     }
 
@@ -111,18 +111,18 @@ impl Expr {
         let col_ref = ColumnReference {
             quantifier: quantifier,
             position: position,
-            data_type: DataType::String
+            data_type: DataType::String,
         };
         Self {
             expr_type: ExprType::ColumnReference(col_ref),
-            operands: None
+            operands: None,
         }
     }
 
     fn make_parameter(index: u64) -> Self {
         Self {
             expr_type: ExprType::Parameter(index),
-            operands: None
+            operands: None,
         }
     }
 
@@ -131,21 +131,21 @@ impl Expr {
         operands.extend(list);
         Self {
             expr_type: ExprType::InList,
-            operands: Some(operands)
+            operands: Some(operands),
         }
     }
 
     fn make_logical(type_: LogicalExprType, list: Vec<ExprRef>) -> Self {
         Self {
             expr_type: ExprType::Logical(type_),
-            operands: Some(list)
+            operands: Some(list),
         }
     }
 
     fn make_literal(value: Value) -> Self {
         Self {
             expr_type: ExprType::Literal(value),
-            operands: None
+            operands: None,
         }
     }
 
@@ -175,12 +175,8 @@ impl Expr {
             (ExprType::ColumnReference(l), ExprType::ColumnReference(r)) => {
                 l.position == r.position && l.quantifier == r.quantifier
             }
-            (ExprType::Parameter(l), ExprType::Parameter(r)) => {
-                l == r
-            }
-            _ => {
-                false
-            }
+            (ExprType::Parameter(l), ExprType::Parameter(r)) => l == r,
+            _ => false,
         }
     }
 
@@ -282,7 +278,13 @@ impl fmt::Display for Expr {
             Literal(c) => write!(f, "{}", c),
             Cmp(t) => {
                 let operands = self.operands.as_ref().unwrap();
-                write!(f, "({}) {} ({})", operands[0].borrow(), t, operands[1].borrow())
+                write!(
+                    f,
+                    "({}) {} ({})",
+                    operands[0].borrow(),
+                    t,
+                    operands[1].borrow()
+                )
             }
             Logical(t) => {
                 let operands = self.operands.as_ref().unwrap();
@@ -338,7 +340,7 @@ struct KeyItem {
 
 struct Select {
     limit: Option<ExprRef>,
-    order_by: Option<Vec<KeyItem>>
+    order_by: Option<Vec<KeyItem>>,
 }
 
 impl Select {
@@ -351,14 +353,12 @@ impl Select {
 }
 
 struct Grouping {
-    groups: Vec<KeyItem>
+    groups: Vec<KeyItem>,
 }
 
 impl Grouping {
     fn new() -> Self {
-        Self {
-            groups: Vec::new(),
-        }
+        Self { groups: Vec::new() }
     }
 }
 
@@ -383,7 +383,7 @@ impl QGBox {
             box_type: box_type,
             columns: Vec::new(),
             quantifiers: BTreeSet::new(),
-            predicates: None
+            predicates: None,
         }
     }
     /// use add_quantifier_to_box instead to properly set the parent box of the quantifier
@@ -394,7 +394,10 @@ impl QGBox {
         self.quantifiers.remove(q);
     }
     fn add_column(&mut self, name: Option<String>, expr: ExprRef) {
-        self.columns.push(Column{name : name, expr: expr});
+        self.columns.push(Column {
+            name: name,
+            expr: expr,
+        });
     }
     fn add_column_if_not_exists(&mut self, expr: Expr) -> usize {
         for (i, c) in self.columns.iter().enumerate() {
@@ -403,7 +406,10 @@ impl QGBox {
             }
         }
         let pos = self.columns.len();
-        self.columns.push(Column{name: None, expr: make_ref(expr)});
+        self.columns.push(Column {
+            name: None,
+            expr: make_ref(expr),
+        });
         pos
     }
     fn add_predicate(&mut self, predicate: ExprRef) {
@@ -437,7 +443,7 @@ impl QGBox {
             BoxType::Select(a) => {
                 a.order_by = Some(order_by);
             }
-            _ => panic!()
+            _ => panic!(),
         }
     }
 
@@ -446,7 +452,7 @@ impl QGBox {
             BoxType::Select(a) => {
                 a.limit = Some(limit);
             }
-            _ => panic!()
+            _ => panic!(),
         }
     }
 
@@ -455,11 +461,14 @@ impl QGBox {
             BoxType::Grouping(g) => {
                 g.groups.push(group);
             }
-            _ => panic!()
+            _ => panic!(),
         }
     }
 
-    fn visit_expressions<F>(&mut self, f: &mut F) where F: FnMut(&mut ExprRef) -> () {
+    fn visit_expressions<F>(&mut self, f: &mut F)
+    where
+        F: FnMut(&mut ExprRef) -> (),
+    {
         for c in &mut self.columns {
             f(&mut c.expr);
         }
@@ -521,7 +530,7 @@ struct Quantifier {
     quantifier_type: QuantifierType,
     input_box: BoxRef,
     parent_box: Weak<RefCell<QGBox>>,
-    alias: Option<String>
+    alias: Option<String>,
 }
 
 impl Quantifier {
@@ -536,7 +545,7 @@ impl Quantifier {
             quantifier_type: quantifier_type,
             input_box: input_box,
             parent_box: Rc::downgrade(parent_box),
-            alias: None
+            alias: None,
         }
     }
 
@@ -552,13 +561,13 @@ impl Quantifier {
         if let BoxType::BaseTable(t) = &b.box_type {
             return Some(t.name.clone());
         }
-        return None
+        return None;
     }
 
     fn is_subquery(&self) -> bool {
         match &self.quantifier_type {
             QuantifierType::Existential | QuantifierType::Scalar => true,
-            _ => false
+            _ => false,
         }
     }
 }
@@ -613,7 +622,10 @@ impl Model {
                 let input_box = Rc::clone(&q.input_box);
                 if visited.contains(&input_box.as_ptr()) {
                     // @todo we should break the loop here, to avoid memory leaks
-                    return Err(format!("box in quantifier {} already visited, loop in the model", q.id));
+                    return Err(format!(
+                        "box in quantifier {} already visited, loop in the model",
+                        q.id
+                    ));
                 }
 
                 // @todo perhaps use a COW wrapper
@@ -629,10 +641,16 @@ impl Model {
                 box_stack.push((input_box, nested_scope));
             }
 
-            let diff : Vec<QuantifierRef> = collected_quantifiers.difference(&parent_scope).cloned().collect();
+            let diff: Vec<QuantifierRef> = collected_quantifiers
+                .difference(&parent_scope)
+                .cloned()
+                .collect();
             if !diff.is_empty() {
                 // Note: this is valid for quantifiers from the outer context
-                return Err(format!("box {} contains references to external quantifiers", b.id));
+                return Err(format!(
+                    "box {} contains references to external quantifiers",
+                    b.id
+                ));
             }
         }
         Ok(())
@@ -644,10 +662,10 @@ fn make_ref<T>(t: T) -> Rc<RefCell<T>> {
 }
 
 /// Generates a query graph model from the AST
-pub struct ModelGenerator<'a>{
+pub struct ModelGenerator<'a> {
     catalog: &'a dyn MetadataCatalog,
     next_box_id: i32,
-    next_quantifier_id: i32
+    next_quantifier_id: i32,
 }
 
 struct NameResolutionContext<'a> {
@@ -655,7 +673,7 @@ struct NameResolutionContext<'a> {
     quantifiers: Vec<QuantifierRef>,
     parent_quantifiers: HashMap<i32, QuantifierRef>,
     subquery_quantifiers: Option<HashMap<*const ast::Select, QuantifierRef>>,
-    parent_context: Option<&'a NameResolutionContext<'a>>
+    parent_context: Option<&'a NameResolutionContext<'a>>,
 }
 
 impl<'a> NameResolutionContext<'a> {
@@ -665,12 +683,13 @@ impl<'a> NameResolutionContext<'a> {
             quantifiers: Vec::new(),
             parent_quantifiers: HashMap::new(),
             subquery_quantifiers: None,
-            parent_context: parent_context
+            parent_context: parent_context,
         }
     }
 
     fn add_quantifier(&mut self, q: &QuantifierRef) {
-        self.parent_quantifiers.insert(q.borrow().input_box.borrow().id, Rc::clone(q));
+        self.parent_quantifiers
+            .insert(q.borrow().input_box.borrow().id, Rc::clone(q));
         self.quantifiers.push(Rc::clone(q))
     }
 
@@ -678,11 +697,20 @@ impl<'a> NameResolutionContext<'a> {
         if self.subquery_quantifiers.is_none() {
             self.subquery_quantifiers = Some(HashMap::new());
         }
-        self.subquery_quantifiers.as_mut().unwrap().insert(s, Rc::clone(q));
+        self.subquery_quantifiers
+            .as_mut()
+            .unwrap()
+            .insert(s, Rc::clone(q));
     }
 
     fn get_subquery_quantifier(&self, s: *const ast::Select) -> QuantifierRef {
-        Rc::clone(self.subquery_quantifiers.as_ref().unwrap().get(&s).expect("bug"))
+        Rc::clone(
+            self.subquery_quantifiers
+                .as_ref()
+                .unwrap()
+                .get(&s)
+                .expect("bug"),
+        )
     }
 
     /// adds all the quantifier from the given context into the current one
@@ -721,7 +749,7 @@ impl<'a> NameResolutionContext<'a> {
     fn resolve_column_in_quantifier(&self, q: &QuantifierRef, column: &str) -> Option<ExprRef> {
         for (i, c) in q.borrow().input_box.borrow().columns.iter().enumerate() {
             // ideally, this should be a reference to avoid the cloning... (*)
-            let mut c : Option<Column> = Some(c.clone());
+            let mut c: Option<Column> = Some(c.clone());
             while let Some(col) = c {
                 if col.name.is_some() {
                     // @todo case insensitive comparisons
@@ -763,8 +791,18 @@ impl<'a> NameResolutionContext<'a> {
                         break;
                     }
                     // @todo we need ranging quantifiers!
-                    let parent_q = self.parent_quantifiers.get(&parent_box_id).expect("must be a valid id");
-                    c.position = parent_q.borrow().input_box.borrow_mut().add_column_if_not_exists(Expr::make_column_ref(Rc::clone(&c.quantifier), c.position));
+                    let parent_q = self
+                        .parent_quantifiers
+                        .get(&parent_box_id)
+                        .expect("must be a valid id");
+                    c.position = parent_q
+                        .borrow()
+                        .input_box
+                        .borrow_mut()
+                        .add_column_if_not_exists(Expr::make_column_ref(
+                            Rc::clone(&c.quantifier),
+                            c.position,
+                        ));
                     c.quantifier = Rc::clone(parent_q);
                 }
                 column_ref
@@ -782,13 +820,13 @@ impl<'a> ModelGenerator<'a> {
             catalog: catalog,
             // @todo move this to the model
             next_box_id: 0,
-            next_quantifier_id: 0
+            next_quantifier_id: 0,
         }
     }
 
     pub fn process(&mut self, select: &ast::Select) -> Result<Model, String> {
         let top_box = self.process_select(select, None)?;
-        let model = Model{ top_box };
+        let model = Model { top_box };
         Ok(model)
     }
 
@@ -805,12 +843,20 @@ impl<'a> ModelGenerator<'a> {
     }
 
     fn make_select_box(&mut self) -> BoxRef {
-        make_ref(QGBox::new(self.get_box_id(), BoxType::Select(Select::new())))
+        make_ref(QGBox::new(
+            self.get_box_id(),
+            BoxType::Select(Select::new()),
+        ))
     }
 
-    fn process_select(&mut self, select: &ast::Select, parent_context: Option<&NameResolutionContext>) -> Result<BoxRef, String> {
+    fn process_select(
+        &mut self,
+        select: &ast::Select,
+        parent_context: Option<&NameResolutionContext>,
+    ) -> Result<BoxRef, String> {
         let mut current_box = self.make_select_box();
-        let mut current_context = NameResolutionContext::new(Rc::clone(&current_box), parent_context);
+        let mut current_context =
+            NameResolutionContext::new(Rc::clone(&current_box), parent_context);
         for join_item in &select.from_clause {
             self.add_join_term_to_select_box(join_item, &current_box, &mut current_context)?
         }
@@ -822,8 +868,16 @@ impl<'a> ModelGenerator<'a> {
         if let Some(grouping) = &select.grouping {
             self.add_all_columns(&current_box);
 
-            let grouping_box = make_ref(QGBox::new(self.get_box_id(), BoxType::Grouping(Grouping::new())));
-            let q = make_ref(Quantifier::new(self.get_quantifier_id(), QuantifierType::Foreach, current_box, &grouping_box));
+            let grouping_box = make_ref(QGBox::new(
+                self.get_box_id(),
+                BoxType::Grouping(Grouping::new()),
+            ));
+            let q = make_ref(Quantifier::new(
+                self.get_quantifier_id(),
+                QuantifierType::Foreach,
+                current_box,
+                &grouping_box,
+            ));
             grouping_box.borrow_mut().add_quantifier(Rc::clone(&q));
             // context for resolving the grouping keys
             current_context = NameResolutionContext::new(Rc::clone(&grouping_box), parent_context);
@@ -831,12 +885,20 @@ impl<'a> ModelGenerator<'a> {
             for key in &grouping.groups {
                 let expr = self.process_expr(&key.expr, &current_context)?;
                 grouping_box.borrow_mut().add_column(None, expr.clone());
-                grouping_box.borrow_mut().add_group(KeyItem{expr, dir: key.direction});
+                grouping_box.borrow_mut().add_group(KeyItem {
+                    expr,
+                    dir: key.direction,
+                });
             }
 
             // put a select box on top of the grouping box and use the grouping quantifier for name resolution
             current_box = self.make_select_box();
-            let q = make_ref(Quantifier::new(self.get_quantifier_id(), QuantifierType::Foreach, grouping_box, &current_box));
+            let q = make_ref(Quantifier::new(
+                self.get_quantifier_id(),
+                QuantifierType::Foreach,
+                grouping_box,
+                &current_box,
+            ));
             current_context = NameResolutionContext::new(Rc::clone(&current_box), parent_context);
             current_context.add_quantifier(&q);
             current_box.borrow_mut().add_quantifier(q);
@@ -851,7 +913,10 @@ impl<'a> ModelGenerator<'a> {
             let mut keys = Vec::new();
             for key in order_by_clause {
                 let expr = self.process_expr(&key.expr, &current_context)?;
-                keys.push(KeyItem{expr, dir: key.direction});
+                keys.push(KeyItem {
+                    expr,
+                    dir: key.direction,
+                });
             }
             current_box.borrow_mut().set_order_by(keys);
         }
@@ -859,7 +924,9 @@ impl<'a> ModelGenerator<'a> {
             for item in selection_list {
                 self.add_subqueries(&current_box, &item.expr, &mut current_context)?;
                 let expr = self.process_expr(&item.expr, &current_context)?;
-                current_box.borrow_mut().add_column(item.alias.clone(), expr);
+                current_box
+                    .borrow_mut()
+                    .add_column(item.alias.clone(), expr);
             }
         } else {
             // add all columns from all quantifiers
@@ -883,15 +950,27 @@ impl<'a> ModelGenerator<'a> {
             let input_box = bq.input_box.borrow();
             for (i, c) in input_box.columns.iter().enumerate() {
                 let expr = Expr::make_column_ref(Rc::clone(&q), i);
-                select_box.borrow_mut().add_column(c.name.clone(), make_ref(expr));
+                select_box
+                    .borrow_mut()
+                    .add_column(c.name.clone(), make_ref(expr));
             }
         }
     }
 
     /// adds a quantifier in the given select box with the result of parsing the given join term subtree
-    fn add_join_term_to_select_box(&mut self, join_term: &ast::JoinTerm, select_box: &BoxRef, current_context : &mut NameResolutionContext) -> Result<(), String> {
+    fn add_join_term_to_select_box(
+        &mut self,
+        join_term: &ast::JoinTerm,
+        select_box: &BoxRef,
+        current_context: &mut NameResolutionContext,
+    ) -> Result<(), String> {
         let b = self.process_join_item(&join_term.join_item, current_context)?;
-        let mut q = Quantifier::new(self.get_quantifier_id(), QuantifierType::Foreach, b, &select_box);
+        let mut q = Quantifier::new(
+            self.get_quantifier_id(),
+            QuantifierType::Foreach,
+            b,
+            &select_box,
+        );
         if join_term.alias.is_some() {
             q.set_alias(join_term.alias.as_ref().unwrap().clone());
         }
@@ -901,7 +980,11 @@ impl<'a> ModelGenerator<'a> {
         Ok(())
     }
 
-    fn process_join_item(&mut self, item : &ast::JoinItem, current_context : &mut NameResolutionContext) -> Result<BoxRef, String> {
+    fn process_join_item(
+        &mut self,
+        item: &ast::JoinItem,
+        current_context: &mut NameResolutionContext,
+    ) -> Result<BoxRef, String> {
         use ast::JoinItem::*;
         match item {
             // the derived table should not see its siblings
@@ -918,14 +1001,20 @@ impl<'a> ModelGenerator<'a> {
                 let table_box = make_ref(QGBox::new(self.get_box_id(), base_table));
                 // add the columns of the table
                 for (i, c) in metadata.columns.iter().enumerate() {
-                    table_box.borrow_mut().add_column(Some(c.name.clone()), make_ref(Expr::make_base_column(&table_box, i)));
+                    table_box.borrow_mut().add_column(
+                        Some(c.name.clone()),
+                        make_ref(Expr::make_base_column(&table_box, i)),
+                    );
                 }
                 Ok(table_box)
             }
             Join(_, l, r, on) => {
                 // @todo outer joins
                 let select_box = self.make_select_box();
-                let mut child_context = NameResolutionContext::new(Rc::clone(&select_box), current_context.parent_context);
+                let mut child_context = NameResolutionContext::new(
+                    Rc::clone(&select_box),
+                    current_context.parent_context,
+                );
 
                 self.add_join_term_to_select_box(l, &select_box, &mut child_context)?;
                 self.add_join_term_to_select_box(r, &select_box, &mut child_context)?;
@@ -943,16 +1032,29 @@ impl<'a> ModelGenerator<'a> {
                 // project all columns from its quantifiers
                 self.add_all_columns(&select_box);
                 Ok(select_box)
-            }
-            // _ => Err(String::from("not implemented")),
+            } // _ => Err(String::from("not implemented")),
         }
     }
 
     /// the suqbueries in the given expressions as quantifiers in the given select box
-    fn add_subqueries(&mut self, select_box: &BoxRef, expr: &ast::Expr, current_context : &mut NameResolutionContext) -> Result<(), String>{
+    fn add_subqueries(
+        &mut self,
+        select_box: &BoxRef,
+        expr: &ast::Expr,
+        current_context: &mut NameResolutionContext,
+    ) -> Result<(), String> {
         use ast::Expr::*;
-        let add_subquery = |s: &mut Self, current_context : &mut NameResolutionContext, quantifier_type: QuantifierType, e: &ast::Select, subquery_box: BoxRef| {
-            let q = Quantifier::new(s.get_quantifier_id(), quantifier_type, subquery_box, &select_box);
+        let add_subquery = |s: &mut Self,
+                            current_context: &mut NameResolutionContext,
+                            quantifier_type: QuantifierType,
+                            e: &ast::Select,
+                            subquery_box: BoxRef| {
+            let q = Quantifier::new(
+                s.get_quantifier_id(),
+                quantifier_type,
+                subquery_box,
+                &select_box,
+            );
             let q = make_ref(q);
             current_context.add_subquery_quantifier(e as *const ast::Select, &q);
             select_box.borrow_mut().add_quantifier(q);
@@ -962,25 +1064,46 @@ impl<'a> ModelGenerator<'a> {
                 ScalarSubquery(e) => {
                     let subquery_box = self.process_select(e, Some(current_context))?;
                     if subquery_box.borrow().columns.len() != 1 {
-                        return Err(format!("scalar subqueries must project a single column"))
+                        return Err(format!("scalar subqueries must project a single column"));
                     }
-                    add_subquery(self, current_context, QuantifierType::Scalar, e.as_ref(), subquery_box);
+                    add_subquery(
+                        self,
+                        current_context,
+                        QuantifierType::Scalar,
+                        e.as_ref(),
+                        subquery_box,
+                    );
                 }
                 InSelect(_, e) => {
                     let subquery_box = self.process_select(e, Some(current_context))?;
                     if subquery_box.borrow().columns.len() != 1 {
-                        return Err(format!("scalar subqueries must project a single column"))
+                        return Err(format!("scalar subqueries must project a single column"));
                     }
-                    add_subquery(self, current_context, QuantifierType::Existential, e.as_ref(), subquery_box);
+                    add_subquery(
+                        self,
+                        current_context,
+                        QuantifierType::Existential,
+                        e.as_ref(),
+                        subquery_box,
+                    );
                 }
                 Exists(e) => {
                     let subquery_box = self.process_select(e, Some(current_context))?;
                     {
                         let mut mutable_box = subquery_box.borrow_mut();
                         mutable_box.columns.clear();
-                        mutable_box.columns.push(Column{name: None, expr: make_ref(Expr::make_literal(Value::BigInt(1)))});
+                        mutable_box.columns.push(Column {
+                            name: None,
+                            expr: make_ref(Expr::make_literal(Value::BigInt(1))),
+                        });
                     }
-                    add_subquery(self, current_context, QuantifierType::Existential, e.as_ref(), subquery_box);
+                    add_subquery(
+                        self,
+                        current_context,
+                        QuantifierType::Existential,
+                        e.as_ref(),
+                        subquery_box,
+                    );
                 }
                 _ => {}
             }
@@ -988,10 +1111,15 @@ impl<'a> ModelGenerator<'a> {
         Ok(())
     }
 
-    fn process_expr(&mut self, expr: &ast::Expr, current_context : &NameResolutionContext) -> Result<ExprRef, String> {
+    fn process_expr(
+        &mut self,
+        expr: &ast::Expr,
+        current_context: &NameResolutionContext,
+    ) -> Result<ExprRef, String> {
         match expr {
             ast::Expr::Reference(id) => {
-                let expr = current_context.resolve_column(id.get_qualifier_before_name(), &id.get_name());
+                let expr =
+                    current_context.resolve_column(id.get_qualifier_before_name(), &id.get_name());
                 if expr.is_some() {
                     return Ok(expr.unwrap());
                 }
@@ -1006,32 +1134,43 @@ impl<'a> ModelGenerator<'a> {
                 }
                 Ok(make_ref(Expr::make_in_list(term, list_exprs)))
             }
-            ast::Expr::ScalarSubquery(e) => {
-                Ok(make_ref(Expr::make_column_ref(current_context.get_subquery_quantifier(e.as_ref() as *const ast::Select), 0)))
-            }
+            ast::Expr::ScalarSubquery(e) => Ok(make_ref(Expr::make_column_ref(
+                current_context.get_subquery_quantifier(e.as_ref() as *const ast::Select),
+                0,
+            ))),
             ast::Expr::InSelect(l, e) => {
                 let left = self.process_expr(l, current_context)?;
-                let col_ref = Expr::make_column_ref(current_context.get_subquery_quantifier(e.as_ref() as *const ast::Select), 0);
-                Ok(make_ref(Expr::make_cmp(CmpOpType::Eq, left, make_ref(col_ref))))
+                let col_ref = Expr::make_column_ref(
+                    current_context.get_subquery_quantifier(e.as_ref() as *const ast::Select),
+                    0,
+                );
+                Ok(make_ref(Expr::make_cmp(
+                    CmpOpType::Eq,
+                    left,
+                    make_ref(col_ref),
+                )))
             }
             ast::Expr::Exists(e) => {
                 let left = make_ref(Expr::make_literal(Value::BigInt(1)));
-                let col_ref = Expr::make_column_ref(current_context.get_subquery_quantifier(e.as_ref() as *const ast::Select), 0);
-                Ok(make_ref(Expr::make_cmp(CmpOpType::Eq, left, make_ref(col_ref))))
+                let col_ref = Expr::make_column_ref(
+                    current_context.get_subquery_quantifier(e.as_ref() as *const ast::Select),
+                    0,
+                );
+                Ok(make_ref(Expr::make_cmp(
+                    CmpOpType::Eq,
+                    left,
+                    make_ref(col_ref),
+                )))
             }
-            ast::Expr::BooleanLiteral(e) => {
-                Ok(make_ref(Expr::make_literal(Value::Boolean(*e))))
-            }
-            ast::Expr::NumericLiteral(e) => {
-                Ok(make_ref(Expr::make_literal(Value::BigInt(*e))))
-            }
+            ast::Expr::BooleanLiteral(e) => Ok(make_ref(Expr::make_literal(Value::Boolean(*e)))),
+            ast::Expr::NumericLiteral(e) => Ok(make_ref(Expr::make_literal(Value::BigInt(*e)))),
             ast::Expr::Binary(t, l, r) => {
                 let op = match t {
                     ast::BinaryExprType::Eq => CmpOpType::Eq,
                     ast::BinaryExprType::Neq => CmpOpType::Neq,
-                    ast::BinaryExprType::Less=> CmpOpType::Less,
+                    ast::BinaryExprType::Less => CmpOpType::Less,
                     ast::BinaryExprType::LessEq => CmpOpType::LessEq,
-                    ast::BinaryExprType::Greater=> CmpOpType::Greater,
+                    ast::BinaryExprType::Greater => CmpOpType::Greater,
                     ast::BinaryExprType::GreaterEq => CmpOpType::GreaterEq,
                 };
                 let l = self.process_expr(l, current_context)?;
@@ -1044,9 +1183,15 @@ impl<'a> ModelGenerator<'a> {
                     list_exprs.push(self.process_expr(e, current_context)?);
                 }
                 match t {
-                    ast::NaryExprType::And => Ok(make_ref(Expr::make_logical(LogicalExprType::And, list_exprs))),
-                    ast::NaryExprType::Or => Ok(make_ref(Expr::make_logical(LogicalExprType::Or, list_exprs))),
-                    _ => Err(String::from("expression not supported!"))
+                    ast::NaryExprType::And => Ok(make_ref(Expr::make_logical(
+                        LogicalExprType::And,
+                        list_exprs,
+                    ))),
+                    ast::NaryExprType::Or => Ok(make_ref(Expr::make_logical(
+                        LogicalExprType::Or,
+                        list_exprs,
+                    ))),
+                    _ => Err(String::from("expression not supported!")),
                 }
             }
             ast::Expr::Case(case_expr) => {
@@ -1064,21 +1209,22 @@ impl<'a> ModelGenerator<'a> {
                 let operand = self.process_expr(operand, current_context)?;
                 Ok(make_ref(Expr::make_is_null(operand)))
             }
-            _ => {
-                Err(String::from("expression not supported!"))
-            }
+            _ => Err(String::from("expression not supported!")),
         }
     }
 }
 
-pub struct DotGenerator{
-    output : String,
-    indent: u32
+pub struct DotGenerator {
+    output: String,
+    indent: u32,
 }
 
 impl DotGenerator {
     pub fn new() -> Self {
-        Self{ output: String::new(), indent: 0 }
+        Self {
+            output: String::new(),
+            indent: 0,
+        }
     }
 
     pub fn generate(mut self, m: &Model, sql_string: &str) -> Result<String, String> {
@@ -1102,7 +1248,7 @@ impl DotGenerator {
 
                     // at least one quantifier must belong to the current box in order for the predicate to be displayed
                     // as an arrow
-                    let mut any : bool = false;
+                    let mut any: bool = false;
                     for iq in b.quantifiers.iter() {
                         if q.contains(iq) {
                             any = true;
@@ -1132,7 +1278,11 @@ impl DotGenerator {
             self.new_line(&format!("subgraph cluster{} {{", b.id));
             self.inc();
             self.new_line(&format!("label = \"Box{}:{}\"", b.id, b.get_box_type_str()));
-            self.new_line(&format!("boxhead{} [ shape = record, label=\"{}\" ]", b.id, DotGenerator::get_box_head(&b, &other_predicates[..])));
+            self.new_line(&format!(
+                "boxhead{} [ shape = record, label=\"{}\" ]",
+                b.id,
+                DotGenerator::get_box_head(&b, &other_predicates[..])
+            ));
 
             self.new_line("{");
             self.inc();
@@ -1147,13 +1297,21 @@ impl DotGenerator {
 
                 let q = q.borrow();
                 box_stack.push(Rc::clone(&q.input_box));
-                self.new_line(&format!("Q{0} [ label=\"Q{0}({1})\" ]", q.id, q.quantifier_type));
+                self.new_line(&format!(
+                    "Q{0} [ label=\"Q{0}({1})\" ]",
+                    q.id, q.quantifier_type
+                ));
             }
 
             if arrows.len() > 0 {
                 self.new_line("edge [ arrowhead = none, style = solid ]");
                 for (e, q1, q2) in &arrows {
-                    self.new_line(&format!("Q{0} -> Q{1} [ label=\"{2}\" ]", q1.borrow().id, q2.borrow().id, e.borrow()));
+                    self.new_line(&format!(
+                        "Q{0} -> Q{1} [ label=\"{2}\" ]",
+                        q1.borrow().id,
+                        q2.borrow().id,
+                        e.borrow()
+                    ));
                 }
             }
 
@@ -1167,7 +1325,11 @@ impl DotGenerator {
             self.new_line("edge [ arrowhead = none, style = dashed ]");
             for q in quantifiers.iter() {
                 let q = q.borrow();
-                self.new_line(&format!("Q{0} -> boxhead{1} [ lhead = cluster{1} ]", q.id, q.input_box.borrow().id));
+                self.new_line(&format!(
+                    "Q{0} -> boxhead{1} [ lhead = cluster{1} ]",
+                    q.id,
+                    q.input_box.borrow().id
+                ));
             }
         }
 
@@ -1177,7 +1339,7 @@ impl DotGenerator {
     }
 
     fn get_box_head(b: &QGBox, predicates: &[ExprRef]) -> String {
-        let mut r  = String::new();
+        let mut r = String::new();
         for (i, c) in b.columns.iter().enumerate() {
             if r.len() > 0 {
                 r.push('|');
@@ -1228,10 +1390,9 @@ impl DotGenerator {
     fn new_line(&mut self, s: &str) {
         if self.output.rfind('\n') != Some(self.output.len()) {
             self.end_line();
-            for _ in 0..self.indent*4 {
+            for _ in 0..self.indent * 4 {
                 self.output.push(' ');
             }
-
         }
         self.output.push_str(s);
     }
@@ -1319,7 +1480,9 @@ impl rewrite_engine::Rule<BoxRef> for MergeRule {
             }
             obj.borrow_mut().remove_quantifier(q);
         }
-        let mut rule = DereferenceRule{to_dereference: &self.to_merge};
+        let mut rule = DereferenceRule {
+            to_dereference: &self.to_merge,
+        };
         let mut f = |e: &mut ExprRef| {
             if let Some(c) = rewrite_engine::deep_apply_rule(&mut rule, e) {
                 *e = c;
@@ -1342,14 +1505,13 @@ impl rewrite_engine::Rule<BoxRef> for MergeRule {
 //
 
 struct PushDownPredicatesRule {
-    to_pushdown : HashMap<ExprRef, BTreeSet<QuantifierRef>>
-
+    to_pushdown: HashMap<ExprRef, BTreeSet<QuantifierRef>>,
 }
 
 impl PushDownPredicatesRule {
     fn new() -> Self {
         Self {
-            to_pushdown : HashMap::new(),
+            to_pushdown: HashMap::new(),
         }
     }
 }
@@ -1600,13 +1762,17 @@ mod tests {
         test_valid_query("select a, b from a group by a asc, b");
         test_valid_query("select a, b from a group by a asc, b having b > 1");
         test_valid_query("select a, b from a group by a asc, b having b > (select a from a)");
-        test_valid_query("select a, b from a group by a asc, b having b > (select a from a) limit 1");
+        test_valid_query(
+            "select a, b from a group by a asc, b having b > (select a from a) limit 1",
+        );
 
         test_valid_query("select a, b from a z where z.a > 1");
         test_valid_query("select a, b from a z where (select z.a from a) > 1");
         test_valid_query("select a, b from a z where (select a from a where a = z.a) > 1");
         test_valid_query("select a, b from a z where (select a from a where a = (select a from a where z.a > 2)) > 1");
-        test_valid_query("select a, b from a z where (select a from (select a from a where z.a > 2))");
+        test_valid_query(
+            "select a, b from a z where (select a from (select a from a where z.a > 2))",
+        );
 
         test_valid_query("select case when a = 1 then true else false end as caseexpr from a");
     }

@@ -54,11 +54,10 @@ pub struct JoinTerm {
     pub alias: Option<String>,
 }
 
-
 #[derive(Debug, Copy, Clone)]
 pub enum Direction {
     Ascending,
-    Descending
+    Descending,
 }
 
 #[derive(Debug)]
@@ -190,15 +189,13 @@ impl Expr {
 }
 
 pub struct ExprIterator<'a> {
-    stack: Vec<&'a Expr>
+    stack: Vec<&'a Expr>,
 }
 
 impl<'a> ExprIterator<'a> {
     fn new(expr: &'a Expr) -> Self {
         let stack = vec![expr];
-        Self {
-            stack: stack
-        }
+        Self { stack: stack }
     }
 }
 
@@ -208,27 +205,27 @@ impl<'a> Iterator for ExprIterator<'a> {
         use Expr::*;
         if let Some(top) = self.stack.pop() {
             match top {
-                Parameter(_) => {},
-                Reference(_) => {},
-                BooleanLiteral(_) | NumericLiteral(_) => {},
-                ScalarSubquery(_)| Exists(_) => {},
+                Parameter(_) => {}
+                Reference(_) => {}
+                BooleanLiteral(_) | NumericLiteral(_) => {}
+                ScalarSubquery(_) | Exists(_) => {}
                 FunctionCall(_, vec) => {
                     for e in vec.iter() {
                         self.stack.push(e);
                     }
-                },
+                }
                 InSelect(e, _) => {
                     self.stack.push(e);
-                },
+                }
                 InList(e, vec) => {
                     self.stack.push(e);
                     for e in vec.iter() {
                         self.stack.push(e);
                     }
-                },
+                }
                 IsNull(e) | Unary(e) => {
                     self.stack.push(e);
-                },
+                }
                 Binary(_, l, r) => {
                     self.stack.push(l);
                     self.stack.push(r);
@@ -237,7 +234,7 @@ impl<'a> Iterator for ExprIterator<'a> {
                     for e in vec.iter() {
                         self.stack.push(e);
                     }
-                },
+                }
                 Case(case_expr) => {
                     for (c, t) in case_expr.case_branches.iter() {
                         self.stack.push(c);
@@ -298,7 +295,7 @@ impl Parser {
 struct ParserImpl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> {
     input: &'a str,
     it: Peekable<T>,
-    parameter_index: u64
+    parameter_index: u64,
 }
 
 macro_rules! parse_list {
@@ -325,7 +322,11 @@ macro_rules! expect_keyword {
 
 impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
     fn new(input: &'a str, it: Peekable<T>) -> Self {
-        Self { input, it, parameter_index: 0 }
+        Self {
+            input,
+            it,
+            parameter_index: 0,
+        }
     }
 
     fn parse_statements(mut self) -> Result<Vec<Statement>, String> {
@@ -478,13 +479,18 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
         } else if complete_keyword!(self, False) {
             return Ok(Expr::BooleanLiteral(false));
         } else if complete_keyword!(self, Case) {
-            let mut case_expr = CaseExpr{case_branches: Vec::new(), else_branch: None};
+            let mut case_expr = CaseExpr {
+                case_branches: Vec::new(),
+                else_branch: None,
+            };
             expect_keyword!(self, When)?;
             loop {
                 let case = self.parse_expr()?;
                 expect_keyword!(self, Then)?;
                 let then = self.parse_expr()?;
-                case_expr.case_branches.push((Box::new(case), Box::new(then)));
+                case_expr
+                    .case_branches
+                    .push((Box::new(case), Box::new(then)));
                 if !complete_keyword!(self, When) {
                     break;
                 }
@@ -497,7 +503,7 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
             return Ok(Expr::Case(case_expr));
         } else if let Some(id) = self.parse_identifier() {
             if self.complete_substr_and_advance("(") {
-                let mut params : Vec<Box<Expr>> = Vec::new();
+                let mut params: Vec<Box<Expr>> = Vec::new();
                 if !self.complete_substr_and_advance(")") {
                     parse_list! (self {
                         let param = self.parse_expr()?;
@@ -723,12 +729,20 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
                 return Ok(left_item);
             }
             let right_item = self.parse_join_term()?;
-            let mut on_clause : Option<Expr> = None;
+            let mut on_clause: Option<Expr> = None;
             if complete_keyword!(self, On) {
                 on_clause = Some(self.parse_expr()?);
             }
-            let join = JoinItem::Join(join_type.unwrap(), Box::new(left_item), Box::new(right_item), on_clause);
-            left_item = JoinTerm{join_item: join, alias: None};
+            let join = JoinItem::Join(
+                join_type.unwrap(),
+                Box::new(left_item),
+                Box::new(right_item),
+                on_clause,
+            );
+            left_item = JoinTerm {
+                join_item: join,
+                alias: None,
+            };
         }
     }
 
@@ -784,7 +798,10 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
         if complete_keyword!(self, Having) {
             having = Some(self.parse_expr()?);
         }
-        Ok(Grouping{groups: keys, having_clause: having})
+        Ok(Grouping {
+            groups: keys,
+            having_clause: having,
+        })
     }
 
     fn parse_order_by_keys(&mut self) -> Result<OrderByClause, String> {
@@ -806,7 +823,11 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
         let identifier = self.expect_identifier()?;
         let where_clause = self.parse_where_clause()?;
         let limit_clause = self.parse_limit_clause()?;
-        Ok(Delete{target: identifier, where_clause: where_clause, limit_clause: limit_clause})
+        Ok(Delete {
+            target: identifier,
+            where_clause: where_clause,
+            limit_clause: limit_clause,
+        })
     }
 
     fn parse_insert_body(&mut self) -> Result<Insert, String> {
@@ -823,7 +844,11 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
         }
         if complete_keyword!(self, Select) {
             let select = self.parse_select_body()?;
-            Ok(Insert{target: identifier, columns, source: InsertSource::Select(select)})
+            Ok(Insert {
+                target: identifier,
+                columns,
+                source: InsertSource::Select(select),
+            })
         } else {
             self.expect_token_and_advance(&lexer::ReservedKeyword::Values)?;
             let mut rows = Vec::new();
@@ -837,7 +862,11 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
                 self.expect_substr_and_advance(")")?;
                 rows.push(values);
             });
-            Ok(Insert{target: identifier, columns, source: InsertSource::Values(rows)})
+            Ok(Insert {
+                target: identifier,
+                columns,
+                source: InsertSource::Values(rows),
+            })
         }
     }
 
@@ -854,7 +883,12 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
 
         let where_clause = self.parse_where_clause()?;
         let limit_clause = self.parse_limit_clause()?;
-        Ok(Update{target, assignments, where_clause, limit_clause})
+        Ok(Update {
+            target,
+            assignments,
+            where_clause,
+            limit_clause,
+        })
     }
 
     fn parse_where_clause(&mut self) -> Result<Option<Expr>, String> {
@@ -885,7 +919,10 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
             columns.push(ColumnDef{name: name, data_type: TypeDef::String});
         });
         self.expect_substr_and_advance(")")?;
-        Ok(CreateTable{name: identifier, columns: columns})
+        Ok(CreateTable {
+            name: identifier,
+            columns: columns,
+        })
     }
 }
 
@@ -953,8 +990,14 @@ mod tests {
         test_valid_query("delete from a where a = 1");
         test_valid_query("delete from a where a = 1 limit 10");
 
-        test_invalid_query("delete from a where a = 18446744073709551615", Some("number too large to fit in target type".to_string()));
-        test_invalid_query("delete from a where a = 9223372036854775808", Some("number too large to fit in target type".to_string()));
+        test_invalid_query(
+            "delete from a where a = 18446744073709551615",
+            Some("number too large to fit in target type".to_string()),
+        );
+        test_invalid_query(
+            "delete from a where a = 9223372036854775808",
+            Some("number too large to fit in target type".to_string()),
+        );
         test_valid_query("delete from a where a = 9223372036854775807");
 
         test_valid_query("select case when a = 1 then 1 end from a");

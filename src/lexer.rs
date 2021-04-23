@@ -228,9 +228,7 @@ fn symbol_length<T: Iterator<Item = (usize, char)>>(it: &mut Peekable<T>) -> Res
     it.next();
     if let Some((_, n)) = it.peek() {
         match (c, n) {
-            ('>', '=') |
-            ('<', '=') |
-            ('!', '=') => {
+            ('>', '=') | ('<', '=') | ('!', '=') => {
                 it.next();
                 len = len + 1;
             }
