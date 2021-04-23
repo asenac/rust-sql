@@ -26,14 +26,49 @@ mod rewrite_engine;
 
 // interpreter
 
+use std::io::Write;
+use std::process::{Child, Command, Stdio};
+
+struct Pager {
+    child: Child,
+}
+
+impl Pager {
+    pub fn new(command: String) -> Self {
+        let child = Command::new(command).stdin(Stdio::piped()).spawn().unwrap();
+        Self { child }
+    }
+
+    pub fn sendln(&self, line: String) {
+        self.child
+            .stdin
+            .as_ref()
+            .unwrap()
+            .write(line.as_bytes())
+            .unwrap();
+    }
+
+    pub fn wait(&mut self) {
+        let _ = self.child.wait();
+    }
+}
+
+impl Drop for Pager {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+    }
+}
+
 /// simple interpreter to manually test the rewrite engine
 struct Interpreter {
-    catalog: metadata::FakeCatalog
+    catalog: metadata::FakeCatalog,
 }
 
 impl Interpreter {
     pub fn new() -> Self {
-        Self { catalog: metadata::FakeCatalog::new() }
+        Self {
+            catalog: metadata::FakeCatalog::new(),
+        }
     }
 
     pub fn process_line(&mut self, line: &str) -> Result<(), String> {
@@ -50,15 +85,17 @@ impl Interpreter {
         use ast::Statement::*;
         match stmt {
             Select(e) => {
+                let mut pager = Pager::new("magic-pager.sh".to_string());
                 let mut generator = query_model::ModelGenerator::new(&self.catalog);
                 let mut model = generator.process(e)?;
                 let output = query_model::DotGenerator::new().generate(&model, "@todo")?;
-                println!("{}", output);
+                pager.sendln(output);
 
                 query_model::rewrite_model(&mut model);
 
                 let output = query_model::DotGenerator::new().generate(&model, "@todo")?;
-                println!("{}", output);
+                pager.sendln(output);
+                pager.wait();
             }
             CreateTable(c) => {
                 let mut metadata = metadata::TableMetadata::new(c.name.get_name());
@@ -92,18 +129,18 @@ fn main() {
                 if result.is_err() {
                     println!("Error: {}", result.err().unwrap());
                 }
-            },
+            }
             Err(ReadlineError::Interrupted) => {
                 println!("CTRL-C");
-                break
-            },
+                break;
+            }
             Err(ReadlineError::Eof) => {
                 println!("CTRL-D");
-                break
-            },
+                break;
+            }
             Err(err) => {
                 println!("Error: {:?}", err);
-                break
+                break;
             }
         }
     }
