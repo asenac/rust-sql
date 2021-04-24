@@ -4,6 +4,7 @@ use std::iter::*;
 pub enum ReservedKeyword {
     All,
     And,
+    Any,
     As,
     Asc,
     By,
@@ -100,7 +101,9 @@ fn consume_word<T: Iterator<Item = (usize, char)>>(iter: &mut Peekable<T>) -> us
 fn get_reserved_keyword(input: &str) -> Option<ReservedKeyword> {
     use ReservedKeyword::*;
     match input {
+        "ALL" => Some(All),
         "AND" => Some(And),
+        "ANY" => Some(Any),
         "AS" => Some(As),
         "ASC" => Some(Asc),
         "BY" => Some(By),

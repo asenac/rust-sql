@@ -175,6 +175,8 @@ pub enum Expr {
     Binary(BinaryExprType, Box<Expr>, Box<Expr>),
     ScalarSubquery(Box<Select>),
     Exists(Box<Select>),
+    All(Box<Select>),
+    Any(Box<Select>),
     InSelect(Box<Expr>, Box<Select>),
     InList(Box<Expr>, Vec<Box<Expr>>),
     FunctionCall(Identifier, Vec<Box<Expr>>),
@@ -208,7 +210,7 @@ impl<'a> Iterator for ExprIterator<'a> {
                 Parameter(_) => {}
                 Reference(_) => {}
                 BooleanLiteral(_) | NumericLiteral(_) => {}
-                ScalarSubquery(_) | Exists(_) => {}
+                ScalarSubquery(_) | Exists(_) | All(_) | Any(_) => {}
                 FunctionCall(_, vec) => {
                     for e in vec.iter() {
                         self.stack.push(e);
@@ -603,7 +605,23 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
         if op.is_none() {
             return Ok(left);
         }
-        let right = self.parse_expr_add()?;
+        let right = {
+            if self.complete_token_and_advance(&lexer::ReservedKeyword::All) {
+                self.expect_substr_and_advance("(")?;
+                self.expect_token_and_advance(&lexer::ReservedKeyword::Select)?;
+                let result = Expr::All(Box::new(self.parse_select_body()?));
+                self.expect_substr_and_advance(")")?;
+                result
+            } else if self.complete_token_and_advance(&lexer::ReservedKeyword::Any) {
+                self.expect_substr_and_advance("(")?;
+                self.expect_token_and_advance(&lexer::ReservedKeyword::Select)?;
+                let result = Expr::Any(Box::new(self.parse_select_body()?));
+                self.expect_substr_and_advance(")")?;
+                result
+            } else {
+                self.parse_expr_add()?
+            }
+        };
         Ok(Expr::Binary(op.unwrap(), Box::new(left), Box::new(right)))
     }
 

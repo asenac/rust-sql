@@ -521,6 +521,7 @@ enum QuantifierType {
     PreservedForeach,
     Existential,
     All,
+    Any,
     Scalar,
 }
 
@@ -530,7 +531,8 @@ impl fmt::Display for QuantifierType {
             QuantifierType::Foreach => write!(f, "F"),
             QuantifierType::PreservedForeach => write!(f, "P"),
             QuantifierType::Existential => write!(f, "E"),
-            QuantifierType::All => write!(f, "A"),
+            QuantifierType::All => write!(f, "All"),
+            QuantifierType::Any => write!(f, "Any"),
             QuantifierType::Scalar => write!(f, "S"),
         }
     }
@@ -1131,6 +1133,25 @@ impl<'a> ModelGenerator<'a> {
                         subquery_box,
                     );
                 }
+                Any(e) | All(e) => {
+                    let subquery_box = self.process_select(e, Some(current_context))?;
+                    if subquery_box.borrow().columns.len() != 1 {
+                        return Err(format!(
+                            "ALL/ANY subqueries with multiple columns are not supported yet",
+                        ));
+                    }
+                    let quantifier_type = match expr {
+                        Any(_) => QuantifierType::Any,
+                        _ => QuantifierType::All,
+                    };
+                    add_subquery(
+                        self,
+                        current_context,
+                        quantifier_type,
+                        e.as_ref(),
+                        subquery_box,
+                    );
+                }
                 _ => {}
             }
         }
@@ -1187,6 +1208,14 @@ impl<'a> ModelGenerator<'a> {
                     left,
                     make_ref(col_ref),
                 )))
+            }
+            ast::Expr::Any(e) | ast::Expr::All(e) => {
+                // @todo multi-column
+                let col_ref = Expr::make_column_ref(
+                    current_context.get_subquery_quantifier(e.as_ref() as *const ast::Select),
+                    0,
+                );
+                Ok(make_ref(col_ref))
             }
             ast::Expr::BooleanLiteral(e) => Ok(make_ref(Expr::make_literal(Value::Boolean(*e)))),
             ast::Expr::NumericLiteral(e) => Ok(make_ref(Expr::make_literal(Value::BigInt(*e)))),
