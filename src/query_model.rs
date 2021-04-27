@@ -100,7 +100,7 @@ impl Expr {
     fn make_base_column(parent_box: &BoxRef, position: usize) -> Self {
         let base_col = BaseColumn {
             parent_box: Rc::downgrade(&parent_box),
-            position: position,
+            position,
         };
         Self {
             expr_type: ExprType::BaseColumn(base_col),
@@ -110,8 +110,8 @@ impl Expr {
 
     fn make_column_ref(quantifier: QuantifierRef, position: usize) -> Self {
         let col_ref = ColumnReference {
-            quantifier: quantifier,
-            position: position,
+            quantifier,
+            position,
             data_type: DataType::String,
         };
         Self {
@@ -409,8 +409,8 @@ struct QGBox {
 impl QGBox {
     fn new(id: i32, box_type: BoxType) -> Self {
         Self {
-            id: id,
-            box_type: box_type,
+            id,
+            box_type,
             columns: Vec::new(),
             quantifiers: BTreeSet::new(),
             predicates: None,
@@ -424,10 +424,7 @@ impl QGBox {
         self.quantifiers.remove(q);
     }
     fn add_column(&mut self, name: Option<String>, expr: ExprRef) {
-        self.columns.push(Column {
-            name: name,
-            expr: expr,
-        });
+        self.columns.push(Column { name, expr });
     }
     fn add_column_if_not_exists(&mut self, expr: Expr) -> usize {
         for (i, c) in self.columns.iter().enumerate() {
@@ -575,9 +572,9 @@ impl Quantifier {
         parent_box: &BoxRef,
     ) -> Self {
         Self {
-            id: id,
-            quantifier_type: quantifier_type,
-            input_box: input_box,
+            id,
+            quantifier_type,
+            input_box,
             parent_box: Rc::downgrade(parent_box),
             alias: None,
         }
@@ -713,11 +710,11 @@ struct NameResolutionContext<'a> {
 impl<'a> NameResolutionContext<'a> {
     fn new(owner_box: BoxRef, parent_context: Option<&'a Self>) -> Self {
         Self {
-            owner_box: owner_box,
+            owner_box,
             quantifiers: Vec::new(),
             parent_quantifiers: HashMap::new(),
             subquery_quantifiers: None,
-            parent_context: parent_context,
+            parent_context,
         }
     }
 
@@ -851,7 +848,7 @@ impl<'a> NameResolutionContext<'a> {
 impl<'a> ModelGenerator<'a> {
     pub fn new(catalog: &'a dyn MetadataCatalog) -> Self {
         Self {
-            catalog: catalog,
+            catalog,
             // @todo move this to the model
             next_box_id: 0,
             next_quantifier_id: 0,
