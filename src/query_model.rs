@@ -406,6 +406,12 @@ struct QGBox {
     predicates: Option<Vec<ExprRef>>,
 }
 
+fn make_quantifier_set(v: Vec<QuantifierRef>) -> BTreeSet<QuantifierRef> {
+    let mut s = BTreeSet::new();
+    s.extend(v);
+    s
+}
+
 impl QGBox {
     fn new(id: i32, box_type: BoxType) -> Self {
         Self {
@@ -534,6 +540,7 @@ fn add_quantifier_to_box(b: &BoxRef, q: &QuantifierRef) {
     bq.parent_box = Rc::downgrade(&b);
 }
 
+#[derive(PartialEq)]
 enum QuantifierType {
     Foreach,
     PreservedForeach,
@@ -1728,6 +1735,37 @@ impl rewrite_engine::Rule<BoxRef> for EmptyBoxesRule {
                     c.expr = make_ref(Expr::make_null());
                 }
             }
+            BoxType::OuterJoin => {
+                let (removed_quantifiers, remaining_quantifiers): (
+                    Vec<QuantifierRef>,
+                    Vec<QuantifierRef>,
+                ) = obj
+                    .quantifiers
+                    .iter()
+                    .map(|x| x.clone())
+                    .partition(|q| q.borrow().quantifier_type == QuantifierType::Foreach);
+                // preserved foreach -> foreach
+                remaining_quantifiers.iter().for_each(|q| {
+                    q.borrow_mut().quantifier_type = QuantifierType::Foreach;
+                });
+                obj.quantifiers = make_quantifier_set(remaining_quantifiers);
+                obj.box_type = BoxType::Select(Select::new());
+                obj.predicates = None;
+
+                // Rewrite all expressions
+                let removed_quantifiers = make_quantifier_set(removed_quantifiers);
+
+                let mut f = |e: &mut ExprRef| {
+                    let mut replace = false;
+                    if let ExprType::ColumnReference(c) = &e.borrow().expr_type {
+                        replace = removed_quantifiers.contains(&c.quantifier);
+                    }
+                    if replace {
+                        *e = make_ref(Expr::make_null());
+                    }
+                };
+                obj.visit_expressions(&mut f);
+            }
             _ => {}
         }
         None
@@ -1836,7 +1874,9 @@ pub fn rewrite_model(m: &mut Model) {
         Box::new(ColumnRemovalRule::new()),
         Box::new(EmptyBoxesRule::new()),
     ];
-    apply_rules(m, &mut rules);
+    for _ in 0..5 {
+        apply_rules(m, &mut rules);
+    }
 }
 
 impl rewrite_engine::Traverse<BoxRef> for BoxRef {
