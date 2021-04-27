@@ -4,6 +4,8 @@ pub trait Rule<T> {
     fn condition(&mut self, obj: &T) -> bool;
     fn action(&mut self, obj: &mut T) -> Option<T>;
     // @todo prune
+    fn begin(&mut self, _obj: &T) {}
+    fn end(&mut self, _obj: &T) {}
 }
 
 pub trait Traverse<T> {
@@ -22,6 +24,7 @@ pub fn deep_apply_rule<T: Clone + Traverse<T>>(
     rule: &mut dyn Rule<T>,
     target: &mut T,
 ) -> Option<T> {
+    rule.begin(target);
     if !rule.apply_top_down() {
         T::descend_and_apply(rule, target);
     }
@@ -31,12 +34,14 @@ pub fn deep_apply_rule<T: Clone + Traverse<T>>(
             if rule.apply_top_down() {
                 T::descend_and_apply(rule, &mut c);
             }
+            rule.end(&c);
             Some(c)
         }
         None => {
             if rule.apply_top_down() {
                 T::descend_and_apply(rule, target);
             }
+            rule.end(target);
             None
         }
     }

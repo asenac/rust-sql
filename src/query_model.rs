@@ -88,6 +88,25 @@ enum ExprType {
 }
 
 type ExprRef = Rc<RefCell<Expr>>;
+type ColumnReferenceMap = HashMap<usize, Vec<ExprRef>>;
+type PerBoxColumnReferenceMap = HashMap<i32, ColumnReferenceMap>;
+
+fn collect_column_references(expr_ref: &ExprRef, column_references: &mut PerBoxColumnReferenceMap) {
+    let expr = expr_ref.borrow();
+    if let ExprType::ColumnReference(c) = &expr.expr_type {
+        column_references
+            .entry(c.quantifier.borrow().input_box.borrow().id)
+            .or_insert(HashMap::new())
+            .entry(c.position)
+            .or_insert(Vec::new())
+            .push(expr_ref.clone());
+    }
+    if let Some(operands) = &expr.operands {
+        for o in operands {
+            collect_column_references(o, column_references);
+        }
+    }
+}
 
 #[derive(Clone)]
 struct Expr {
@@ -1567,6 +1586,97 @@ impl rewrite_engine::Rule<BoxRef> for MergeRule {
 }
 
 //
+// ColumnRemovalRule
+//
+
+struct ColumnRemovalRule {
+    column_references: PerBoxColumnReferenceMap,
+    top_box: Option<BoxRef>,
+    stack_count: usize,
+}
+
+impl ColumnRemovalRule {
+    fn new() -> Self {
+        Self {
+            column_references: HashMap::new(),
+            top_box: None,
+            stack_count: 0,
+        }
+    }
+}
+
+impl rewrite_engine::Rule<BoxRef> for ColumnRemovalRule {
+    fn name(&self) -> &'static str {
+        "ColumnRemovalRule"
+    }
+    fn apply_top_down(&self) -> bool {
+        false
+    }
+    fn condition(&mut self, obj: &BoxRef) -> bool {
+        if obj.as_ptr() == self.top_box.as_ref().unwrap().as_ptr() {
+            return false;
+        }
+        let obj = obj.borrow();
+        obj.columns.len() != self.column_references.entry(obj.id).or_default().len()
+    }
+    fn action(&mut self, obj: &mut BoxRef) -> Option<BoxRef> {
+        let mut obj = obj.borrow_mut();
+        println!("fired for {}", obj.id);
+        let column_references = self.column_references.entry(obj.id).or_default();
+        let mut new_columns_spec = column_references.iter().collect::<Vec<_>>();
+        new_columns_spec.sort_by_key(|(x, _)| *x);
+        for (new_pos, (_old_pos, col_refs)) in new_columns_spec.iter().enumerate() {
+            for col_ref in col_refs.iter() {
+                let mut col_ref = col_ref.borrow_mut();
+                if let ExprType::ColumnReference(c) = &mut col_ref.expr_type {
+                    c.position = new_pos;
+                }
+            }
+        }
+        obj.columns = obj
+            .columns
+            .drain(..)
+            .enumerate()
+            .filter(|(i, _)| column_references.contains_key(i))
+            .map(|(_, x)| x)
+            .collect::<Vec<_>>();
+        None
+    }
+    fn begin(&mut self, top_level: &BoxRef) {
+        if self.stack_count == 0 {
+            self.top_box = Some(top_level.clone());
+
+            let mut stack = Vec::new();
+            stack.push(top_level.clone());
+            let mut visited = HashSet::new();
+
+            let mut f = |e: &mut ExprRef| {
+                collect_column_references(e, &mut self.column_references);
+            };
+            while !stack.is_empty() {
+                let top = stack.pop().unwrap();
+                let box_id = top.borrow().id;
+                if visited.insert(box_id) {
+                    top.borrow_mut().visit_expressions(&mut f);
+                    for q in top.borrow().quantifiers.iter() {
+                        let q = q.borrow();
+                        stack.push(q.input_box.clone());
+                    }
+                }
+            }
+        }
+        self.stack_count += 1;
+    }
+    fn end(&mut self, _obj: &BoxRef) {
+        self.stack_count -= 1;
+        if self.stack_count == 0 {
+            self.column_references.clear();
+            self.top_box = None;
+        }
+    }
+}
+
+//
 // PushDownPredicates
 //
 
@@ -1663,8 +1773,11 @@ fn apply_rules(m: &mut Model, rules: &mut Vec<RuleBox>) {
 }
 
 pub fn rewrite_model(m: &mut Model) {
-    let mut rule: RuleBox = Box::new(MergeRule::new());
-    apply_rule(m, &mut rule);
+    let mut rules: Vec<RuleBox> = vec![
+        Box::new(MergeRule::new()),
+        Box::new(ColumnRemovalRule::new()),
+    ];
+    apply_rules(m, &mut rules);
 }
 
 impl rewrite_engine::Traverse<BoxRef> for BoxRef {
@@ -1780,7 +1893,7 @@ mod tests {
             if let ast::Statement::Select(c) = &stmts[0] {
                 let mut generator = ModelGenerator::new(&catalog);
                 let model = generator.process(&c);
-                assert!(model.is_ok(), model.err().unwrap());
+                assert!(model.is_ok(), "{}", model.err().unwrap());
                 let mut model = model.ok().unwrap();
                 assert!(model.validate().is_ok());
 
