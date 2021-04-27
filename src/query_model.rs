@@ -29,6 +29,7 @@ enum LogicalExprType {
 enum Value {
     BigInt(i64),
     Boolean(bool),
+    Null,
 }
 
 impl fmt::Display for Value {
@@ -38,31 +39,12 @@ impl fmt::Display for Value {
             BigInt(v) => write!(f, "{}", v),
             Boolean(v) if *v => write!(f, "TRUE"),
             Boolean(_) => write!(f, "FALSE"),
+            Null => write!(f, "NULL"),
         }
     }
 }
 
-impl Value {
-    fn as_bigint(&self) -> Result<i64, String> {
-        match &self {
-            Value::BigInt(i) => Ok(*i),
-            Value::Boolean(i) if *i => Ok(1),
-            Value::Boolean(_) => Ok(0),
-        }
-    }
-
-    fn as_bool(&self) -> Result<bool, String> {
-        match &self {
-            Value::BigInt(i) if *i != 0 => Ok(true),
-            Value::BigInt(_) => Ok(false),
-            Value::Boolean(i) => Ok(*i),
-        }
-    }
-
-    fn as_string(&self) -> Result<String, String> {
-        Ok(format!("{}", self))
-    }
-}
+impl Value {}
 
 #[derive(Clone)]
 enum CmpOpType {
@@ -168,6 +150,13 @@ impl Expr {
         }
     }
 
+    fn make_null() -> Self {
+        Self {
+            expr_type: ExprType::Literal(Value::Null),
+            operands: None,
+        }
+    }
+
     fn make_cmp(cmp_type: CmpOpType, left: ExprRef, right: ExprRef) -> Self {
         Self {
             expr_type: ExprType::Cmp(cmp_type),
@@ -229,6 +218,19 @@ impl Expr {
             Some(Rc::clone(&b.columns[c.position].expr))
         } else {
             None
+        }
+    }
+
+    fn is_false_predicate(&self) -> bool {
+        match &self.expr_type {
+            ExprType::Literal(c) => {
+                if let Value::Boolean(false) = c {
+                    true
+                } else {
+                    false
+                }
+            }
+            _ => false,
         }
     }
 }
@@ -1693,6 +1695,52 @@ impl rewrite_engine::Rule<BoxRef> for ColumnRemovalRule {
 }
 
 //
+// EmptyBoxes
+//
+
+struct EmptyBoxesRule {}
+
+impl EmptyBoxesRule {
+    fn new() -> Self {
+        Self {}
+    }
+}
+
+impl rewrite_engine::Rule<BoxRef> for EmptyBoxesRule {
+    fn name(&self) -> &'static str {
+        "EmptyBoxes"
+    }
+    fn apply_top_down(&self) -> bool {
+        false
+    }
+    fn condition(&mut self, obj: &BoxRef) -> bool {
+        let obj = obj.borrow();
+        match obj.box_type {
+            BoxType::Select(..) | BoxType::OuterJoin(..) => obj
+                .predicates
+                .iter()
+                .any(|x| x.iter().any(|x| x.borrow().is_false_predicate())),
+            _ => false,
+        }
+    }
+    fn action(&mut self, obj: &mut BoxRef) -> Option<BoxRef> {
+        let mut obj = obj.borrow_mut();
+        match &obj.box_type {
+            BoxType::Select(..) => {
+                obj.quantifiers.clear();
+                obj.box_type = BoxType::Select(Select::new());
+                obj.predicates = None;
+                for c in obj.columns.iter_mut() {
+                    c.expr = make_ref(Expr::make_null());
+                }
+            }
+            _ => {}
+        }
+        None
+    }
+}
+
+//
 // PushDownPredicates
 //
 
@@ -1792,6 +1840,7 @@ pub fn rewrite_model(m: &mut Model) {
     let mut rules: Vec<RuleBox> = vec![
         Box::new(MergeRule::new()),
         Box::new(ColumnRemovalRule::new()),
+        Box::new(EmptyBoxesRule::new()),
     ];
     apply_rules(m, &mut rules);
 }
