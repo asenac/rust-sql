@@ -394,7 +394,7 @@ enum BoxType {
     Select(Select),
     BaseTable(TableMetadata),
     Grouping(Grouping),
-    OuterJoin(Select),
+    OuterJoin,
     Union,
 }
 
@@ -463,7 +463,7 @@ impl QGBox {
     fn get_box_type_str(&self) -> &'static str {
         match self.box_type {
             BoxType::Select(_) => "Select",
-            BoxType::OuterJoin(_) => "OuterJoin",
+            BoxType::OuterJoin => "OuterJoin",
             BoxType::BaseTable(_) => "BaseTable",
             BoxType::Grouping(_) => "Grouping",
             BoxType::Union => "Union",
@@ -884,10 +884,7 @@ impl<'a> ModelGenerator<'a> {
     }
 
     fn make_outer_join_box(&mut self) -> BoxRef {
-        make_ref(QGBox::new(
-            self.get_box_id(),
-            BoxType::OuterJoin(Select::new()),
-        ))
+        make_ref(QGBox::new(self.get_box_id(), BoxType::OuterJoin))
     }
 
     fn process_select(
@@ -1716,7 +1713,7 @@ impl rewrite_engine::Rule<BoxRef> for EmptyBoxesRule {
     fn condition(&mut self, obj: &BoxRef) -> bool {
         let obj = obj.borrow();
         match obj.box_type {
-            BoxType::Select(..) | BoxType::OuterJoin(..) => obj
+            BoxType::Select(..) | BoxType::OuterJoin => obj
                 .predicates
                 .iter()
                 .any(|x| x.iter().any(|x| x.borrow().is_false_predicate())),
