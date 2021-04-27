@@ -1590,7 +1590,7 @@ impl rewrite_engine::Rule<BoxRef> for MergeRule {
 //
 
 struct ColumnRemovalRule {
-    column_references: PerBoxColumnReferenceMap,
+    column_references: Option<PerBoxColumnReferenceMap>,
     top_box: Option<BoxRef>,
     stack_count: usize,
 }
@@ -1598,7 +1598,7 @@ struct ColumnRemovalRule {
 impl ColumnRemovalRule {
     fn new() -> Self {
         Self {
-            column_references: HashMap::new(),
+            column_references: None,
             top_box: None,
             stack_count: 0,
         }
@@ -1610,19 +1610,30 @@ impl rewrite_engine::Rule<BoxRef> for ColumnRemovalRule {
         "ColumnRemovalRule"
     }
     fn apply_top_down(&self) -> bool {
-        false
+        true
     }
     fn condition(&mut self, obj: &BoxRef) -> bool {
         if obj.as_ptr() == self.top_box.as_ref().unwrap().as_ptr() {
             return false;
         }
         let obj = obj.borrow();
-        obj.columns.len() != self.column_references.entry(obj.id).or_default().len()
+        obj.columns.len()
+            != self
+                .column_references
+                .as_mut()
+                .unwrap()
+                .entry(obj.id)
+                .or_default()
+                .len()
     }
     fn action(&mut self, obj: &mut BoxRef) -> Option<BoxRef> {
         let mut obj = obj.borrow_mut();
-        println!("fired for {}", obj.id);
-        let column_references = self.column_references.entry(obj.id).or_default();
+        let column_references = self
+            .column_references
+            .as_mut()
+            .unwrap()
+            .entry(obj.id)
+            .or_default();
         let mut new_columns_spec = column_references.iter().collect::<Vec<_>>();
         new_columns_spec.sort_by_key(|(x, _)| *x);
         for (new_pos, (_old_pos, col_refs)) in new_columns_spec.iter().enumerate() {
@@ -1640,18 +1651,22 @@ impl rewrite_engine::Rule<BoxRef> for ColumnRemovalRule {
             .filter(|(i, _)| column_references.contains_key(i))
             .map(|(_, x)| x)
             .collect::<Vec<_>>();
+        // invalidate column references
+        self.column_references = None;
         None
     }
     fn begin(&mut self, top_level: &BoxRef) {
         if self.stack_count == 0 {
             self.top_box = Some(top_level.clone());
-
+        }
+        if self.column_references.is_none() {
+            let mut column_references = HashMap::new();
             let mut stack = Vec::new();
             stack.push(top_level.clone());
             let mut visited = HashSet::new();
 
             let mut f = |e: &mut ExprRef| {
-                collect_column_references(e, &mut self.column_references);
+                collect_column_references(e, &mut column_references);
             };
             while !stack.is_empty() {
                 let top = stack.pop().unwrap();
@@ -1664,13 +1679,14 @@ impl rewrite_engine::Rule<BoxRef> for ColumnRemovalRule {
                     }
                 }
             }
+            self.column_references = Some(column_references);
         }
         self.stack_count += 1;
     }
     fn end(&mut self, _obj: &BoxRef) {
         self.stack_count -= 1;
         if self.stack_count == 0 {
-            self.column_references.clear();
+            self.column_references = None;
             self.top_box = None;
         }
     }
