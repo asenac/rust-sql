@@ -1658,16 +1658,17 @@ impl rewrite_engine::Rule<BoxRef> for ColumnRemovalRule {
         self.column_references = None;
         None
     }
-    fn begin(&mut self, top_level: &BoxRef) {
+    fn begin(&mut self, obj: &BoxRef) {
         if self.stack_count == 0 {
-            self.top_box = Some(top_level.clone());
+            self.top_box = Some(obj.clone());
         }
         if self.column_references.is_none() {
-            let mut column_references = HashMap::new();
-            let mut stack = Vec::new();
-            stack.push(top_level.clone());
+            // Re-compute the column referneces map starting from the top level box of the
+            // query graph
+            let mut stack = self.top_box.iter().cloned().collect::<Vec<_>>();
             let mut visited = HashSet::new();
 
+            let mut column_references = HashMap::new();
             let mut f = |e: &mut ExprRef| {
                 collect_column_references(e, &mut column_references);
             };
@@ -1881,10 +1882,13 @@ pub fn rewrite_model(m: &mut Model) {
 
 impl rewrite_engine::Traverse<BoxRef> for BoxRef {
     fn descend_and_apply(rule: &mut dyn rewrite_engine::Rule<BoxRef>, target: &mut BoxRef) {
-        for q in target.borrow_mut().quantifiers.iter() {
-            let mut borrowed_q = q.borrow_mut();
-            if let Some(c) = rewrite_engine::deep_apply_rule(rule, &mut borrowed_q.input_box) {
-                borrowed_q.input_box = c;
+        // We need to release all borrow references before descending, since some rules such
+        // as ColumnRemoval may traverse the graph from the top.
+        let quantifiers = target.borrow().quantifiers.clone();
+        for q in quantifiers.iter() {
+            let mut input_box = q.borrow().input_box.clone();
+            if let Some(c) = rewrite_engine::deep_apply_rule(rule, &mut input_box) {
+                q.borrow_mut().input_box = c;
             }
         }
     }
