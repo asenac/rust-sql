@@ -10,7 +10,6 @@ use std::rc::*;
 struct ColumnReference {
     quantifier: QuantifierRef,
     position: usize,
-    data_type: DataType,
 }
 
 #[derive(Clone)]
@@ -112,7 +111,6 @@ impl Expr {
         let col_ref = ColumnReference {
             quantifier,
             position,
-            data_type: DataType::String,
         };
         Self {
             expr_type: ExprType::ColumnReference(col_ref),
@@ -530,6 +528,22 @@ impl QGBox {
             }
             _ => {}
         }
+    }
+
+    fn visit_expressions_recursively<F>(&mut self, f: &mut F)
+    where
+        F: FnMut(&mut ExprRef) -> (),
+    {
+        let mut i = |e: &mut ExprRef| {
+            let mut stack = vec![Rc::clone(e)];
+            while let Some(mut e) = stack.pop() {
+                f(&mut e);
+                if let Some(operands) = &mut e.borrow_mut().operands {
+                    stack.extend(operands.iter().cloned());
+                }
+            }
+        };
+        self.visit_expressions(&mut i);
     }
 }
 
@@ -1774,6 +1788,91 @@ impl rewrite_engine::Rule<BoxRef> for EmptyBoxesRule {
 }
 
 //
+// ConstantLifting
+//
+
+struct ConstantLiftingRule {
+    to_rewrite: Vec<(ExprRef, ExprRef)>,
+}
+
+impl ConstantLiftingRule {
+    fn new() -> Self {
+        Self {
+            to_rewrite: Vec::new(),
+        }
+    }
+}
+
+impl rewrite_engine::Rule<BoxRef> for ConstantLiftingRule {
+    fn name(&self) -> &'static str {
+        "ConstantLifting"
+    }
+    fn apply_top_down(&self) -> bool {
+        false
+    }
+    fn condition(&mut self, obj: &BoxRef) -> bool {
+        self.to_rewrite.clear();
+        let mut obj = obj.borrow_mut();
+        let is_outer_join = match obj.box_type {
+            BoxType::OuterJoin => true,
+            _ => false,
+        };
+
+        match obj.box_type {
+            BoxType::Grouping(_) | BoxType::Select(_) | BoxType::OuterJoin => {
+                let mut visit_expression = |e: &mut ExprRef| {
+                    // whether the outer box is an outer join
+                    let mut is_outer_join = is_outer_join;
+                    let mut dereferenced = e.clone();
+
+                    let get_col_ref = |e: &ExprRef| -> Option<ColumnReference> {
+                        if let ExprType::ColumnReference(c) = &e.borrow().expr_type {
+                            Some(c.clone())
+                        } else {
+                            None
+                        }
+                    };
+                    while let Some(c) = get_col_ref(&dereferenced) {
+                        println!("{}", dereferenced.borrow());
+                        let q = c.quantifier.borrow();
+                        let input_box = q.input_box.borrow();
+
+                        match (is_outer_join, &q.quantifier_type, &input_box.box_type) {
+                            (_, _, BoxType::Union) => break,
+                            (false, QuantifierType::Foreach, _)
+                            | (true, QuantifierType::PreservedForeach, _) => {
+                                is_outer_join = match input_box.box_type {
+                                    BoxType::OuterJoin => true,
+                                    _ => false,
+                                };
+                                dereferenced = input_box.columns[c.position].expr.clone();
+                            }
+                            (_, _, _) => break,
+                        };
+                    }
+                    if e.as_ptr() != dereferenced.as_ptr()
+                        && dereferenced.borrow().is_runtime_constant()
+                    {
+                        self.to_rewrite.push((e.clone(), dereferenced));
+                    }
+                };
+                obj.visit_expressions_recursively(&mut visit_expression);
+            }
+
+            _ => {}
+        }
+
+        !self.to_rewrite.is_empty()
+    }
+    fn action(&mut self, _obj: &mut BoxRef) -> Option<BoxRef> {
+        for (x, y) in self.to_rewrite.iter() {
+            x.replace(y.borrow().clone());
+        }
+        None
+    }
+}
+
+//
 // PushDownPredicates
 //
 
@@ -1874,6 +1973,7 @@ pub fn rewrite_model(m: &mut Model) {
         Box::new(MergeRule::new()),
         Box::new(ColumnRemovalRule::new()),
         Box::new(EmptyBoxesRule::new()),
+        Box::new(ConstantLiftingRule::new()),
     ];
     for _ in 0..5 {
         apply_rules(m, &mut rules);
