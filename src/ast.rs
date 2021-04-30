@@ -98,10 +98,7 @@ impl Select {
     }
 
     fn add_select_item(&mut self, item: SelectItem) {
-        if self.selection_list.is_none() {
-            self.selection_list = Some(Vec::new());
-        }
-        self.selection_list.as_mut().unwrap().push(item);
+        self.selection_list.get_or_insert_with(Vec::new).push(item);
     }
 }
 
@@ -344,7 +341,7 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
             } else if complete_keyword!(self, Update) {
                 result.push(Statement::Update(self.parse_update_body()?));
             } else if complete_keyword!(self, Delete) {
-                expect_keyword!(self, Delete)?;
+                expect_keyword!(self, From)?;
                 result.push(Statement::Delete(self.parse_delete_body()?));
             } else if complete_keyword!(self, Create) {
                 expect_keyword!(self, Table)?;

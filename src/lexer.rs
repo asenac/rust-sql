@@ -141,6 +141,7 @@ fn get_reserved_keyword(input: &str) -> Option<ReservedKeyword> {
         "TABLE" => Some(Table),
         "THEN" => Some(Then),
         "TRUE" => Some(True),
+        "UNION" => Some(Union),
         "UPDATE" => Some(Update),
         "VALUES" => Some(Values),
         "WHEN" => Some(When),
@@ -179,7 +180,7 @@ pub fn lex<'a>(input: &'a str) -> Result<Vec<Lexeme<'a>>, String> {
                 let substring = &input[i..i + len];
                 result.push(Lexeme {
                     type_: build_word(substring),
-                    substring: substring,
+                    substring,
                     offset: i,
                 });
             }
