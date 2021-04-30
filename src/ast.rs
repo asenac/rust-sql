@@ -182,6 +182,7 @@ pub enum Expr {
     FunctionCall(Identifier, Vec<Box<Expr>>),
     Case(CaseExpr),
     IsNull(Box<Expr>),
+    Tuple(Vec<Box<Expr>>),
 }
 
 impl Expr {
@@ -232,7 +233,7 @@ impl<'a> Iterator for ExprIterator<'a> {
                     self.stack.push(l);
                     self.stack.push(r);
                 }
-                Nary(_, vec) => {
+                Tuple(vec) | Nary(_, vec) => {
                     for e in vec.iter() {
                         self.stack.push(e);
                     }
@@ -457,7 +458,18 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
         if complete_keyword!(self, Select) {
             Ok(Expr::ScalarSubquery(Box::new(self.parse_select_body()?)))
         } else {
-            self.parse_expr()
+            let mut result = Vec::new();
+            loop {
+                result.push(Box::new(self.parse_expr()?));
+                if !self.complete_substr_and_advance(",") {
+                    break;
+                }
+            }
+            if result.len() == 1 {
+                Ok(*result.pop().unwrap())
+            } else {
+                Ok(Expr::Tuple(result))
+            }
         }
     }
 
@@ -843,8 +855,8 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
         let limit_clause = self.parse_limit_clause()?;
         Ok(Delete {
             target: identifier,
-            where_clause: where_clause,
-            limit_clause: limit_clause,
+            where_clause,
+            limit_clause,
         })
     }
 
@@ -939,7 +951,7 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
         self.expect_substr_and_advance(")")?;
         Ok(CreateTable {
             name: identifier,
-            columns: columns,
+            columns,
         })
     }
 }

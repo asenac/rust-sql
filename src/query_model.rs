@@ -66,6 +66,7 @@ enum ExprType {
     Parameter(u64),
     Case,
     IsNull,
+    Tuple,
 }
 
 type ExprRef = Rc<RefCell<Expr>>;
@@ -176,6 +177,13 @@ impl Expr {
         }
     }
 
+    fn make_tuple(operands: Vec<ExprRef>) -> Self {
+        Self {
+            expr_type: ExprType::Tuple,
+            operands: Some(operands),
+        }
+    }
+
     fn is_equiv(&self, o: &Self) -> bool {
         match (&self.expr_type, &o.expr_type) {
             (ExprType::ColumnReference(l), ExprType::ColumnReference(r)) => {
@@ -229,6 +237,13 @@ impl Expr {
                 }
             }
             _ => false,
+        }
+    }
+
+    fn result_arity(&self) -> usize {
+        match &self.expr_type {
+            ExprType::Tuple => self.operands.as_ref().unwrap().len(),
+            _ => 1,
         }
     }
 }
@@ -346,6 +361,16 @@ impl fmt::Display for Expr {
             IsNull => {
                 let operands = self.operands.as_ref().unwrap();
                 write!(f, "({}) IS NULL", operands[0].borrow())
+            }
+            Tuple => {
+                let operands = self.operands.as_ref().unwrap();
+                write!(f, "({}", operands[0].borrow())?;
+                let mut sep = "";
+                for o in &operands[1..] {
+                    write!(f, "{}{}", sep, o.borrow())?;
+                    sep = ", ";
+                }
+                write!(f, ")")
             }
         }
     }
@@ -1299,6 +1324,13 @@ impl<'a> ModelGenerator<'a> {
             ast::Expr::IsNull(operand) => {
                 let operand = self.process_expr(operand, current_context)?;
                 Ok(make_ref(Expr::make_is_null(operand)))
+            }
+            ast::Expr::Tuple(values) => {
+                let mut operands = Vec::new();
+                for e in values.iter() {
+                    operands.push(self.process_expr(e, current_context)?);
+                }
+                Ok(make_ref(Expr::make_tuple(operands)))
             }
             _ => Err(String::from("expression not supported!")),
         }
