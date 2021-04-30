@@ -1525,9 +1525,7 @@ impl rewrite_engine::Rule<BoxRef> for EmptyRule {
     fn condition(&mut self, _obj: &BoxRef) -> bool {
         true
     }
-    fn action(&mut self, _obj: &mut BoxRef) -> Option<BoxRef> {
-        None
-    }
+    fn action(&mut self, _obj: &mut BoxRef) {}
 }
 
 //
@@ -1570,7 +1568,7 @@ impl rewrite_engine::Rule<BoxRef> for MergeRule {
         }
         !self.to_merge.is_empty()
     }
-    fn action(&mut self, obj: &mut BoxRef) -> Option<BoxRef> {
+    fn action(&mut self, obj: &mut BoxRef) {
         // predicates in the boxes being removed that will be added to the current box
         let mut pred_to_add = Vec::new();
         for q in &self.to_merge {
@@ -1586,9 +1584,7 @@ impl rewrite_engine::Rule<BoxRef> for MergeRule {
             to_dereference: &self.to_merge,
         };
         let mut f = |e: &mut ExprRef| {
-            if let Some(c) = rewrite_engine::deep_apply_rule(&mut rule, e) {
-                *e = c;
-            }
+            rewrite_engine::deep_apply_rule(&mut rule, e);
         };
         obj.borrow_mut().visit_expressions(&mut f);
         let mut mut_obj = obj.borrow_mut();
@@ -1598,7 +1594,6 @@ impl rewrite_engine::Rule<BoxRef> for MergeRule {
             mut_obj.predicates.as_mut().unwrap().extend(pred_to_add);
         }
         self.to_merge.clear();
-        None
     }
 }
 
@@ -1643,7 +1638,7 @@ impl rewrite_engine::Rule<BoxRef> for ColumnRemovalRule {
                 .or_default()
                 .len()
     }
-    fn action(&mut self, obj: &mut BoxRef) -> Option<BoxRef> {
+    fn action(&mut self, obj: &mut BoxRef) {
         let mut obj = obj.borrow_mut();
         let column_references = self
             .column_references
@@ -1670,7 +1665,6 @@ impl rewrite_engine::Rule<BoxRef> for ColumnRemovalRule {
             .collect::<Vec<_>>();
         // invalidate column references
         self.column_references = None;
-        None
     }
     fn begin(&mut self, obj: &BoxRef) {
         if self.stack_count == 0 {
@@ -1739,7 +1733,7 @@ impl rewrite_engine::Rule<BoxRef> for EmptyBoxesRule {
             _ => false,
         }
     }
-    fn action(&mut self, obj: &mut BoxRef) -> Option<BoxRef> {
+    fn action(&mut self, obj: &mut BoxRef) {
         let mut obj = obj.borrow_mut();
         match &obj.box_type {
             BoxType::Select(..) => {
@@ -1783,7 +1777,6 @@ impl rewrite_engine::Rule<BoxRef> for EmptyBoxesRule {
             }
             _ => {}
         }
-        None
     }
 }
 
@@ -1864,11 +1857,10 @@ impl rewrite_engine::Rule<BoxRef> for ConstantLiftingRule {
 
         !self.to_rewrite.is_empty()
     }
-    fn action(&mut self, _obj: &mut BoxRef) -> Option<BoxRef> {
+    fn action(&mut self, _obj: &mut BoxRef) {
         for (x, y) in self.to_rewrite.iter() {
             x.replace(y.borrow().clone());
         }
-        None
     }
 }
 
@@ -1915,9 +1907,8 @@ impl rewrite_engine::Rule<BoxRef> for PushDownPredicatesRule {
         }
         !self.to_pushdown.is_empty()
     }
-    fn action(&mut self, _obj: &mut BoxRef) -> Option<BoxRef> {
+    fn action(&mut self, _obj: &mut BoxRef) {
         // @todo
-        None
     }
 }
 
@@ -1943,7 +1934,7 @@ impl<'a> rewrite_engine::Rule<ExprRef> for DereferenceRule<'a> {
             false
         }
     }
-    fn action(&mut self, obj: &mut ExprRef) -> Option<ExprRef> {
+    fn action(&mut self, obj: &mut ExprRef) {
         let mut last;
         loop {
             last = obj.borrow().dereference();
@@ -1951,20 +1942,19 @@ impl<'a> rewrite_engine::Rule<ExprRef> for DereferenceRule<'a> {
                 break;
             }
         }
-        last
+        if last.is_some() {
+            *obj = last.unwrap();
+        }
     }
 }
 
-fn apply_rule(m: &mut Model, rule: &mut RuleBox) {
-    let result = rewrite_engine::deep_apply_rule(&mut **rule, &mut m.top_box);
-    if let Some(new_box) = result {
-        m.replace_top_box(new_box);
-    }
+fn apply_rule(m: &mut Model, rule: &mut BoxRule) {
+    rewrite_engine::deep_apply_rule(rule, &mut m.top_box);
 }
 
 fn apply_rules(m: &mut Model, rules: &mut Vec<RuleBox>) {
     for rule in rules.iter_mut() {
-        apply_rule(m, rule);
+        apply_rule(m, &mut **rule);
     }
 }
 
@@ -1987,9 +1977,8 @@ impl rewrite_engine::Traverse<BoxRef> for BoxRef {
         let quantifiers = target.borrow().quantifiers.clone();
         for q in quantifiers.iter() {
             let mut input_box = q.borrow().input_box.clone();
-            if let Some(c) = rewrite_engine::deep_apply_rule(rule, &mut input_box) {
-                q.borrow_mut().input_box = c;
-            }
+            rewrite_engine::deep_apply_rule(rule, &mut input_box);
+            q.borrow_mut().input_box = input_box;
         }
     }
 }
@@ -2002,9 +1991,7 @@ impl rewrite_engine::Traverse<ExprRef> for ExprRef {
         if let Some(operands) = &mut target.borrow_mut().operands {
             // @todo probably there is a better way of doing this
             for i in 0..operands.len() {
-                if let Some(c) = rewrite_engine::deep_apply_rule(rule, &mut operands[i]) {
-                    operands[i] = c;
-                }
+                rewrite_engine::deep_apply_rule(rule, &mut operands[i]);
             }
         }
     }
@@ -2038,10 +2025,7 @@ mod tests {
         let mut m = Model { top_box };
         let mut rule = MergeRule::new();
         assert_eq!(m.top_box.borrow().quantifiers.len(), 1);
-        let result = rewrite_engine::deep_apply_rule(&mut rule, &mut m.top_box);
-        if let Some(new_box) = result {
-            m.replace_top_box(new_box);
-        }
+        apply_rule(&mut m, &mut rule);
         assert_eq!(m.top_box.borrow().quantifiers.len(), 0);
     }
 
@@ -2068,10 +2052,7 @@ mod tests {
         assert!(m.validate().is_ok());
         let mut rule = MergeRule::new();
         assert_eq!(m.top_box.borrow().quantifiers.len(), 1);
-        let result = rewrite_engine::deep_apply_rule(&mut rule, &mut m.top_box);
-        if let Some(new_box) = result {
-            m.replace_top_box(new_box);
-        }
+        apply_rule(&mut m, &mut rule);
         assert!(m.validate().is_ok());
         assert_eq!(m.top_box.borrow().quantifiers.len(), 0);
     }
