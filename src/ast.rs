@@ -2,7 +2,7 @@ use std::iter::*;
 
 #[derive(Debug)]
 pub enum Statement {
-    Select(Select),
+    Select(QueryBlock),
     Insert(Insert),
     Update(Update),
     Delete(Delete),
@@ -49,8 +49,8 @@ pub enum JoinType {
 pub enum JoinItem {
     TableRef(Identifier),
     Join(JoinType, Box<JoinTerm>, Box<JoinTerm>, Option<Expr>),
-    DerivedTable(Select),
-    Lateral(Select),
+    DerivedTable(QueryBlock),
+    Lateral(QueryBlock),
 }
 
 #[derive(Debug)]
@@ -85,8 +85,6 @@ pub struct Select {
     pub from_clause: Vec<JoinTerm>,
     pub where_clause: Option<Expr>,
     pub grouping: Option<Grouping>,
-    pub order_by_clause: Option<OrderByClause>,
-    pub limit_clause: Option<Expr>,
 }
 
 impl Select {
@@ -96,13 +94,32 @@ impl Select {
             from_clause: Vec::new(),
             where_clause: None,
             grouping: None,
-            order_by_clause: None,
-            limit_clause: None,
         }
     }
 
     fn add_select_item(&mut self, item: SelectItem) {
         self.selection_list.get_or_insert_with(Vec::new).push(item);
+    }
+}
+
+#[derive(Debug)]
+pub struct QueryBlock {
+    pub union: Vec<Select>,
+    pub order_by_clause: Option<OrderByClause>,
+    pub limit_clause: Option<Expr>,
+}
+
+impl QueryBlock {
+    fn new() -> Self {
+        Self {
+            union: Vec::new(),
+            order_by_clause: None,
+            limit_clause: None,
+        }
+    }
+
+    fn add_branch(&mut self, select: Select) {
+        self.union.push(select);
     }
 }
 
@@ -137,7 +154,7 @@ pub struct Insert {
 #[derive(Debug)]
 pub enum InsertSource {
     Values(Vec<Vec<Expr>>),
-    Select(Select),
+    Select(QueryBlock),
 }
 
 #[derive(Debug, PartialEq)]
@@ -175,11 +192,11 @@ pub enum Expr {
     Unary(Box<Expr>),
     Nary(NaryExprType, Vec<Box<Expr>>),
     Binary(BinaryExprType, Box<Expr>, Box<Expr>),
-    ScalarSubquery(Box<Select>),
-    Exists(Box<Select>),
-    All(Box<Select>),
-    Any(Box<Select>),
-    InSelect(Box<Expr>, Box<Select>),
+    ScalarSubquery(Box<QueryBlock>),
+    Exists(Box<QueryBlock>),
+    All(Box<QueryBlock>),
+    Any(Box<QueryBlock>),
+    InSelect(Box<Expr>, Box<QueryBlock>),
     InList(Box<Expr>, Vec<Box<Expr>>),
     FunctionCall(Identifier, Vec<Box<Expr>>),
     Case(CaseExpr),
@@ -779,50 +796,60 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
         }
     }
 
-    fn parse_select_body(&mut self) -> Result<Select, String> {
-        let mut select = Select::new();
-        if !self.complete_substr_and_advance("*") {
-            parse_list!(self {
-                let expr: Expr = self.parse_expr()?;
-                let alias: Option<String>;
-                if complete_keyword!(self, As) {
-                    alias = self.parse_name();
-                    if !alias.is_some() {
-                        return Err(String::from("expected column alias"));
+    fn parse_select_body(&mut self) -> Result<QueryBlock, String> {
+        let mut query_block = QueryBlock::new();
+        loop {
+            let mut select = Select::new();
+            if !self.complete_substr_and_advance("*") {
+                parse_list!(self {
+                    let expr: Expr = self.parse_expr()?;
+                    let alias: Option<String>;
+                    if complete_keyword!(self, As) {
+                        alias = self.parse_name();
+                        if !alias.is_some() {
+                            return Err(String::from("expected column alias"));
+                        }
+                    } else {
+                        // optional alias
+                        alias = self.parse_name();
                     }
-                } else {
-                    // optional alias
-                    alias = self.parse_name();
-                }
-                let select_item = SelectItem { expr, alias };
-                select.add_select_item(select_item);
+                    let select_item = SelectItem { expr, alias };
+                    select.add_select_item(select_item);
+                });
+            }
+
+            // mandatory from clause
+            expect_keyword!(self, From)?;
+            parse_list!(self {
+                let join_term: JoinTerm = self.parse_join_tree()?;
+                select.from_clause.push(join_term);
             });
-        }
 
-        // mandatory from clause
-        expect_keyword!(self, From)?;
-        parse_list!(self {
-            let join_term: JoinTerm = self.parse_join_tree()?;
-            select.from_clause.push(join_term);
-        });
+            // where clause
+            select.where_clause = self.parse_where_clause()?;
 
-        // where clause
-        select.where_clause = self.parse_where_clause()?;
+            if complete_keyword!(self, Group) {
+                expect_keyword!(self, By)?;
+                select.grouping = Some(self.parse_group_by_body()?);
+            }
+            query_block.add_branch(select);
+            if !complete_keyword!(self, Union) {
+                break;
+            }
 
-        if complete_keyword!(self, Group) {
-            expect_keyword!(self, By)?;
-            select.grouping = Some(self.parse_group_by_body()?);
+            complete_keyword!(self, All); // @todo
+            expect_keyword!(self, Select)?;
         }
 
         if complete_keyword!(self, Order) {
             expect_keyword!(self, By)?;
-            select.order_by_clause = Some(self.parse_order_by_keys()?);
+            query_block.order_by_clause = Some(self.parse_order_by_keys()?);
         }
 
         // limit clause
-        select.limit_clause = self.parse_limit_clause()?;
+        query_block.limit_clause = self.parse_limit_clause()?;
 
-        Ok(select)
+        Ok(query_block)
     }
 
     fn parse_group_by_body(&mut self) -> Result<Grouping, String> {
@@ -1049,6 +1076,7 @@ mod tests {
         let result = result.unwrap();
         assert_eq!(result.len(), 1);
         if let Statement::Select(s) = &result[0] {
+            let s = s.union.get(0).unwrap();
             assert!(s.where_clause.is_some());
             let mut exprs = HashSet::new();
             for expr in s.where_clause.as_ref().unwrap().iter() {

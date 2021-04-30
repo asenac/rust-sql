@@ -749,7 +749,7 @@ struct NameResolutionContext<'a> {
     owner_box: BoxRef,
     quantifiers: Vec<QuantifierRef>,
     parent_quantifiers: HashMap<i32, QuantifierRef>,
-    subquery_quantifiers: Option<HashMap<*const ast::Select, QuantifierRef>>,
+    subquery_quantifiers: Option<HashMap<*const ast::QueryBlock, QuantifierRef>>,
     parent_context: Option<&'a NameResolutionContext<'a>>,
 }
 
@@ -770,7 +770,7 @@ impl<'a> NameResolutionContext<'a> {
         self.quantifiers.push(Rc::clone(q))
     }
 
-    fn add_subquery_quantifier(&mut self, s: *const ast::Select, q: &QuantifierRef) {
+    fn add_subquery_quantifier(&mut self, s: *const ast::QueryBlock, q: &QuantifierRef) {
         if self.subquery_quantifiers.is_none() {
             self.subquery_quantifiers = Some(HashMap::new());
         }
@@ -780,7 +780,7 @@ impl<'a> NameResolutionContext<'a> {
             .insert(s, Rc::clone(q));
     }
 
-    fn get_subquery_quantifier(&self, s: *const ast::Select) -> QuantifierRef {
+    fn get_subquery_quantifier(&self, s: *const ast::QueryBlock) -> QuantifierRef {
         Rc::clone(
             self.subquery_quantifiers
                 .as_ref()
@@ -901,8 +901,8 @@ impl<'a> ModelGenerator<'a> {
         }
     }
 
-    pub fn process(&mut self, select: &ast::Select) -> Result<Model, String> {
-        let top_box = self.process_select(select, None)?;
+    pub fn process(&mut self, quer_block: &ast::QueryBlock) -> Result<Model, String> {
+        let top_box = self.process_query_block(quer_block, None)?;
         let model = Model { top_box };
         Ok(model)
     }
@@ -928,6 +928,96 @@ impl<'a> ModelGenerator<'a> {
 
     fn make_outer_join_box(&mut self) -> BoxRef {
         make_ref(QGBox::new(self.get_box_id(), BoxType::OuterJoin))
+    }
+
+    fn make_union_box(&mut self, mut branches: Vec<BoxRef>) -> BoxRef {
+        let union_box = make_ref(QGBox::new(self.get_box_id(), BoxType::Union));
+        for (i, branch) in branches.drain(..).enumerate() {
+            let q = make_ref(Quantifier::new(
+                self.get_quantifier_id(),
+                QuantifierType::Foreach,
+                branch,
+                &union_box,
+            ));
+            union_box.borrow_mut().add_quantifier(q);
+
+            if i == 0 {
+                self.add_all_columns(&union_box);
+            }
+        }
+        union_box
+    }
+
+    fn process_query_block(
+        &mut self,
+        query_block: &ast::QueryBlock,
+        parent_context: Option<&NameResolutionContext>,
+    ) -> Result<BoxRef, String> {
+        let current_box = self.make_select_box();
+        let mut current_context =
+            NameResolutionContext::new(Rc::clone(&current_box), parent_context);
+
+        let mut branches = Vec::new();
+        for select in query_block.union.iter() {
+            let select_box = self.process_select(&select, Some(&current_context))?;
+            branches.push(select_box);
+        }
+
+        // quantifier for name resolution
+        let name_quantifier = match branches.len() {
+            1 => {
+                let input_box = branches.pop().unwrap();
+                let q = make_ref(Quantifier::new(
+                    self.get_quantifier_id(),
+                    QuantifierType::Foreach,
+                    input_box,
+                    &current_box,
+                ));
+                current_box.borrow_mut().add_quantifier(Rc::clone(&q));
+                q
+            }
+            _ => {
+                let input_box = self.make_union_box(branches);
+                let q = make_ref(Quantifier::new(
+                    self.get_quantifier_id(),
+                    QuantifierType::Foreach,
+                    input_box.clone(),
+                    &current_box,
+                ));
+                current_box.borrow_mut().add_quantifier(q);
+
+                // the quantifier of the first branch is used for name resolution
+                let first_q = input_box
+                    .borrow()
+                    .quantifiers
+                    .iter()
+                    .next()
+                    .unwrap()
+                    .clone();
+                first_q
+            }
+        };
+
+        self.add_all_columns(&current_box);
+        current_context.add_quantifier(&name_quantifier);
+
+        if let Some(order_by_clause) = &query_block.order_by_clause {
+            let mut keys = Vec::new();
+            for key in order_by_clause {
+                let expr = self.process_expr(&key.expr, &current_context)?;
+                keys.push(KeyItem {
+                    expr,
+                    dir: key.direction,
+                });
+            }
+            current_box.borrow_mut().set_order_by(keys);
+        }
+        if let Some(limit_clause) = &query_block.limit_clause {
+            // @todo empty context
+            let expr = self.process_expr(&limit_clause, &current_context)?;
+            current_box.borrow_mut().set_limit(expr);
+        }
+        Ok(current_box)
     }
 
     fn process_select(
@@ -990,17 +1080,6 @@ impl<'a> ModelGenerator<'a> {
                 current_box.borrow_mut().add_predicate(expr);
             }
         }
-        if let Some(order_by_clause) = &select.order_by_clause {
-            let mut keys = Vec::new();
-            for key in order_by_clause {
-                let expr = self.process_expr(&key.expr, &current_context)?;
-                keys.push(KeyItem {
-                    expr,
-                    dir: key.direction,
-                });
-            }
-            current_box.borrow_mut().set_order_by(keys);
-        }
         if let Some(selection_list) = &select.selection_list {
             for item in selection_list {
                 self.add_subqueries(&current_box, &item.expr, &mut current_context)?;
@@ -1014,10 +1093,6 @@ impl<'a> ModelGenerator<'a> {
             self.add_all_columns(&current_box);
         }
 
-        if let Some(limit_clause) = &select.limit_clause {
-            let expr = self.process_expr(&limit_clause, &current_context)?;
-            current_box.borrow_mut().set_limit(expr);
-        }
         Ok(current_box)
     }
 
@@ -1069,9 +1144,9 @@ impl<'a> ModelGenerator<'a> {
         use ast::JoinItem::*;
         match item {
             // the derived table should not see its siblings
-            DerivedTable(s) => self.process_select(s, current_context.parent_context),
+            DerivedTable(s) => self.process_query_block(s, current_context.parent_context),
             // but lateral joins do see its siblings
-            Lateral(s) => self.process_select(s, Some(current_context)),
+            Lateral(s) => self.process_query_block(s, Some(current_context)),
             TableRef(s) => {
                 // @todo suport for schemas and catalogs
                 let metadata = self.catalog.get_table(s.get_name());
@@ -1138,7 +1213,7 @@ impl<'a> ModelGenerator<'a> {
         let add_subquery = |s: &mut Self,
                             current_context: &mut NameResolutionContext,
                             quantifier_type: QuantifierType,
-                            e: &ast::Select,
+                            e: &ast::QueryBlock,
                             subquery_box: BoxRef| {
             let q = Quantifier::new(
                 s.get_quantifier_id(),
@@ -1147,13 +1222,13 @@ impl<'a> ModelGenerator<'a> {
                 &select_box,
             );
             let q = make_ref(q);
-            current_context.add_subquery_quantifier(e as *const ast::Select, &q);
+            current_context.add_subquery_quantifier(e as *const ast::QueryBlock, &q);
             select_box.borrow_mut().add_quantifier(q);
         };
         for expr in expr.iter() {
             match expr {
                 ScalarSubquery(e) => {
-                    let subquery_box = self.process_select(e, Some(current_context))?;
+                    let subquery_box = self.process_query_block(e, Some(current_context))?;
                     if subquery_box.borrow().columns.len() != 1 {
                         return Err(format!("scalar subqueries must project a single column"));
                     }
@@ -1166,7 +1241,7 @@ impl<'a> ModelGenerator<'a> {
                     );
                 }
                 InSelect(_, e) => {
-                    let subquery_box = self.process_select(e, Some(current_context))?;
+                    let subquery_box = self.process_query_block(e, Some(current_context))?;
                     if subquery_box.borrow().columns.len() != 1 {
                         return Err(format!("scalar subqueries must project a single column"));
                     }
@@ -1179,7 +1254,7 @@ impl<'a> ModelGenerator<'a> {
                     );
                 }
                 Exists(e) => {
-                    let subquery_box = self.process_select(e, Some(current_context))?;
+                    let subquery_box = self.process_query_block(e, Some(current_context))?;
                     {
                         let mut mutable_box = subquery_box.borrow_mut();
                         mutable_box.columns.clear();
@@ -1197,7 +1272,7 @@ impl<'a> ModelGenerator<'a> {
                     );
                 }
                 Any(e) | All(e) => {
-                    let subquery_box = self.process_select(e, Some(current_context))?;
+                    let subquery_box = self.process_query_block(e, Some(current_context))?;
                     if subquery_box.borrow().columns.len() != 1 {
                         return Err(format!(
                             "ALL/ANY subqueries with multiple columns are not supported yet",
@@ -1245,13 +1320,13 @@ impl<'a> ModelGenerator<'a> {
                 Ok(make_ref(Expr::make_in_list(term, list_exprs)))
             }
             ast::Expr::ScalarSubquery(e) => Ok(make_ref(Expr::make_column_ref(
-                current_context.get_subquery_quantifier(e.as_ref() as *const ast::Select),
+                current_context.get_subquery_quantifier(e.as_ref() as *const ast::QueryBlock),
                 0,
             ))),
             ast::Expr::InSelect(l, e) => {
                 let left = self.process_expr(l, current_context)?;
                 let col_ref = Expr::make_column_ref(
-                    current_context.get_subquery_quantifier(e.as_ref() as *const ast::Select),
+                    current_context.get_subquery_quantifier(e.as_ref() as *const ast::QueryBlock),
                     0,
                 );
                 Ok(make_ref(Expr::make_cmp(
@@ -1263,7 +1338,7 @@ impl<'a> ModelGenerator<'a> {
             ast::Expr::Exists(e) => {
                 let left = make_ref(Expr::make_literal(Value::BigInt(1)));
                 let col_ref = Expr::make_column_ref(
-                    current_context.get_subquery_quantifier(e.as_ref() as *const ast::Select),
+                    current_context.get_subquery_quantifier(e.as_ref() as *const ast::QueryBlock),
                     0,
                 );
                 Ok(make_ref(Expr::make_cmp(
@@ -1275,7 +1350,7 @@ impl<'a> ModelGenerator<'a> {
             ast::Expr::Any(e) | ast::Expr::All(e) => {
                 // @todo multi-column
                 let col_ref = Expr::make_column_ref(
-                    current_context.get_subquery_quantifier(e.as_ref() as *const ast::Select),
+                    current_context.get_subquery_quantifier(e.as_ref() as *const ast::QueryBlock),
                     0,
                 );
                 Ok(make_ref(col_ref))
