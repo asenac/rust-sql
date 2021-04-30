@@ -967,37 +967,20 @@ impl<'a> ModelGenerator<'a> {
             branches.push(select_box);
         }
 
-        // quantifier for name resolution
-        let name_quantifier = match branches.len() {
-            1 => {
-                let input_box = branches.pop().unwrap();
-                let q = make_ref(Quantifier::new(
-                    self.get_quantifier_id(),
-                    QuantifierType::Foreach,
-                    input_box,
-                    &current_box,
-                ));
-                current_box.borrow_mut().add_quantifier(Rc::clone(&q));
-                q
-            }
-            _ => {
-                let input_box = self.make_union_box(branches);
-                let q = make_ref(Quantifier::new(
-                    self.get_quantifier_id(),
-                    QuantifierType::Foreach,
-                    input_box.clone(),
-                    &current_box,
-                ));
-                current_box.borrow_mut().add_quantifier(q);
-
-                // the quantifier of the first branch is used for name resolution
-                let input_box = input_box.borrow();
-                input_box.first_quantifier().unwrap()
-            }
+        let input_box = match branches.len() {
+            1 => branches.pop().unwrap(),
+            _ => self.make_union_box(branches),
         };
+        let q = make_ref(Quantifier::new(
+            self.get_quantifier_id(),
+            QuantifierType::Foreach,
+            input_box,
+            &current_box,
+        ));
+        current_box.borrow_mut().add_quantifier(Rc::clone(&q));
+        current_context.add_quantifier(&q);
 
         self.add_all_columns(&current_box);
-        current_context.add_quantifier(&name_quantifier);
 
         if let Some(order_by_clause) = &query_block.order_by_clause {
             let mut keys = Vec::new();
@@ -2257,6 +2240,9 @@ mod tests {
         test_valid_query(
             "select a, b from a group by a asc, b having b > (select a from a) limit 1",
         );
+        test_valid_query("select a, b from a union all select a, b from a");
+        test_valid_query("select a, b from a union all select a, b from a order by a");
+        test_valid_query("select a, b from a group by a asc, b having b > (select a from a) union all select a, b from a order by a");
 
         test_valid_query("select a, b from a z where z.a > 1");
         test_valid_query("select a, b from a z where (select z.a from a) > 1");
