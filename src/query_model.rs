@@ -570,6 +570,10 @@ impl QGBox {
         };
         self.visit_expressions(&mut i);
     }
+
+    fn first_quantifier(&self) -> Option<QuantifierRef> {
+        self.quantifiers.iter().cloned().next()
+    }
 }
 
 fn add_quantifier_to_box(b: &BoxRef, q: &QuantifierRef) {
@@ -987,14 +991,8 @@ impl<'a> ModelGenerator<'a> {
                 current_box.borrow_mut().add_quantifier(q);
 
                 // the quantifier of the first branch is used for name resolution
-                let first_q = input_box
-                    .borrow()
-                    .quantifiers
-                    .iter()
-                    .next()
-                    .unwrap()
-                    .clone();
-                first_q
+                let input_box = input_box.borrow();
+                input_box.first_quantifier().unwrap()
             }
         };
 
@@ -1786,17 +1784,39 @@ impl rewrite_engine::Rule<BoxRef> for ColumnRemovalRule {
             let mut visited = HashSet::new();
 
             let mut column_references = HashMap::new();
-            let mut f = |e: &mut ExprRef| {
-                collect_column_references(e, &mut column_references);
-            };
             while !stack.is_empty() {
                 let top = stack.pop().unwrap();
                 let box_id = top.borrow().id;
                 if visited.insert(box_id) {
+                    let mut f = |e: &mut ExprRef| {
+                        collect_column_references(e, &mut column_references);
+                    };
                     top.borrow_mut().visit_expressions(&mut f);
                     for q in top.borrow().quantifiers.iter() {
                         let q = q.borrow();
                         stack.push(q.input_box.clone());
+                    }
+                }
+                let top = top.borrow();
+
+                // Note: mark the used from the same branch as used for the rest of the branches
+                if let BoxType::Union = top.box_type {
+                    let first_branch_id = top
+                        .first_quantifier()
+                        .unwrap()
+                        .borrow()
+                        .input_box
+                        .borrow()
+                        .id;
+                    let used_cols = column_references
+                        .entry(first_branch_id)
+                        .or_default()
+                        .into_iter()
+                        .map(|(col, _)| (*col, Vec::new()))
+                        .collect::<ColumnReferenceMap>();
+                    for q in top.quantifiers.iter().skip(1) {
+                        let id = q.borrow().input_box.borrow().id;
+                        column_references.insert(id, used_cols.clone());
                     }
                 }
             }
