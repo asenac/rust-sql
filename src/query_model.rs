@@ -940,12 +940,7 @@ impl<'a> ModelGenerator<'a> {
     fn make_union_box(&mut self, mut branches: Vec<BoxRef>) -> BoxRef {
         let union_box = make_ref(QGBox::new(self.get_box_id(), BoxType::Union));
         for (i, branch) in branches.drain(..).enumerate() {
-            let q = make_ref(Quantifier::new(
-                self.get_quantifier_id(),
-                QuantifierType::Foreach,
-                branch,
-                &union_box,
-            ));
+            let q = self.make_quantifier(branch, &union_box);
             union_box.borrow_mut().add_quantifier(q);
 
             if i == 0 {
@@ -953,6 +948,15 @@ impl<'a> ModelGenerator<'a> {
             }
         }
         union_box
+    }
+
+    fn make_quantifier(&mut self, input_box: BoxRef, parent_box: &BoxRef) -> QuantifierRef {
+        make_ref(Quantifier::new(
+            self.get_quantifier_id(),
+            QuantifierType::Foreach,
+            input_box,
+            &parent_box,
+        ))
     }
 
     fn process_query_block(
@@ -974,12 +978,7 @@ impl<'a> ModelGenerator<'a> {
             1 => branches.pop().unwrap(),
             _ => self.make_union_box(branches),
         };
-        let q = make_ref(Quantifier::new(
-            self.get_quantifier_id(),
-            QuantifierType::Foreach,
-            input_box,
-            &current_box,
-        ));
+        let q = self.make_quantifier(input_box, &current_box);
         current_box.borrow_mut().add_quantifier(Rc::clone(&q));
         current_context.add_quantifier(&q);
 
@@ -1027,12 +1026,7 @@ impl<'a> ModelGenerator<'a> {
                 self.get_box_id(),
                 BoxType::Grouping(Grouping::new()),
             ));
-            let q = make_ref(Quantifier::new(
-                self.get_quantifier_id(),
-                QuantifierType::Foreach,
-                current_box,
-                &grouping_box,
-            ));
+            let q = self.make_quantifier(current_box, &grouping_box);
             grouping_box.borrow_mut().add_quantifier(Rc::clone(&q));
             // context for resolving the grouping keys
             current_context = NameResolutionContext::new(Rc::clone(&grouping_box), parent_context);
@@ -1048,12 +1042,7 @@ impl<'a> ModelGenerator<'a> {
 
             // put a select box on top of the grouping box and use the grouping quantifier for name resolution
             current_box = self.make_select_box();
-            let q = make_ref(Quantifier::new(
-                self.get_quantifier_id(),
-                QuantifierType::Foreach,
-                grouping_box,
-                &current_box,
-            ));
+            let q = self.make_quantifier(grouping_box, &current_box);
             current_context = NameResolutionContext::new(Rc::clone(&current_box), parent_context);
             current_context.add_quantifier(&q);
             current_box.borrow_mut().add_quantifier(q);
@@ -1105,16 +1094,11 @@ impl<'a> ModelGenerator<'a> {
         current_context: &mut NameResolutionContext,
     ) -> Result<QuantifierRef, String> {
         let b = self.process_join_item(&join_term.join_item, current_context)?;
-        let mut q = Quantifier::new(
-            self.get_quantifier_id(),
-            QuantifierType::Foreach,
-            b,
-            &select_box,
-        );
+        let q = self.make_quantifier(b, &select_box);
         if join_term.alias.is_some() {
-            q.set_alias(join_term.alias.as_ref().unwrap().clone());
+            q.borrow_mut()
+                .set_alias(join_term.alias.as_ref().unwrap().clone());
         }
-        let q = make_ref(q);
         current_context.add_quantifier(&q);
         select_box.borrow_mut().add_quantifier(Rc::clone(&q));
         Ok(q)
