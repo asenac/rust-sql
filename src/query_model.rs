@@ -647,7 +647,10 @@ impl Quantifier {
 
     fn is_subquery(&self) -> bool {
         match &self.quantifier_type {
-            QuantifierType::Existential | QuantifierType::Scalar => true,
+            QuantifierType::Existential
+            | QuantifierType::Scalar
+            | QuantifierType::All
+            | QuantifierType::Any => true,
             _ => false,
         }
     }
