@@ -199,7 +199,7 @@ pub struct ExprIterator<'a> {
 impl<'a> ExprIterator<'a> {
     fn new(expr: &'a Expr) -> Self {
         let stack = vec![expr];
-        Self { stack: stack }
+        Self { stack }
     }
 }
 
@@ -619,15 +619,15 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
             return Ok(left);
         }
         let right = {
-            if self.complete_token_and_advance(&lexer::ReservedKeyword::All) {
+            if complete_keyword!(self, All) {
                 self.expect_substr_and_advance("(")?;
-                self.expect_token_and_advance(&lexer::ReservedKeyword::Select)?;
+                expect_keyword!(self, Select)?;
                 let result = Expr::All(Box::new(self.parse_select_body()?));
                 self.expect_substr_and_advance(")")?;
                 result
-            } else if self.complete_token_and_advance(&lexer::ReservedKeyword::Any) {
+            } else if complete_keyword!(self, Any) {
                 self.expect_substr_and_advance("(")?;
-                self.expect_token_and_advance(&lexer::ReservedKeyword::Select)?;
+                expect_keyword!(self, Select)?;
                 let result = Expr::Any(Box::new(self.parse_select_body()?));
                 self.expect_substr_and_advance(")")?;
                 result
@@ -640,7 +640,7 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
 
     fn parse_expr_and(&mut self) -> Result<Expr, String> {
         let op = |s: &mut Self| {
-            if s.complete_token_and_advance(&lexer::ReservedKeyword::And) {
+            if complete_keyword!(s, And) {
                 Some(NaryExprType::And)
             } else {
                 None
@@ -652,7 +652,7 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
 
     fn parse_expr_or(&mut self) -> Result<Expr, String> {
         let op = |s: &mut Self| {
-            if s.complete_token_and_advance(&lexer::ReservedKeyword::Or) {
+            if complete_keyword!(s, Or) {
                 Some(NaryExprType::Or)
             } else {
                 None
@@ -710,14 +710,14 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
         // @todo parse JoinItem::Join
         if let Some(c) = self.parse_identifier() {
             Ok(JoinItem::TableRef(c))
-        } else if self.complete_token_and_advance(&lexer::ReservedKeyword::Lateral) {
+        } else if complete_keyword!(self, Lateral) {
             self.expect_substr_and_advance("(")?;
-            self.expect_token_and_advance(&lexer::ReservedKeyword::Select)?;
+            expect_keyword!(self, Select)?;
             let select = self.parse_select_body()?;
             self.expect_substr_and_advance(")")?;
             Ok(JoinItem::Lateral(select))
         } else if self.complete_substr_and_advance("(") {
-            self.expect_token_and_advance(&lexer::ReservedKeyword::Select)?;
+            expect_keyword!(self, Select)?;
             let select = self.parse_select_body()?;
             self.expect_substr_and_advance(")")?;
             Ok(JoinItem::DerivedTable(select))
