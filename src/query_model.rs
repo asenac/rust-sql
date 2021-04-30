@@ -1070,6 +1070,8 @@ impl<'a> ModelGenerator<'a> {
         match item {
             // the derived table should not see its siblings
             DerivedTable(s) => self.process_select(s, current_context.parent_context),
+            // but lateral joins do see its siblings
+            Lateral(s) => self.process_select(s, Some(current_context)),
             TableRef(s) => {
                 // @todo suport for schemas and catalogs
                 let metadata = self.catalog.get_table(s.get_name());

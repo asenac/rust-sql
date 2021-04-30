@@ -46,6 +46,7 @@ pub enum JoinItem {
     TableRef(Identifier),
     Join(JoinType, Box<JoinTerm>, Box<JoinTerm>, Option<Expr>),
     DerivedTable(Select),
+    Lateral(Select),
 }
 
 #[derive(Debug)]
@@ -709,6 +710,12 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
         // @todo parse JoinItem::Join
         if let Some(c) = self.parse_identifier() {
             Ok(JoinItem::TableRef(c))
+        } else if self.complete_token_and_advance(&lexer::ReservedKeyword::Lateral) {
+            self.expect_substr_and_advance("(")?;
+            self.expect_token_and_advance(&lexer::ReservedKeyword::Select)?;
+            let select = self.parse_select_body()?;
+            self.expect_substr_and_advance(")")?;
+            Ok(JoinItem::Lateral(select))
         } else if self.complete_substr_and_advance("(") {
             self.expect_token_and_advance(&lexer::ReservedKeyword::Select)?;
             let select = self.parse_select_body()?;
