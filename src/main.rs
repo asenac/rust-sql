@@ -76,24 +76,27 @@ impl Interpreter {
         let result = parser.parse(line)?;
         for stmt in result {
             println!("{:?}", stmt);
-            self.process_statement(&stmt)?;
+            // @todo pass substring
+            self.process_statement(&stmt, line)?;
         }
         Ok(())
     }
 
-    fn process_statement(&mut self, stmt: &ast::Statement) -> Result<(), String> {
+    fn process_statement(&mut self, stmt: &ast::Statement, line: &str) -> Result<(), String> {
         use ast::Statement::*;
         match stmt {
             Select(e) => {
                 let mut pager = Pager::new("magic-pager.sh".to_string());
                 let mut generator = query_model::ModelGenerator::new(&self.catalog);
                 let mut model = generator.process(e)?;
-                let output = query_model::DotGenerator::new().generate(&model, "@todo")?;
+                let output = query_model::DotGenerator::new()
+                    .generate(&model, format!("{} (before rewrites)", line).as_str())?;
                 pager.sendln(output);
 
                 query_model::rewrite_model(&mut model);
 
-                let output = query_model::DotGenerator::new().generate(&model, "@todo")?;
+                let output = query_model::DotGenerator::new()
+                    .generate(&model, format!("{} (after rewrites)", line).as_str())?;
                 pager.sendln(output);
                 pager.wait();
             }
