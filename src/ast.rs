@@ -334,22 +334,20 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
     }
 
     fn parse_statements(mut self) -> Result<Vec<Statement>, String> {
-        use lexer::*;
-
         let mut result: Vec<Statement> = Vec::new();
         loop {
             if complete_keyword!(self, Select) {
                 result.push(Statement::Select(self.parse_select_body()?));
             } else if complete_keyword!(self, Insert) {
-                self.expect_token_and_advance(&ReservedKeyword::Into)?;
+                expect_keyword!(self, Into)?;
                 result.push(Statement::Insert(self.parse_insert_body()?));
             } else if complete_keyword!(self, Update) {
                 result.push(Statement::Update(self.parse_update_body()?));
             } else if complete_keyword!(self, Delete) {
-                self.expect_token_and_advance(&ReservedKeyword::From)?;
+                expect_keyword!(self, Delete)?;
                 result.push(Statement::Delete(self.parse_delete_body()?));
             } else if complete_keyword!(self, Create) {
-                self.expect_token_and_advance(&ReservedKeyword::Table)?;
+                expect_keyword!(self, Table)?;
                 result.push(Statement::CreateTable(self.parse_create_table_body()?));
             }
             if !self.complete_substr_and_advance(";") {
@@ -485,7 +483,7 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
             return Ok(result);
         } else if complete_keyword!(self, Exists) {
             self.expect_substr_and_advance("(")?;
-            self.expect_token_and_advance(&lexer::ReservedKeyword::Select)?;
+            expect_keyword!(self, Select)?;
             let result = Expr::Exists(Box::new(self.parse_select_body()?));
             self.expect_substr_and_advance(")")?;
             return Ok(result);
@@ -753,10 +751,10 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
             if join_type.is_some() {
                 // optional
                 complete_keyword!(self, Outer);
-                self.expect_token_and_advance(&lexer::ReservedKeyword::Join)?;
+                expect_keyword!(self, Join)?;
             } else {
                 if complete_keyword!(self, Inner) {
-                    self.expect_token_and_advance(&lexer::ReservedKeyword::Join)?;
+                    expect_keyword!(self, Join)?;
                     join_type = Some(JoinType::Inner);
                 } else if complete_keyword!(self, Join) {
                     join_type = Some(JoinType::Inner);
@@ -804,7 +802,7 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
         }
 
         // mandatory from clause
-        self.expect_token_and_advance(&lexer::ReservedKeyword::From)?;
+        expect_keyword!(self, From)?;
         parse_list!(self {
             let join_term: JoinTerm = self.parse_join_tree()?;
             select.from_clause.push(join_term);
@@ -814,12 +812,12 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
         select.where_clause = self.parse_where_clause()?;
 
         if complete_keyword!(self, Group) {
-            self.expect_token_and_advance(&lexer::ReservedKeyword::By)?;
+            expect_keyword!(self, By)?;
             select.grouping = Some(self.parse_group_by_body()?);
         }
 
         if complete_keyword!(self, Order) {
-            self.expect_token_and_advance(&lexer::ReservedKeyword::By)?;
+            expect_keyword!(self, By)?;
             select.order_by_clause = Some(self.parse_order_by_keys()?);
         }
 
@@ -887,7 +885,7 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
                 source: InsertSource::Select(select),
             })
         } else {
-            self.expect_token_and_advance(&lexer::ReservedKeyword::Values)?;
+            expect_keyword!(self, Values)?;
             let mut rows = Vec::new();
             parse_list!(self {
                 self.expect_substr_and_advance("(")?;
@@ -909,7 +907,7 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
 
     fn parse_update_body(&mut self) -> Result<Update, String> {
         let target = self.expect_identifier()?;
-        self.expect_token_and_advance(&lexer::ReservedKeyword::Set)?;
+        expect_keyword!(self, Set)?;
         let mut assignments = Vec::new();
         parse_list!(self {
             let col = self.expect_name()?;
