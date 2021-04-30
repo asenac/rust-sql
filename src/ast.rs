@@ -459,12 +459,9 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
             Ok(Expr::ScalarSubquery(Box::new(self.parse_select_body()?)))
         } else {
             let mut result = Vec::new();
-            loop {
+            parse_list!(self {
                 result.push(Box::new(self.parse_expr()?));
-                if !self.complete_substr_and_advance(",") {
-                    break;
-                }
-            }
+            });
             if result.len() == 1 {
                 Ok(*result.pop().unwrap())
             } else {
@@ -1017,6 +1014,8 @@ mod tests {
         test_valid_query("select a from a where c = 1 order by a");
         test_valid_query("select a from a where c = 1 order by a, c desc");
         test_valid_query("select a from a where c = 1 order by a asc, c");
+        test_valid_query("select a from a, lateral(select * from b where a = b)");
+        test_valid_query("select a from a where (a, b) = (1, 2)");
 
         test_valid_query("insert into a values (1)");
         test_valid_query("insert into a(a) values (1)");
