@@ -15,6 +15,10 @@ pub struct Identifier {
 }
 
 impl Identifier {
+    pub fn new() -> Self {
+        Self { parts: Vec::new() }
+    }
+
     pub fn get_qualifier_before_name(&self) -> Option<&str> {
         if self.parts.len() > 1 {
             Some(&self.parts[self.parts.len() - 2])
@@ -430,10 +434,10 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
     fn parse_identifier(&mut self) -> Option<Identifier> {
         let mut identifier: Option<Identifier> = None;
         while let Some(part) = self.parse_name() {
-            if !identifier.is_some() {
-                identifier = Some(Identifier { parts: Vec::new() });
-            }
-            identifier.as_mut().unwrap().parts.push(part);
+            identifier
+                .get_or_insert_with(Identifier::new)
+                .parts
+                .push(part);
             if !self.complete_substr_and_advance(".") {
                 break;
             }
