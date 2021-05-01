@@ -368,10 +368,8 @@ impl fmt::Display for Expr {
             Tuple => {
                 let operands = self.operands.as_ref().unwrap();
                 write!(f, "({}", operands[0].borrow())?;
-                let mut sep = "";
                 for o in &operands[1..] {
-                    write!(f, "{}{}", sep, o.borrow())?;
-                    sep = ", ";
+                    write!(f, ", {}", o.borrow())?;
                 }
                 write!(f, ")")
             }
@@ -1244,11 +1242,6 @@ impl<'a> ModelGenerator<'a> {
                 }
                 Any(e) | All(e) => {
                     let subquery_box = self.process_query_block(e, Some(current_context))?;
-                    if subquery_box.borrow().columns.len() != 1 {
-                        return Err(format!(
-                            "ALL/ANY subqueries with multiple columns are not supported yet",
-                        ));
-                    }
                     let quantifier_type = match expr {
                         Any(_) => QuantifierType::Any,
                         _ => QuantifierType::All,
@@ -1320,11 +1313,18 @@ impl<'a> ModelGenerator<'a> {
             }
             ast::Expr::Any(e) | ast::Expr::All(e) => {
                 // @todo multi-column
-                let col_ref = Expr::make_column_ref(
-                    current_context.get_subquery_quantifier(e.as_ref() as *const ast::QueryBlock),
-                    0,
-                );
-                Ok(make_ref(col_ref))
+                let q =
+                    current_context.get_subquery_quantifier(e.as_ref() as *const ast::QueryBlock);
+                let column_count = q.borrow().input_box.borrow().columns.len();
+                if column_count == 1 {
+                    let col_ref = Expr::make_column_ref(q, 0);
+                    Ok(make_ref(col_ref))
+                } else {
+                    let col_refs = (0..column_count)
+                        .map(|x| make_ref(Expr::make_column_ref(q.clone(), x)))
+                        .collect();
+                    Ok(make_ref(Expr::make_tuple(col_refs)))
+                }
             }
             ast::Expr::BooleanLiteral(e) => Ok(make_ref(Expr::make_literal(Value::Boolean(*e)))),
             ast::Expr::NumericLiteral(e) => Ok(make_ref(Expr::make_literal(Value::BigInt(*e)))),
