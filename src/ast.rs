@@ -203,6 +203,7 @@ pub enum Expr {
     Case(CaseExpr),
     IsNull(Box<Expr>),
     Tuple(Vec<Box<Expr>>),
+    Between(Box<Expr>, Box<Expr>, Box<Expr>),
 }
 
 impl Expr {
@@ -266,6 +267,11 @@ impl<'a> Iterator for ExprIterator<'a> {
                     for e in case_expr.else_branch.iter() {
                         self.stack.push(e);
                     }
+                }
+                Between(a, b, c) => {
+                    self.stack.push(a);
+                    self.stack.push(b);
+                    self.stack.push(c);
                 }
             }
             Some(top)
@@ -582,6 +588,15 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
         } else if complete_keyword!(self, Is) {
             expect_keyword!(self, Null)?;
             Ok(Expr::IsNull(Box::new(result)))
+        } else if complete_keyword!(self, Between) {
+            let min = self.parse_expr_term()?;
+            expect_keyword!(self, And)?;
+            let max = self.parse_expr_term()?;
+            Ok(Expr::Between(
+                Box::new(result),
+                Box::new(min),
+                Box::new(max),
+            ))
         } else {
             Ok(result)
         }
@@ -1070,6 +1085,7 @@ mod tests {
 
         test_valid_query("select case when a = 1 then 1 end from a");
         test_valid_query("select case when a = 1 then 1 else 2 end from a");
+        test_valid_query("select a from a where a between 1 and 2");
     }
 
     #[test]
