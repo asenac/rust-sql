@@ -1211,9 +1211,6 @@ impl<'a> ModelGenerator<'a> {
                 }
                 InSelect(_, e) => {
                     let subquery_box = self.process_query_block(e, Some(current_context))?;
-                    if subquery_box.borrow().columns.len() != 1 {
-                        return Err(format!("scalar subqueries must project a single column"));
-                    }
                     add_subquery(
                         self,
                         current_context,
@@ -1289,15 +1286,25 @@ impl<'a> ModelGenerator<'a> {
             ))),
             ast::Expr::InSelect(l, e) => {
                 let left = self.process_expr(l, current_context)?;
-                let col_ref = Expr::make_column_ref(
-                    current_context.get_subquery_quantifier(e.as_ref() as *const ast::QueryBlock),
-                    0,
-                );
-                Ok(make_ref(Expr::make_cmp(
-                    CmpOpType::Eq,
-                    left,
-                    make_ref(col_ref),
-                )))
+                let right = {
+                    let q = current_context
+                        .get_subquery_quantifier(e.as_ref() as *const ast::QueryBlock);
+                    let column_count = q.borrow().input_box.borrow().columns.len();
+                    if column_count == 1 {
+                        let col_ref = Expr::make_column_ref(q, 0);
+                        make_ref(col_ref)
+                    } else {
+                        let col_refs = (0..column_count)
+                            .map(|x| make_ref(Expr::make_column_ref(q.clone(), x)))
+                            .collect();
+                        make_ref(Expr::make_tuple(col_refs))
+                    }
+                };
+                if left.borrow().result_arity() != right.borrow().result_arity() {
+                    Err(format!("unexpected number of columns"))
+                } else {
+                    Ok(make_ref(Expr::make_cmp(CmpOpType::Eq, left, right)))
+                }
             }
             ast::Expr::Exists(e) => {
                 let left = make_ref(Expr::make_literal(Value::BigInt(1)));
@@ -1312,7 +1319,6 @@ impl<'a> ModelGenerator<'a> {
                 )))
             }
             ast::Expr::Any(e) | ast::Expr::All(e) => {
-                // @todo multi-column
                 let q =
                     current_context.get_subquery_quantifier(e.as_ref() as *const ast::QueryBlock);
                 let column_count = q.borrow().input_box.borrow().columns.len();
