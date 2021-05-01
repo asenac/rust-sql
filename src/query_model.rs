@@ -1355,7 +1355,11 @@ impl<'a> ModelGenerator<'a> {
                 };
                 let l = self.process_expr(l, current_context)?;
                 let r = self.process_expr(r, current_context)?;
-                Ok(make_ref(Expr::make_cmp(op, l, r)))
+                if l.borrow().result_arity() != r.borrow().result_arity() {
+                    Err(format!("incompatible operands"))
+                } else {
+                    Ok(make_ref(Expr::make_cmp(op, l, r)))
+                }
             }
             ast::Expr::Nary(t, list) => {
                 let mut list_exprs = Vec::new();
