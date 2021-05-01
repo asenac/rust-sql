@@ -806,29 +806,36 @@ impl<'a> NameResolutionContext<'a> {
         self.parent_quantifiers.extend(o.parent_quantifiers);
     }
 
-    fn resolve_column(&self, table: Option<&str>, column: &str) -> Option<ExprRef> {
+    fn resolve_column(&self, table: Option<&str>, column: &str) -> Result<Option<ExprRef>, String> {
         if table.is_some() {
             let tn = table.unwrap();
             for q in &self.quantifiers {
                 // @todo case insensitive comparisons
                 let q_name = q.borrow().get_effective_name();
                 if q_name.is_some() && q_name.as_ref().unwrap() == tn {
-                    return self.resolve_column_in_quantifier(q, column);
+                    return Ok(self.resolve_column_in_quantifier(q, column));
                 }
             }
         } else {
+            let mut found = None;
             for q in &self.quantifiers {
                 // @todo check for column name ambiguity
                 let r = self.resolve_column_in_quantifier(q, column);
                 if r.is_some() {
-                    return r;
+                    if found.is_some() {
+                        return Err(format!("column {} is ambigouts", column));
+                    }
+                    found = r;
                 }
+            }
+            if found.is_some() {
+                return Ok(found);
             }
         }
         if let Some(parent) = &self.parent_context {
             return parent.resolve_column(table, column);
         }
-        None
+        Ok(None)
     }
 
     fn resolve_column_in_quantifier(&self, q: &QuantifierRef, column: &str) -> Option<ExprRef> {
@@ -1264,8 +1271,8 @@ impl<'a> ModelGenerator<'a> {
     ) -> Result<ExprRef, String> {
         match expr {
             ast::Expr::Reference(id) => {
-                let expr =
-                    current_context.resolve_column(id.get_qualifier_before_name(), &id.get_name());
+                let expr = current_context
+                    .resolve_column(id.get_qualifier_before_name(), &id.get_name())?;
                 if expr.is_some() {
                     return Ok(expr.unwrap());
                 }
