@@ -56,6 +56,7 @@ pub enum LexemeType {
     Number,
     Semicolon,
     Symbol,
+    String,
     Word(String),
     ReservedKeyword(ReservedKeyword),
 }
@@ -97,6 +98,26 @@ fn consume_word<T: Iterator<Item = (usize, char)>>(iter: &mut Peekable<T>) -> us
         }
     }
     len
+}
+
+fn consume_string<T: Iterator<Item = (usize, char)>>(
+    iter: &mut Peekable<T>,
+) -> Result<usize, String> {
+    let mut len: usize = 0;
+    while let Some(&(_, c)) = iter.peek() {
+        match c {
+            // @todo escaped strings
+            '\'' => {
+                iter.next();
+                return Ok(len);
+            }
+            _ => {
+                iter.next();
+                len += 1;
+            }
+        }
+    }
+    Err(format!("invalid string"))
 }
 
 fn get_reserved_keyword(input: &str) -> Option<ReservedKeyword> {
@@ -222,6 +243,16 @@ pub fn lex<'a>(input: &'a str) -> Result<Vec<Lexeme<'a>>, String> {
                     offset: i,
                 });
             }
+            '\'' => {
+                it.next();
+                let len = consume_string(&mut it)?;
+                let substring = &input[i + 1..i + 1 + len];
+                result.push(Lexeme {
+                    type_: String,
+                    substring,
+                    offset: i,
+                });
+            }
             _ => {
                 return Err(format!("unexpected character {}", c));
             }
@@ -281,7 +312,7 @@ mod tests {
         assert_eq!(vec[3].type_, Symbol);
         assert_eq!(vec[4].type_, Number);
         assert_eq!(vec[5].type_, Symbol);
-        assert_eq!(vec[6].type_, Word(String::from("ASENAC")));
+        assert_eq!(vec[6].type_, Word("ASENAC".to_string()));
     }
 
     #[test]

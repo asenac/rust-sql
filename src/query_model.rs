@@ -28,6 +28,7 @@ enum LogicalExprType {
 enum Value {
     BigInt(i64),
     Boolean(bool),
+    String(String),
     Null,
 }
 
@@ -35,6 +36,8 @@ impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use Value::*;
         match &self {
+            // @todo escape string
+            String(v) => write!(f, "'{}'", v),
             BigInt(v) => write!(f, "{}", v),
             Boolean(v) if *v => write!(f, "TRUE"),
             Boolean(_) => write!(f, "FALSE"),
@@ -1325,6 +1328,9 @@ impl<'a> ModelGenerator<'a> {
             }
             ast::Expr::BooleanLiteral(e) => Ok(make_ref(Expr::make_literal(Value::Boolean(*e)))),
             ast::Expr::NumericLiteral(e) => Ok(make_ref(Expr::make_literal(Value::BigInt(*e)))),
+            ast::Expr::StringLiteral(e) => {
+                Ok(make_ref(Expr::make_literal(Value::String(e.clone()))))
+            }
             ast::Expr::Binary(t, l, r) => {
                 let op = match t {
                     ast::BinaryExprType::Eq => CmpOpType::Eq,

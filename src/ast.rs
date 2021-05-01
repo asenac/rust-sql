@@ -189,6 +189,7 @@ pub enum Expr {
     Reference(Identifier),
     NumericLiteral(i64),
     BooleanLiteral(bool),
+    StringLiteral(String),
     Unary(Box<Expr>),
     Nary(NaryExprType, Vec<Box<Expr>>),
     Binary(BinaryExprType, Box<Expr>, Box<Expr>),
@@ -229,7 +230,7 @@ impl<'a> Iterator for ExprIterator<'a> {
             match top {
                 Parameter(_) => {}
                 Reference(_) => {}
-                BooleanLiteral(_) | NumericLiteral(_) => {}
+                StringLiteral(_) | BooleanLiteral(_) | NumericLiteral(_) => {}
                 ScalarSubquery(_) | Exists(_) | All(_) | Any(_) => {}
                 FunctionCall(_, vec) => {
                     for e in vec.iter() {
@@ -550,6 +551,11 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
                     return Err(format!("{}", value.err().unwrap()));
                 }
                 return Ok(Expr::NumericLiteral(value.unwrap()));
+            } else {
+                if lexeme.type_ == lexer::LexemeType::String {
+                    self.it.next();
+                    return Ok(Expr::StringLiteral(lexeme.substring.to_string()));
+                }
             }
         }
         Err(String::from("invalid expression"))
