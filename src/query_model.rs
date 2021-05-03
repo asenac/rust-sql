@@ -385,6 +385,7 @@ struct Column {
 
 use ast::{Direction, JoinType};
 
+#[derive(Clone)]
 struct KeyItem {
     expr: ExprRef,
     dir: Direction,
@@ -1654,12 +1655,17 @@ impl rewrite_engine::Rule<BoxRef> for MergeRule {
     fn condition(&mut self, obj: &BoxRef) -> bool {
         self.to_merge.clear();
         let borrowed_obj = obj.borrow();
-        if let BoxType::Select(_) = borrowed_obj.box_type {
+        if let BoxType::Select(outer_select) = &borrowed_obj.box_type {
             for q in &borrowed_obj.quantifiers {
                 let borrowed_q = q.borrow();
                 if let QuantifierType::Foreach = borrowed_q.quantifier_type {
-                    if let BoxType::Select(s) = &borrowed_q.input_box.borrow().box_type {
-                        if s.order_by.is_none() && s.limit.is_none() {
+                    if let BoxType::Select(inner_select) = &borrowed_q.input_box.borrow().box_type {
+                        if inner_select.order_by.is_none() && inner_select.limit.is_none() {
+                            self.to_merge.insert(Rc::clone(q));
+                        } else if borrowed_obj.quantifiers.len() == 1
+                            && (outer_select.order_by.is_none() || inner_select.limit.is_none())
+                        // @todo revisit this
+                        {
                             self.to_merge.insert(Rc::clone(q));
                         }
                     }
@@ -1678,7 +1684,20 @@ impl rewrite_engine::Rule<BoxRef> for MergeRule {
             for oq in &q.borrow().input_box.borrow().quantifiers {
                 add_quantifier_to_box(obj, oq);
             }
-            obj.borrow_mut().remove_quantifier(q);
+            let mut obj = obj.borrow_mut();
+            obj.remove_quantifier(q);
+
+            // @todo revisit this
+            if let BoxType::Select(outer_select) = &mut obj.box_type {
+                if let BoxType::Select(inner_select) = &q.borrow().input_box.borrow().box_type {
+                    if outer_select.limit.is_none() {
+                        outer_select.limit = inner_select.limit.clone();
+                    }
+                    if outer_select.order_by.is_none() {
+                        outer_select.order_by = inner_select.order_by.clone();
+                    }
+                }
+            }
         }
         let mut rule = DereferenceRule {
             to_dereference: &self.to_merge,
