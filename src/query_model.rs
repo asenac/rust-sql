@@ -495,6 +495,10 @@ impl QGBox {
         }
     }
 
+    fn has_predicates(&self) -> bool {
+        !self.predicates.is_none() && !self.predicates.as_ref().unwrap().is_empty()
+    }
+
     fn get_box_type_str(&self) -> &'static str {
         match self.box_type {
             BoxType::Select(_) => "Select",
@@ -1662,22 +1666,48 @@ impl rewrite_engine::Rule<BoxRef> for MergeRule {
     fn condition(&mut self, obj: &BoxRef) -> bool {
         self.to_merge.clear();
         let borrowed_obj = obj.borrow();
-        if let BoxType::Select(outer_select) = &borrowed_obj.box_type {
-            for q in &borrowed_obj.quantifiers {
-                let borrowed_q = q.borrow();
-                if let QuantifierType::Foreach = borrowed_q.quantifier_type {
-                    if let BoxType::Select(inner_select) = &borrowed_q.input_box.borrow().box_type {
-                        if inner_select.order_by.is_none() && inner_select.limit.is_none() {
-                            self.to_merge.insert(Rc::clone(q));
-                        } else if borrowed_obj.quantifiers.len() == 1
-                            && (outer_select.order_by.is_none() || inner_select.limit.is_none())
-                        // @todo revisit this
+
+        match &borrowed_obj.box_type {
+            BoxType::Select(outer_select) => {
+                for q in &borrowed_obj.quantifiers {
+                    let borrowed_q = q.borrow();
+                    if let QuantifierType::Foreach = borrowed_q.quantifier_type {
+                        if let BoxType::Select(inner_select) =
+                            &borrowed_q.input_box.borrow().box_type
                         {
-                            self.to_merge.insert(Rc::clone(q));
+                            if inner_select.order_by.is_none() && inner_select.limit.is_none() {
+                                self.to_merge.insert(Rc::clone(q));
+                            } else if borrowed_obj.quantifiers.len() == 1
+                                && (outer_select.order_by.is_none() || inner_select.limit.is_none())
+                            // @todo revisit this
+                            {
+                                self.to_merge.insert(Rc::clone(q));
+                            }
                         }
                     }
                 }
             }
+            BoxType::OuterJoin => {
+                for q in &borrowed_obj.quantifiers {
+                    let borrowed_q = q.borrow();
+                    match borrowed_q.quantifier_type {
+                        QuantifierType::PreservedForeach | QuantifierType::Foreach => {
+                            let input_box = borrowed_q.input_box.borrow();
+                            if let BoxType::Select(inner_select) = &input_box.box_type {
+                                if input_box.quantifiers.len() == 1
+                                    && inner_select.order_by.is_none()
+                                    && inner_select.limit.is_none()
+                                    && !input_box.has_predicates()
+                                {
+                                    self.to_merge.insert(Rc::clone(q));
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            _ => {}
         }
         !self.to_merge.is_empty()
     }
