@@ -979,6 +979,24 @@ impl<'a> ModelGenerator<'a> {
         ))
     }
 
+    fn process_query_block_source(
+        &mut self,
+        source: &ast::QueryBlockSource,
+        parent_context: &NameResolutionContext,
+    ) -> Result<BoxRef, String> {
+        match source {
+            ast::QueryBlockSource::Select(select) => {
+                self.process_select(select, Some(&parent_context))
+            }
+            ast::QueryBlockSource::Union(left, right) => {
+                let left = self.process_query_block_source(&left, &parent_context)?;
+                let right = self.process_query_block_source(&right, &parent_context)?;
+                Ok(self.make_union_box(vec![left, right]))
+            }
+            _ => Err(format!("unsupported source")),
+        }
+    }
+
     fn process_query_block(
         &mut self,
         query_block: &ast::QueryBlock,
@@ -988,16 +1006,7 @@ impl<'a> ModelGenerator<'a> {
         let mut current_context =
             NameResolutionContext::new(Rc::clone(&current_box), parent_context);
 
-        let mut branches = Vec::new();
-        for select in query_block.union.iter() {
-            let select_box = self.process_select(&select, Some(&current_context))?;
-            branches.push(select_box);
-        }
-
-        let input_box = match branches.len() {
-            1 => branches.pop().unwrap(),
-            _ => self.make_union_box(branches),
-        };
+        let input_box = self.process_query_block_source(&query_block.source, &current_context)?;
         let q = self.make_quantifier(input_box, &current_box);
         current_box.borrow_mut().add_quantifier(Rc::clone(&q));
         current_context.add_quantifier(&q);

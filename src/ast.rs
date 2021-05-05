@@ -103,23 +103,27 @@ impl Select {
 }
 
 #[derive(Debug)]
+pub enum QueryBlockSource {
+    Select(Select),
+    Union(Box<QueryBlockSource>, Box<QueryBlockSource>),
+    Except(Box<QueryBlockSource>, Box<QueryBlockSource>),
+    Intersect(Box<QueryBlockSource>, Box<QueryBlockSource>),
+}
+
+#[derive(Debug)]
 pub struct QueryBlock {
-    pub union: Vec<Select>,
+    pub source: QueryBlockSource,
     pub order_by_clause: Option<OrderByClause>,
     pub limit_clause: Option<Expr>,
 }
 
 impl QueryBlock {
-    fn new() -> Self {
+    fn new(source: QueryBlockSource) -> Self {
         Self {
-            union: Vec::new(),
+            source,
             order_by_clause: None,
             limit_clause: None,
         }
-    }
-
-    fn add_branch(&mut self, select: Select) {
-        self.union.push(select);
     }
 }
 
@@ -817,51 +821,68 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
         }
     }
 
-    fn parse_select_body(&mut self) -> Result<QueryBlock, String> {
-        let mut query_block = QueryBlock::new();
-        loop {
-            let mut select = Select::new();
-            if !self.complete_substr_and_advance("*") {
-                parse_list!(self {
-                    let expr: Expr = self.parse_expr()?;
-                    let alias: Option<String>;
-                    if complete_keyword!(self, As) {
-                        alias = self.parse_name();
-                        if !alias.is_some() {
-                            return Err(String::from("expected column alias"));
-                        }
-                    } else {
-                        // optional alias
-                        alias = self.parse_name();
-                    }
-                    let select_item = SelectItem { expr, alias };
-                    select.add_select_item(select_item);
-                });
-            }
-
-            // mandatory from clause
-            expect_keyword!(self, From)?;
+    fn parse_query_expression_body(&mut self) -> Result<Select, String> {
+        let mut select = Select::new();
+        if !self.complete_substr_and_advance("*") {
             parse_list!(self {
-                let join_term: JoinTerm = self.parse_join_tree()?;
-                select.from_clause.push(join_term);
+                let expr: Expr = self.parse_expr()?;
+                let alias: Option<String>;
+                if complete_keyword!(self, As) {
+                    alias = self.parse_name();
+                    if !alias.is_some() {
+                        return Err(String::from("expected column alias"));
+                    }
+                } else {
+                    // optional alias
+                    alias = self.parse_name();
+                }
+                let select_item = SelectItem { expr, alias };
+                select.add_select_item(select_item);
             });
-
-            // where clause
-            select.where_clause = self.parse_where_clause()?;
-
-            if complete_keyword!(self, Group) {
-                expect_keyword!(self, By)?;
-                select.grouping = Some(self.parse_group_by_body()?);
-            }
-            query_block.add_branch(select);
-            if !complete_keyword!(self, Union) {
-                break;
-            }
-
-            complete_keyword!(self, All); // @todo
-            expect_keyword!(self, Select)?;
         }
 
+        // mandatory from clause
+        expect_keyword!(self, From)?;
+        parse_list!(self {
+            let join_term: JoinTerm = self.parse_join_tree()?;
+            select.from_clause.push(join_term);
+        });
+
+        // where clause
+        select.where_clause = self.parse_where_clause()?;
+
+        if complete_keyword!(self, Group) {
+            expect_keyword!(self, By)?;
+            select.grouping = Some(self.parse_group_by_body()?);
+        }
+        Ok(select)
+    }
+
+    fn parse_query_expression(&mut self) -> Result<Select, String> {
+        expect_keyword!(self, Select)?;
+        self.parse_query_expression_body()
+    }
+
+    fn parse_select_body(&mut self) -> Result<QueryBlock, String> {
+        let mut left = QueryBlockSource::Select(self.parse_query_expression_body()?);
+        loop {
+            if complete_keyword!(self, Union) {
+                complete_keyword!(self, All); // @todo
+
+                let right = QueryBlockSource::Select(self.parse_query_expression()?);
+                left = QueryBlockSource::Union(Box::new(left), Box::new(right));
+            } else if complete_keyword!(self, Except) {
+                let right = QueryBlockSource::Select(self.parse_query_expression()?);
+                left = QueryBlockSource::Except(Box::new(left), Box::new(right));
+            } else if complete_keyword!(self, Intersect) {
+                let right = QueryBlockSource::Select(self.parse_query_expression()?);
+                left = QueryBlockSource::Intersect(Box::new(left), Box::new(right));
+            } else {
+                break;
+            }
+        }
+
+        let mut query_block = QueryBlock::new(left);
         if complete_keyword!(self, Order) {
             expect_keyword!(self, By)?;
             query_block.order_by_clause = Some(self.parse_order_by_keys()?);
@@ -1098,12 +1119,15 @@ mod tests {
         let result = result.unwrap();
         assert_eq!(result.len(), 1);
         if let Statement::Select(s) = &result[0] {
-            let s = s.union.get(0).unwrap();
-            assert!(s.where_clause.is_some());
-            let mut exprs = HashSet::new();
-            for expr in s.where_clause.as_ref().unwrap().iter() {
-                exprs.insert(expr as *const Expr);
-                println!("{:?}", expr);
+            if let QueryBlockSource::Select(s) = &s.source {
+                assert!(s.where_clause.is_some());
+                let mut exprs = HashSet::new();
+                for expr in s.where_clause.as_ref().unwrap().iter() {
+                    exprs.insert(expr as *const Expr);
+                    println!("{:?}", expr);
+                }
+            } else {
+                assert!(false);
             }
         } else {
             assert!(false);
