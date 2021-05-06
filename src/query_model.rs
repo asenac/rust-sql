@@ -287,6 +287,17 @@ fn collect_quantifiers(quantifiers: &mut BTreeSet<QuantifierRef>, expr: &ExprRef
     }
 }
 
+/// Deep clone of an expression
+fn deep_clone(expr: &ExprRef) -> ExprRef {
+    let mut e = expr.borrow().clone();
+    if let Some(operands) = &mut e.operands {
+        for o in operands.iter_mut() {
+            *o = deep_clone(o);
+        }
+    }
+    make_ref(e)
+}
+
 impl fmt::Display for CmpOpType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use CmpOpType::*;
@@ -2056,14 +2067,27 @@ impl rewrite_engine::Rule<BoxRef> for ConstantLiftingRule {
 //
 
 struct PushDownPredicatesRule {
-    to_pushdown: HashMap<ExprRef, BTreeSet<QuantifierRef>>,
+    // source -> destination
+    to_pushdown: Vec<Vec<(ExprRef, BoxRef)>>,
 }
 
 impl PushDownPredicatesRule {
     fn new() -> Self {
         Self {
-            to_pushdown: HashMap::new(),
+            to_pushdown: Vec::new(),
         }
+    }
+
+    fn dereference_predicate(p: &ExprRef, q: &QuantifierRef) -> ExprRef {
+        // 1. deep clone of the predicate
+        let mut p = deep_clone(&p);
+        // 2. dereference the only_quantifier
+        let to_dereference = make_quantifier_set(vec![q.clone()]);
+        let mut rule = DereferenceRule {
+            to_dereference: &to_dereference,
+        };
+        rewrite_engine::deep_apply_rule(&mut rule, &mut p);
+        p
     }
 }
 
@@ -2076,22 +2100,33 @@ impl rewrite_engine::Rule<BoxRef> for PushDownPredicatesRule {
     }
     fn condition(&mut self, obj: &BoxRef) -> bool {
         self.to_pushdown.clear();
-        let borrowed_obj = obj.borrow();
-        if let Some(predicates) = &borrowed_obj.predicates {
-            for predicate in predicates {
-                // we need to check if the quantifier belongs to the current box
-                let quantifiers = get_quantifiers(predicate);
-                if quantifiers.len() == 1 {
-                    let only_quantifier = quantifiers.iter().next().unwrap();
-                    for q in &borrowed_obj.quantifiers {
-                        if q == only_quantifier {
-                            // @todo
-                            break;
-                        }
+        let mut stack: Vec<Vec<(ExprRef, BoxRef)>> = Vec::new();
+        if let Some(predicates) = &obj.borrow().predicates {
+            stack.extend(predicates.iter().map(|x| vec![(x.clone(), obj.clone())]));
+        }
+
+        while !stack.is_empty() {
+            let mut path = stack.pop().unwrap();
+            let (p, b) = path.last().unwrap().clone();
+            let quantifiers = get_quantifiers(&p);
+            if quantifiers.len() == 1 {
+                let q_ref = quantifiers.iter().next().unwrap();
+                let only_quantifier = q_ref.borrow();
+                match (&b.borrow().box_type, &only_quantifier.quantifier_type) {
+                    (BoxType::OuterJoin, QuantifierType::PreservedForeach)
+                    | (BoxType::Select(_), QuantifierType::Foreach) => {
+                        let p = Self::dereference_predicate(&p, &q_ref);
+                        // append the predicate to the stack
+                        path.push((p, only_quantifier.input_box.clone()));
+                        stack.push(path);
                     }
+                    _ => {}
                 }
+            } else if path.len() > 1 {
+                self.to_pushdown.push(path);
             }
         }
+
         !self.to_pushdown.is_empty()
     }
     fn action(&mut self, _obj: &mut BoxRef) {
