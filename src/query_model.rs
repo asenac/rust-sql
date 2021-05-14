@@ -296,6 +296,14 @@ fn get_quantifiers(expr: &ExprRef) -> BTreeSet<QuantifierRef> {
     result
 }
 
+fn get_existential_quantifiers(expr: &ExprRef) -> BTreeSet<QuantifierRef> {
+    get_quantifiers(expr)
+        .iter()
+        .filter(|q| q.borrow().quantifier_type == QuantifierType::Existential)
+        .cloned()
+        .collect()
+}
+
 fn collect_quantifiers(quantifiers: &mut BTreeSet<QuantifierRef>, expr: &ExprRef) {
     let mut stack = vec![Rc::clone(expr)];
     while let Some(expr) = stack.pop() {
