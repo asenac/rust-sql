@@ -1564,7 +1564,7 @@ impl DotGenerator {
                 Self::get_box_title(&b)
             ));
             self.new_line(&format!(
-                "boxhead{} [ shape = record, label=\"{}\" ]",
+                "boxhead{} [ shape = record, label=\"{{ {} }}\" ]",
                 b.id,
                 Self::get_box_head(&b, &other_predicates[..])
             ));
