@@ -1063,16 +1063,26 @@ impl<'a> ModelGenerator<'a> {
         query_block: &ast::QueryBlock,
         parent_context: Option<&NameResolutionContext>,
     ) -> Result<BoxRef, String> {
-        let current_box = self.make_select_box();
+        let mut current_box = self.make_select_box();
         let mut current_context =
             NameResolutionContext::new(Rc::clone(&current_box), parent_context);
 
         let input_box = self.process_query_block_source(&query_block.source, &current_context)?;
-        let q = self.make_quantifier(input_box, &current_box);
-        current_box.borrow_mut().add_quantifier(Rc::clone(&q));
-        current_context.add_quantifier(&q);
+        let is_select = if let BoxType::Select(_) = &input_box.borrow().box_type {
+            true
+        } else {
+            false
+        };
+        if is_select {
+            current_box = input_box;
+            current_context = NameResolutionContext::new(Rc::clone(&current_box), parent_context);
+        } else {
+            let q = self.make_quantifier(input_box, &current_box);
+            current_box.borrow_mut().add_quantifier(Rc::clone(&q));
+            current_context.add_quantifier(&q);
 
-        self.add_all_columns(&current_box);
+            self.add_all_columns(&current_box);
+        }
 
         if let Some(order_by_clause) = &query_block.order_by_clause {
             let mut keys = Vec::new();
@@ -1099,13 +1109,6 @@ impl<'a> ModelGenerator<'a> {
         parent_context: Option<&NameResolutionContext>,
     ) -> Result<BoxRef, String> {
         let mut current_box = self.make_select_box();
-
-        // distinct property
-        if select.distinct {
-            let mut box_mut = current_box.borrow_mut();
-            box_mut.distinct_tuples = true;
-            box_mut.distinct_operation = DistinctOperation::Enforce;
-        }
 
         let mut current_context =
             NameResolutionContext::new(Rc::clone(&current_box), parent_context);
@@ -1162,6 +1165,13 @@ impl<'a> ModelGenerator<'a> {
         } else {
             // add all columns from all quantifiers
             self.add_all_columns(&current_box);
+        }
+
+        // distinct property
+        if select.distinct {
+            let mut box_mut = current_box.borrow_mut();
+            box_mut.distinct_tuples = true;
+            box_mut.distinct_operation = DistinctOperation::Enforce;
         }
 
         Ok(current_box)
@@ -1721,6 +1731,62 @@ impl rewrite_engine::Rule<BoxRef> for EmptyRule {
     fn action(&mut self, _obj: &mut BoxRef) {}
 }
 
+struct SemiJoinRemovalRule {
+    to_convert: BTreeSet<QuantifierRef>,
+}
+
+impl SemiJoinRemovalRule {
+    fn new() -> Self {
+        Self {
+            to_convert: BTreeSet::new(),
+        }
+    }
+}
+
+impl rewrite_engine::Rule<BoxRef> for SemiJoinRemovalRule {
+    fn name(&self) -> &'static str {
+        "SemiJoinRemovalRule"
+    }
+    fn apply_top_down(&self) -> bool {
+        false
+    }
+    fn condition(&mut self, obj: &BoxRef) -> bool {
+        self.to_convert.clear();
+        let obj = obj.borrow();
+        if let BoxType::Select(_) = &obj.box_type {
+            if let Some(predicates) = &obj.predicates {
+                // collect all existential quantifiers which belong in top level predicates
+                // and which input box returns unique tuples
+                self.to_convert = predicates
+                    .iter()
+                    .filter_map(|x| {
+                        if x.borrow().is_existential_comparison() {
+                            let existential_quantifiers = get_existential_quantifiers(x);
+                            // @note this should actually be an assert
+                            if existential_quantifiers.len() == 1 {
+                                let q = existential_quantifiers.into_iter().next().unwrap();
+                                if q.borrow().input_box.borrow().distinct_tuples {
+                                    return Some(q);
+                                }
+                            }
+                        }
+                        None
+                    })
+                    .fold(BTreeSet::new(), |mut acc, x| {
+                        acc.insert(x);
+                        acc
+                    });
+            }
+        }
+        !self.to_convert.is_empty()
+    }
+    fn action(&mut self, _obj: &mut BoxRef) {
+        for q in self.to_convert.iter() {
+            q.borrow_mut().quantifier_type = QuantifierType::Foreach;
+        }
+    }
+}
+
 //
 // MergeRule
 //
@@ -2247,6 +2313,7 @@ pub fn rewrite_model(m: &mut Model) {
         Box::new(ColumnRemovalRule::new()),
         Box::new(EmptyBoxesRule::new()),
         Box::new(ConstantLiftingRule::new()),
+        Box::new(SemiJoinRemovalRule::new()),
     ];
     for _ in 0..5 {
         apply_rules(m, &mut rules);
