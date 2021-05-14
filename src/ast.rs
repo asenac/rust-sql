@@ -85,15 +85,17 @@ pub struct Select {
     pub from_clause: Vec<JoinTerm>,
     pub where_clause: Option<Expr>,
     pub grouping: Option<Grouping>,
+    pub distinct: bool,
 }
 
 impl Select {
-    fn new() -> Self {
+    fn new(distinct: bool) -> Self {
         Self {
             selection_list: None,
             from_clause: Vec::new(),
             where_clause: None,
             grouping: None,
+            distinct,
         }
     }
 
@@ -103,9 +105,16 @@ impl Select {
 }
 
 #[derive(Debug)]
+pub struct Union {
+    pub distinct: bool,
+    pub left: Box<QueryBlockSource>,
+    pub right: Box<QueryBlockSource>,
+}
+
+#[derive(Debug)]
 pub enum QueryBlockSource {
     Select(Select),
-    Union(Box<QueryBlockSource>, Box<QueryBlockSource>),
+    Union(Union),
     Except(Box<QueryBlockSource>, Box<QueryBlockSource>),
     Intersect(Box<QueryBlockSource>, Box<QueryBlockSource>),
 }
@@ -822,7 +831,8 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
     }
 
     fn parse_query_expression_body(&mut self) -> Result<Select, String> {
-        let mut select = Select::new();
+        let distinct = complete_keyword!(self, Distinct);
+        let mut select = Select::new(distinct);
         if !self.complete_substr_and_advance("*") {
             parse_list!(self {
                 let expr: Expr = self.parse_expr()?;
@@ -867,10 +877,17 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
         let mut left = QueryBlockSource::Select(self.parse_query_expression_body()?);
         loop {
             if complete_keyword!(self, Union) {
-                complete_keyword!(self, All); // @todo
+                let all = complete_keyword!(self, All);
+                if !all {
+                    let _ = complete_keyword!(self, Distinct);
+                }
 
                 let right = QueryBlockSource::Select(self.parse_query_expression()?);
-                left = QueryBlockSource::Union(Box::new(left), Box::new(right));
+                left = QueryBlockSource::Union(Union {
+                    distinct: !all,
+                    left: Box::new(left),
+                    right: Box::new(right),
+                });
             } else if complete_keyword!(self, Except) {
                 let right = QueryBlockSource::Select(self.parse_query_expression()?);
                 left = QueryBlockSource::Except(Box::new(left), Box::new(right));

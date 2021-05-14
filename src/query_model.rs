@@ -433,6 +433,13 @@ struct KeyItem {
     dir: Direction,
 }
 
+#[derive(Clone, Debug)]
+enum DistinctOperation {
+    Permit,
+    Enforce,
+    Preserve,
+}
+
 struct Select {
     limit: Option<ExprRef>,
     order_by: Option<Vec<KeyItem>>,
@@ -468,9 +475,11 @@ enum BoxType {
 struct QGBox {
     id: i32,
     box_type: BoxType,
+    distinct_tuples: bool,
     columns: Vec<Column>,
     quantifiers: BTreeSet<QuantifierRef>,
     predicates: Option<Vec<ExprRef>>,
+    distinct_operation: DistinctOperation,
 }
 
 fn make_quantifier_set(v: Vec<QuantifierRef>) -> BTreeSet<QuantifierRef> {
@@ -483,10 +492,12 @@ impl QGBox {
     fn new(id: i32, box_type: BoxType) -> Self {
         Self {
             id,
+            distinct_tuples: false,
             box_type,
             columns: Vec::new(),
             quantifiers: BTreeSet::new(),
             predicates: None,
+            distinct_operation: DistinctOperation::Preserve,
         }
     }
     /// use add_quantifier_to_box instead to properly set the parent box of the quantifier
@@ -742,6 +753,7 @@ impl Model {
         other
     }
 
+    // @todo validate that distinct operation can only be enforeced by selects and unions
     fn validate(&self) -> Result<(), String> {
         let mut box_stack = vec![(Rc::clone(&self.top_box), BTreeSet::<QuantifierRef>::new())];
         let mut visited = HashSet::new();
@@ -999,8 +1011,15 @@ impl<'a> ModelGenerator<'a> {
         make_ref(QGBox::new(self.get_box_id(), BoxType::OuterJoin))
     }
 
-    fn make_union_box(&mut self, mut branches: Vec<BoxRef>) -> BoxRef {
+    fn make_union_box(&mut self, distinct: bool, mut branches: Vec<BoxRef>) -> BoxRef {
         let union_box = make_ref(QGBox::new(self.get_box_id(), BoxType::Union));
+        {
+            let mut union_mut = union_box.borrow_mut();
+            union_mut.distinct_tuples = distinct;
+            if distinct {
+                union_mut.distinct_operation = DistinctOperation::Enforce;
+            }
+        }
         for (i, branch) in branches.drain(..).enumerate() {
             let q = self.make_quantifier(branch, &union_box);
             union_box.borrow_mut().add_quantifier(q);
@@ -1030,10 +1049,10 @@ impl<'a> ModelGenerator<'a> {
             ast::QueryBlockSource::Select(select) => {
                 self.process_select(select, Some(&parent_context))
             }
-            ast::QueryBlockSource::Union(left, right) => {
-                let left = self.process_query_block_source(&left, &parent_context)?;
-                let right = self.process_query_block_source(&right, &parent_context)?;
-                Ok(self.make_union_box(vec![left, right]))
+            ast::QueryBlockSource::Union(union) => {
+                let left = self.process_query_block_source(&union.left, &parent_context)?;
+                let right = self.process_query_block_source(&union.right, &parent_context)?;
+                Ok(self.make_union_box(union.distinct, vec![left, right]))
             }
             _ => Err(format!("unsupported source")),
         }
@@ -1080,6 +1099,14 @@ impl<'a> ModelGenerator<'a> {
         parent_context: Option<&NameResolutionContext>,
     ) -> Result<BoxRef, String> {
         let mut current_box = self.make_select_box();
+
+        // distinct property
+        if select.distinct {
+            let mut box_mut = current_box.borrow_mut();
+            box_mut.distinct_tuples = true;
+            box_mut.distinct_operation = DistinctOperation::Enforce;
+        }
+
         let mut current_context =
             NameResolutionContext::new(Rc::clone(&current_box), parent_context);
         for join_item in &select.from_clause {
