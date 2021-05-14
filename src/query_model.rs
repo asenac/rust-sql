@@ -249,6 +249,29 @@ impl Expr {
             _ => 1,
         }
     }
+
+    fn is_existential_operand(&self) -> bool {
+        match &self.expr_type {
+            ExprType::Tuple => self
+                .operands
+                .iter()
+                .all(|x| x.iter().all(|x| x.borrow().is_existential_operand())),
+            ExprType::ColumnReference(c) => {
+                c.quantifier.borrow().quantifier_type == QuantifierType::Existential
+            }
+            _ => false,
+        }
+    }
+
+    fn is_existential_comparison(&self) -> bool {
+        match &self.expr_type {
+            ExprType::Cmp(CmpOpType::Eq) => self
+                .operands
+                .iter()
+                .all(|x| x.iter().any(|x| x.borrow().is_existential_operand())),
+            _ => false,
+        }
+    }
 }
 
 fn collect_column_refs(expr: &ExprRef) -> Vec<ExprRef> {
