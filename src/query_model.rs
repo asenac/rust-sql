@@ -1625,6 +1625,9 @@ impl DotGenerator {
 
     fn get_box_head(b: &QGBox, predicates: &[ExprRef]) -> String {
         let mut r = String::new();
+        if b.distinct_tuples {
+            r.push_str("DISTINCT TUPLES")
+        }
         for (i, c) in b.columns.iter().enumerate() {
             if r.len() > 0 {
                 r.push('|');
