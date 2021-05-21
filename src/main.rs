@@ -107,12 +107,41 @@ impl Interpreter {
                 }
                 self.catalog.add_table(metadata);
             }
+            CreateIndex(c) => {
+                if let Some(table) = self.catalog.get_table(c.tablename.get_name()) {
+                    let mut cloned = table.clone();
+                    let mut columns = Vec::new();
+                    for ic in c.columns.iter() {
+                        let mut idx = None;
+                        for (i, tc) in cloned.columns.iter().enumerate() {
+                            if tc.name == *ic {
+                                idx = Some(i);
+                                break;
+                            }
+                        }
+                        if let Some(i) = idx {
+                            columns.push(i);
+                        } else {
+                            return Err(format!("column {} not found", ic));
+                        }
+                    }
+                    cloned.indexes.push(metadata::Index {
+                        name: c.name.clone(),
+                        unique: c.unique,
+                        columns,
+                    });
+                    self.catalog.add_table(cloned);
+                } else {
+                    return Err(format!("table {} not found", c.tablename.get_name()));
+                }
+            }
             _ => return Err(format!("unsupported statement: {:?}", stmt)),
         }
         Ok(())
     }
 }
 
+use metadata::MetadataCatalog;
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
 

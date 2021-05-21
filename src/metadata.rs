@@ -18,6 +18,7 @@ pub struct ColumnMetadata {
 pub struct TableMetadata {
     pub name: String,
     pub columns: Vec<ColumnMetadata>,
+    pub indexes: Vec<Index>,
 }
 
 impl TableMetadata {
@@ -25,6 +26,7 @@ impl TableMetadata {
         Self {
             name: name.to_string(),
             columns: Vec::new(),
+            indexes: Vec::new(),
         }
     }
 
@@ -34,6 +36,13 @@ impl TableMetadata {
             data_type: DataType::String,
         });
     }
+}
+
+#[derive(Clone)]
+pub struct Index {
+    pub name: String,
+    pub unique: bool,
+    pub columns: Vec<usize>,
 }
 
 /// interface for resolving metadata definitions
