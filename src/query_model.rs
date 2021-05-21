@@ -1244,7 +1244,6 @@ impl<'a> ModelGenerator<'a> {
             .collect::<Vec<_>>();
 
         if quantifiers.len() == 1 {
-            // @todo we could infer keys for multi quantifier selects by looking at the predicates
             let q = quantifiers.pop().expect("expected quantifier");
             let mut input_col_to_col = HashMap::new();
 
@@ -1266,6 +1265,10 @@ impl<'a> ModelGenerator<'a> {
                     select_box.borrow_mut().add_unique_key(new_key);
                 }
             }
+        } else if quantifiers.len() > 1 {
+            // @todo general case: for any input unique key all key items
+            // must be connected to a unique key from all other quantifiers
+            // via equality predicates.
         }
     }
 
