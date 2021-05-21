@@ -1,5 +1,6 @@
 use crate::ast;
 use crate::metadata::*;
+use itertools::Itertools;
 use std::cell::RefCell;
 use std::cmp::*;
 use std::collections::*;
@@ -1339,8 +1340,11 @@ impl<'a> ModelGenerator<'a> {
                 for (i, c) in select_box.borrow().columns.iter().enumerate() {
                     if let ExprType::ColumnReference(c) = &c.expr.borrow().expr_type {
                         if let Some(class) = classes.get(&c.to_desc()) {
-                            // @todo the same class may be projected several times through different columns
-                            projected_classes.insert(class, i);
+                            // the same class may be projected several times through different columns
+                            projected_classes
+                                .entry(class)
+                                .or_insert_with(Vec::new)
+                                .push(i);
                         }
                     }
                 }
@@ -1386,14 +1390,16 @@ impl<'a> ModelGenerator<'a> {
                                 .count();
                             // check if an equivalent key was found for every other quantifier
                             if eq_keys + 1 == quantifiers.len() {
-                                let projected_key = outer_key_classes
+                                let mut projected_key = outer_key_classes
                                     .iter()
                                     .filter_map(|class| projected_classes.get(&class))
                                     .cloned()
                                     .collect::<Vec<_>>();
                                 // check if all column from the key are projected
                                 if projected_key.len() == outer_key.len() {
-                                    select_box.borrow_mut().add_unique_key(projected_key);
+                                    for key in projected_key.drain(..).multi_cartesian_product() {
+                                        select_box.borrow_mut().add_unique_key(key);
+                                    }
                                 }
                             }
                         }
