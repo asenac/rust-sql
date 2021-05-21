@@ -480,6 +480,7 @@ struct QGBox {
     quantifiers: BTreeSet<QuantifierRef>,
     predicates: Option<Vec<ExprRef>>,
     distinct_operation: DistinctOperation,
+    unique_keys: Vec<Vec<usize>>,
 }
 
 fn make_quantifier_set(v: Vec<QuantifierRef>) -> BTreeSet<QuantifierRef> {
@@ -498,6 +499,7 @@ impl QGBox {
             quantifiers: BTreeSet::new(),
             predicates: None,
             distinct_operation: DistinctOperation::Preserve,
+            unique_keys: Vec::new(),
         }
     }
     /// use add_quantifier_to_box instead to properly set the parent box of the quantifier
@@ -546,6 +548,10 @@ impl QGBox {
         } else {
             self.predicates = Some(predicates);
         }
+    }
+
+    fn add_unique_key(&mut self, key: Vec<usize>) {
+        self.unique_keys.push(key);
     }
 
     fn has_predicates(&self) -> bool {
@@ -1122,6 +1128,7 @@ impl<'a> ModelGenerator<'a> {
         }
         if let Some(grouping) = &select.grouping {
             self.add_all_columns(&current_box);
+            self.add_unique_keys(&current_box);
 
             let grouping_box = make_ref(QGBox::new(
                 self.get_box_id(),
@@ -1132,13 +1139,42 @@ impl<'a> ModelGenerator<'a> {
             // context for resolving the grouping keys
             current_context = NameResolutionContext::new(Rc::clone(&grouping_box), parent_context);
             current_context.add_quantifier(&q);
+            let mut unique_key = Vec::new();
+            let mut input_column_in_group_key = HashSet::new();
             for key in &grouping.groups {
                 let expr = self.process_expr(&key.expr, &current_context)?;
-                grouping_box.borrow_mut().add_column(None, expr.clone());
-                grouping_box.borrow_mut().add_group(KeyItem {
+                if let ExprType::ColumnReference(c) = &expr.borrow().expr_type {
+                    input_column_in_group_key.insert(c.position);
+                }
+                let mut grouping_box = grouping_box.borrow_mut();
+                // @todo we could infer the the shortest set of columns that make a unique key
+                unique_key.push(grouping_box.columns.len());
+                grouping_box.add_column(None, expr.clone());
+                grouping_box.add_group(KeyItem {
                     expr,
                     dir: key.direction,
                 });
+            }
+            if !unique_key.is_empty() {
+                grouping_box.borrow_mut().add_unique_key(unique_key);
+            }
+            // Import all columns with functional dependencies. If all the elements in
+            // unique key of the input box are present in the grouping key, then we can
+            // add all the columns from the input box to the projection of the grouping
+            // box.
+            if q.borrow()
+                .input_box
+                .borrow()
+                .unique_keys
+                .iter()
+                .any(|key| key.iter().all(|c| input_column_in_group_key.contains(c)))
+            {
+                for i in 0..q.borrow().input_box.borrow().columns.len() {
+                    if !input_column_in_group_key.contains(&i) {
+                        let expr = Expr::make_column_ref(Rc::clone(&q), i);
+                        grouping_box.borrow_mut().add_column(None, make_ref(expr));
+                    }
+                }
             }
 
             // put a select box on top of the grouping box and use the grouping quantifier for name resolution
@@ -1166,12 +1202,14 @@ impl<'a> ModelGenerator<'a> {
             // add all columns from all quantifiers
             self.add_all_columns(&current_box);
         }
+        self.add_unique_keys(&current_box);
 
         // distinct property
         if select.distinct {
             let mut box_mut = current_box.borrow_mut();
             box_mut.distinct_tuples = true;
             box_mut.distinct_operation = DistinctOperation::Enforce;
+            // @todo unique keys
         }
 
         Ok(current_box)
@@ -1190,6 +1228,42 @@ impl<'a> ModelGenerator<'a> {
                 select_box
                     .borrow_mut()
                     .add_column(c.name.clone(), make_ref(expr));
+            }
+        }
+    }
+
+    fn add_unique_keys(&mut self, select_box: &BoxRef) {
+        // collect non-subquery quantifiers
+        let mut quantifiers = select_box
+            .borrow()
+            .quantifiers
+            .iter()
+            .filter(|q| !q.borrow().is_subquery())
+            .cloned()
+            .collect::<Vec<_>>();
+
+        if quantifiers.len() == 1 {
+            // @todo we could infer keys for multi quantifier selects by looking at the predicates
+            let q = quantifiers.pop().expect("expected quantifier");
+            let mut input_col_to_col = HashMap::new();
+
+            for (col, column) in select_box.borrow().columns.iter().enumerate() {
+                if let ExprType::ColumnReference(c) = &column.expr.borrow().expr_type {
+                    if c.quantifier == q {
+                        input_col_to_col.insert(c.position, col);
+                    }
+                }
+            }
+
+            for key in q.borrow().input_box.borrow().unique_keys.iter() {
+                let new_key = key
+                    .iter()
+                    .filter_map(|x| input_col_to_col.get(x))
+                    .cloned()
+                    .collect::<Vec<_>>();
+                if new_key.len() == key.len() {
+                    select_box.borrow_mut().add_unique_key(new_key);
+                }
             }
         }
     }
@@ -1883,6 +1957,9 @@ impl rewrite_engine::Rule<BoxRef> for MergeRule {
                 }
             }
         }
+        // @todo recompute unique keys!!!
+        obj.borrow_mut().unique_keys.clear();
+
         let mut rule = DereferenceRule {
             to_dereference: &self.to_merge,
         };
@@ -1959,6 +2036,9 @@ impl rewrite_engine::Rule<BoxRef> for ColumnRemovalRule {
                 }
             }
         }
+        let new_keys = Vec::new();
+        // @todo update keys
+        obj.unique_keys = new_keys;
         obj.columns = obj
             .columns
             .drain(..)
