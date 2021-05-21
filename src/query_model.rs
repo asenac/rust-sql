@@ -651,12 +651,25 @@ impl QGBox {
         self.unique_keys.clear();
 
         match &self.box_type {
-            BoxType::Select(_) => {
+            BoxType::OuterJoin | BoxType::Select(_) => {
+                let is_outer_join = if let BoxType::OuterJoin = &self.box_type {
+                    true
+                } else {
+                    false
+                };
                 // collect non-subquery quantifiers
                 let mut quantifiers = self
                     .quantifiers
                     .iter()
                     .filter(|q| !q.borrow().is_subquery())
+                    .filter(|q| {
+                        let q = q.borrow();
+                        match (is_outer_join, &q.quantifier_type) {
+                            (false, QuantifierType::Foreach) => true,
+                            (true, QuantifierType::PreservedForeach) => true,
+                            _ => false,
+                        }
+                    })
                     .cloned()
                     .collect::<Vec<_>>();
 
@@ -1527,6 +1540,7 @@ impl<'a> ModelGenerator<'a> {
 
                 // project all columns from its quantifiers
                 self.add_all_columns(&select_box);
+                self.add_unique_keys(&select_box);
                 Ok(select_box)
             } // _ => Err(String::from("not implemented")),
         }
