@@ -649,6 +649,131 @@ impl QGBox {
         }
     }
 
+    fn recompute_unique_keys(&mut self) {
+        self.unique_keys.clear();
+
+        match self.box_type {
+            BoxType::Select(_) => {
+                // collect non-subquery quantifiers
+                let mut quantifiers = self
+                    .quantifiers
+                    .iter()
+                    .filter(|q| !q.borrow().is_subquery())
+                    .cloned()
+                    .collect::<Vec<_>>();
+
+                if quantifiers.len() == 1 {
+                    let q = quantifiers.pop().expect("expected quantifier");
+                    let mut input_col_to_col = HashMap::new();
+
+                    for (col, column) in self.columns.iter().enumerate() {
+                        if let ExprType::ColumnReference(c) = &column.expr.borrow().expr_type {
+                            if c.quantifier == q {
+                                input_col_to_col.insert(c.position, col);
+                            }
+                        }
+                    }
+
+                    for key in q.borrow().input_box.borrow().unique_keys.iter() {
+                        let new_key = key
+                            .iter()
+                            .filter_map(|x| input_col_to_col.get(x))
+                            .cloned()
+                            .collect::<Vec<_>>();
+                        if new_key.len() == key.len() {
+                            self.add_unique_key(new_key);
+                        }
+                    }
+                } else if quantifiers.len() > 1 {
+                    // general case: for any input unique key all key items
+                    // must be connected to a unique key from all other quantifiers
+                    // via equality predicates.
+                    let classes = if let Some(predicates) = &self.predicates {
+                        Some(compute_class_equivalence(predicates))
+                    } else {
+                        None
+                    };
+                    if let Some(classes) = &classes {
+                        // classes projected by the box
+                        let mut projected_classes = HashMap::new();
+                        for (i, c) in self.columns.iter().enumerate() {
+                            if let ExprType::ColumnReference(c) = &c.expr.borrow().expr_type {
+                                if let Some(class) = classes.get(&c.to_desc()) {
+                                    // the same class may be projected several times through different columns
+                                    projected_classes
+                                        .entry(class)
+                                        .or_insert_with(Vec::new)
+                                        .push(i);
+                                }
+                            }
+                        }
+                        let keys_by_q: HashMap<_, _> = quantifiers
+                            .iter()
+                            .map(|q| {
+                                let q = q.borrow();
+                                let b = q.input_box.borrow();
+                                (q.id, b.unique_keys.clone())
+                            })
+                            .collect();
+                        let first_id: i32 = quantifiers.first().unwrap().borrow().id;
+                        if let Some(unique_keys) = keys_by_q.get(&first_id) {
+                            // given a key returns the classes of the key
+                            let key_classes = |id: i32, key: &Vec<usize>| {
+                                key.iter()
+                                    .filter_map(|x| {
+                                        if let Some(class) = classes.get(&(id, *x)) {
+                                            Some(*class)
+                                        } else {
+                                            None
+                                        }
+                                    })
+                                    .collect::<HashSet<_>>()
+                            };
+                            for outer_key in unique_keys {
+                                let outer_key_classes = key_classes(first_id, outer_key);
+                                if outer_key_classes.len() == outer_key.len() {
+                                    let eq_keys = keys_by_q
+                                        .iter()
+                                        .filter(|(x, _)| **x != first_id)
+                                        .filter_map(|(id, keys)| {
+                                            for key in keys {
+                                                if key.len() == outer_key.len() {
+                                                    let kc = key_classes(*id, key);
+                                                    if kc == outer_key_classes {
+                                                        return Some((*id, key.clone()));
+                                                    }
+                                                }
+                                            }
+                                            None
+                                        })
+                                        .count();
+                                    // check if an equivalent key was found for every other quantifier
+                                    if eq_keys + 1 == quantifiers.len() {
+                                        let mut projected_key = outer_key_classes
+                                            .iter()
+                                            .filter_map(|class| projected_classes.get(&class))
+                                            .cloned()
+                                            .collect::<Vec<_>>();
+                                        // check if all column from the key are projected
+                                        if projected_key.len() == outer_key.len() {
+                                            for key in
+                                                projected_key.drain(..).multi_cartesian_product()
+                                            {
+                                                self.add_unique_key(key);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            BoxType::BaseTable(_) => {}
+            _ => {}
+        }
+    }
+
     fn visit_expressions<F>(&mut self, f: &mut F)
     where
         F: FnMut(&mut ExprRef) -> (),
@@ -1294,119 +1419,7 @@ impl<'a> ModelGenerator<'a> {
     }
 
     fn add_unique_keys(&mut self, select_box: &BoxRef) {
-        // collect non-subquery quantifiers
-        let mut quantifiers = select_box
-            .borrow()
-            .quantifiers
-            .iter()
-            .filter(|q| !q.borrow().is_subquery())
-            .cloned()
-            .collect::<Vec<_>>();
-
-        if quantifiers.len() == 1 {
-            let q = quantifiers.pop().expect("expected quantifier");
-            let mut input_col_to_col = HashMap::new();
-
-            for (col, column) in select_box.borrow().columns.iter().enumerate() {
-                if let ExprType::ColumnReference(c) = &column.expr.borrow().expr_type {
-                    if c.quantifier == q {
-                        input_col_to_col.insert(c.position, col);
-                    }
-                }
-            }
-
-            for key in q.borrow().input_box.borrow().unique_keys.iter() {
-                let new_key = key
-                    .iter()
-                    .filter_map(|x| input_col_to_col.get(x))
-                    .cloned()
-                    .collect::<Vec<_>>();
-                if new_key.len() == key.len() {
-                    select_box.borrow_mut().add_unique_key(new_key);
-                }
-            }
-        } else if quantifiers.len() > 1 {
-            // general case: for any input unique key all key items
-            // must be connected to a unique key from all other quantifiers
-            // via equality predicates.
-            let classes = if let Some(predicates) = &select_box.borrow().predicates {
-                Some(compute_class_equivalence(predicates))
-            } else {
-                None
-            };
-            if let Some(classes) = &classes {
-                // classes projected by the box
-                let mut projected_classes = HashMap::new();
-                for (i, c) in select_box.borrow().columns.iter().enumerate() {
-                    if let ExprType::ColumnReference(c) = &c.expr.borrow().expr_type {
-                        if let Some(class) = classes.get(&c.to_desc()) {
-                            // the same class may be projected several times through different columns
-                            projected_classes
-                                .entry(class)
-                                .or_insert_with(Vec::new)
-                                .push(i);
-                        }
-                    }
-                }
-                let keys_by_q: HashMap<_, _> = quantifiers
-                    .iter()
-                    .map(|q| {
-                        let q = q.borrow();
-                        let b = q.input_box.borrow();
-                        (q.id, b.unique_keys.clone())
-                    })
-                    .collect();
-                let first_id: i32 = quantifiers.first().unwrap().borrow().id;
-                if let Some(unique_keys) = keys_by_q.get(&first_id) {
-                    // given a key returns the classes of the key
-                    let key_classes = |id: i32, key: &Vec<usize>| {
-                        key.iter()
-                            .filter_map(|x| {
-                                if let Some(class) = classes.get(&(id, *x)) {
-                                    Some(*class)
-                                } else {
-                                    None
-                                }
-                            })
-                            .collect::<HashSet<_>>()
-                    };
-                    for outer_key in unique_keys {
-                        let outer_key_classes = key_classes(first_id, outer_key);
-                        if outer_key_classes.len() == outer_key.len() {
-                            let eq_keys = keys_by_q
-                                .iter()
-                                .filter(|(x, _)| **x != first_id)
-                                .filter_map(|(id, keys)| {
-                                    for key in keys {
-                                        if key.len() == outer_key.len() {
-                                            let kc = key_classes(*id, key);
-                                            if kc == outer_key_classes {
-                                                return Some((*id, key.clone()));
-                                            }
-                                        }
-                                    }
-                                    None
-                                })
-                                .count();
-                            // check if an equivalent key was found for every other quantifier
-                            if eq_keys + 1 == quantifiers.len() {
-                                let mut projected_key = outer_key_classes
-                                    .iter()
-                                    .filter_map(|class| projected_classes.get(&class))
-                                    .cloned()
-                                    .collect::<Vec<_>>();
-                                // check if all column from the key are projected
-                                if projected_key.len() == outer_key.len() {
-                                    for key in projected_key.drain(..).multi_cartesian_product() {
-                                        select_box.borrow_mut().add_unique_key(key);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        select_box.borrow_mut().recompute_unique_keys();
     }
 
     /// adds a quantifier in the given select box with the result of parsing the given join term subtree
@@ -2106,8 +2119,6 @@ impl rewrite_engine::Rule<BoxRef> for MergeRule {
                 }
             }
         }
-        // @todo recompute unique keys!!!
-        obj.borrow_mut().unique_keys.clear();
 
         let mut rule = DereferenceRule {
             to_dereference: &self.to_merge,
@@ -2122,6 +2133,9 @@ impl rewrite_engine::Rule<BoxRef> for MergeRule {
         } else {
             mut_obj.predicates.as_mut().unwrap().extend(pred_to_add);
         }
+
+        mut_obj.recompute_unique_keys();
+
         self.to_merge.clear();
     }
 }
@@ -2185,9 +2199,6 @@ impl rewrite_engine::Rule<BoxRef> for ColumnRemovalRule {
                 }
             }
         }
-        let new_keys = Vec::new();
-        // @todo update keys
-        obj.unique_keys = new_keys;
         obj.columns = obj
             .columns
             .drain(..)
@@ -2195,6 +2206,7 @@ impl rewrite_engine::Rule<BoxRef> for ColumnRemovalRule {
             .filter(|(i, _)| column_references.contains_key(i))
             .map(|(_, x)| x)
             .collect::<Vec<_>>();
+        obj.recompute_unique_keys();
         // invalidate column references
         self.column_references = None;
     }
