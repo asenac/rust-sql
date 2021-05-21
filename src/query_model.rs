@@ -798,6 +798,9 @@ impl QGBox {
                     }
                 }
             }
+            BoxType::Grouping(_grouping) => {
+                // @todo
+            }
             _ => {}
         }
 
