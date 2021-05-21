@@ -8,16 +8,17 @@ use std::hash::Hash;
 use std::hash::Hasher;
 use std::rc::*;
 
+type ColumnRefDesc = (i32, usize);
+
 #[derive(Clone)]
 struct ColumnReference {
     quantifier: QuantifierRef,
     position: usize,
 }
 
-impl Hash for ColumnReference {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.quantifier.borrow().hash(state);
-        self.position.hash(state);
+impl ColumnReference {
+    fn to_desc(&self) -> ColumnRefDesc {
+        (self.quantifier.borrow().id, self.position)
     }
 }
 
@@ -336,6 +337,49 @@ fn deep_clone(expr: &ExprRef) -> ExprRef {
         }
     }
     make_ref(e)
+}
+
+fn compute_class_equivalence(predicates: &Vec<ExprRef>) -> HashMap<ColumnRefDesc, usize> {
+    let mut classes = HashMap::new();
+    let mut next_class: usize = 0;
+    for p in predicates.iter() {
+        let p = p.borrow();
+        if let ExprType::Cmp(CmpOpType::Eq) = &p.expr_type {
+            if let Some(operands) = &p.operands {
+                let column_refs = operands
+                    .iter()
+                    .filter_map(|x| {
+                        let x = x.borrow();
+                        if let ExprType::ColumnReference(c) = &x.expr_type {
+                            Some(c.to_desc())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Vec<_>>();
+                if column_refs.len() == 2 {
+                    let mut class = None;
+                    for c in column_refs.iter() {
+                        if let Some(c) = classes.get(c) {
+                            class = Some(*c);
+                            break;
+                        }
+                    }
+                    let class = if let Some(c) = class {
+                        c
+                    } else {
+                        let c = next_class;
+                        next_class += 1;
+                        c
+                    };
+                    column_refs.iter().for_each(|x| {
+                        classes.insert(*x, class);
+                    });
+                }
+            }
+        }
+    }
+    classes
 }
 
 impl fmt::Display for CmpOpType {
@@ -1281,9 +1325,81 @@ impl<'a> ModelGenerator<'a> {
                 }
             }
         } else if quantifiers.len() > 1 {
-            // @todo general case: for any input unique key all key items
+            // general case: for any input unique key all key items
             // must be connected to a unique key from all other quantifiers
             // via equality predicates.
+            let classes = if let Some(predicates) = &select_box.borrow().predicates {
+                Some(compute_class_equivalence(predicates))
+            } else {
+                None
+            };
+            if let Some(classes) = &classes {
+                // classes projected by the box
+                let mut projected_classes = HashMap::new();
+                for (i, c) in select_box.borrow().columns.iter().enumerate() {
+                    if let ExprType::ColumnReference(c) = &c.expr.borrow().expr_type {
+                        if let Some(class) = classes.get(&c.to_desc()) {
+                            // @todo the same class may be projected several times through different columns
+                            projected_classes.insert(class, i);
+                        }
+                    }
+                }
+                let keys_by_q: HashMap<_, _> = quantifiers
+                    .iter()
+                    .map(|q| {
+                        let q = q.borrow();
+                        let b = q.input_box.borrow();
+                        (q.id, b.unique_keys.clone())
+                    })
+                    .collect();
+                let first_id: i32 = quantifiers.first().unwrap().borrow().id;
+                if let Some(unique_keys) = keys_by_q.get(&first_id) {
+                    // given a key returns the classes of the key
+                    let key_classes = |id: i32, key: &Vec<usize>| {
+                        key.iter()
+                            .filter_map(|x| {
+                                if let Some(class) = classes.get(&(id, *x)) {
+                                    Some(*class)
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect::<HashSet<_>>()
+                    };
+                    for outer_key in unique_keys {
+                        let outer_key_classes = key_classes(first_id, outer_key);
+                        if outer_key_classes.len() == outer_key.len() {
+                            let eq_keys = keys_by_q
+                                .iter()
+                                .filter(|(x, _)| **x != first_id)
+                                .filter_map(|(id, keys)| {
+                                    for key in keys {
+                                        if key.len() == outer_key.len() {
+                                            let kc = key_classes(*id, key);
+                                            if kc == outer_key_classes {
+                                                return Some((*id, key.clone()));
+                                            }
+                                        }
+                                    }
+                                    None
+                                })
+                                .count();
+                            // check if an equivalent key was found for every other quantifier
+                            if eq_keys + 1 == quantifiers.len() {
+                                let projected_key = outer_key_classes
+                                    .iter()
+                                    .filter_map(|class| projected_classes.get(&class))
+                                    .cloned()
+                                    .collect::<Vec<_>>();
+                                // check if all column from the key are projected
+                                if projected_key.len() == outer_key.len() {
+                                    select_box.borrow_mut().add_unique_key(projected_key);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
