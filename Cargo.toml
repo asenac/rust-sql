@@ -1,5 +1,5 @@
 [package]
-name = "rust-playground"
+name = "rust-sql"
 version = "0.1.0"
 authors = ["Andres Senac <andres@senac.es"]
 edition = "2018"

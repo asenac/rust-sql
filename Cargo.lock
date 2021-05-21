@@ -311,7 +311,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "rust-playground"
+name = "rust-sql"
 version = "0.1.0"
 dependencies = [
  "clap",
