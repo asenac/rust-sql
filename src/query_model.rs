@@ -1750,6 +1750,9 @@ impl DotGenerator {
             }
             _ => {}
         }
+        for key in b.unique_keys.iter() {
+            r.push_str(&format!("| UNIQUE KEY {:?}", key));
+        }
         r.replace("<", "\\<").replace(">", "\\>")
     }
 
