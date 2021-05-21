@@ -1209,7 +1209,8 @@ impl<'a> ModelGenerator<'a> {
             let mut box_mut = current_box.borrow_mut();
             box_mut.distinct_tuples = true;
             box_mut.distinct_operation = DistinctOperation::Enforce;
-            // @todo unique keys
+            let num_columns = box_mut.columns.len();
+            box_mut.add_unique_key((0..num_columns).collect());
         }
 
         Ok(current_box)
