@@ -487,7 +487,7 @@ struct KeyItem {
     dir: Direction,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 enum DistinctOperation {
     Permit,
     Enforce,
@@ -529,7 +529,6 @@ enum BoxType {
 struct QGBox {
     id: i32,
     box_type: BoxType,
-    distinct_tuples: bool,
     columns: Vec<Column>,
     quantifiers: BTreeSet<QuantifierRef>,
     predicates: Option<Vec<ExprRef>>,
@@ -547,7 +546,6 @@ impl QGBox {
     fn new(id: i32, box_type: BoxType) -> Self {
         Self {
             id,
-            distinct_tuples: false,
             box_type,
             columns: Vec::new(),
             quantifiers: BTreeSet::new(),
@@ -846,6 +844,10 @@ impl QGBox {
 
     fn first_quantifier(&self) -> Option<QuantifierRef> {
         self.quantifiers.iter().cloned().next()
+    }
+
+    fn distinct_tuples(&self) -> bool {
+        self.distinct_operation == DistinctOperation::Enforce || !self.unique_keys.is_empty()
     }
 }
 
@@ -1228,7 +1230,6 @@ impl<'a> ModelGenerator<'a> {
         let union_box = make_ref(QGBox::new(self.get_box_id(), BoxType::Union));
         {
             let mut union_mut = union_box.borrow_mut();
-            union_mut.distinct_tuples = distinct;
             if distinct {
                 union_mut.distinct_operation = DistinctOperation::Enforce;
             }
@@ -1413,7 +1414,6 @@ impl<'a> ModelGenerator<'a> {
         // distinct property
         if select.distinct {
             let mut box_mut = current_box.borrow_mut();
-            box_mut.distinct_tuples = true;
             box_mut.distinct_operation = DistinctOperation::Enforce;
         }
 
@@ -1889,7 +1889,7 @@ impl DotGenerator {
 
     fn get_box_head(b: &QGBox, predicates: &[ExprRef]) -> String {
         let mut r = String::new();
-        if b.distinct_tuples {
+        if b.distinct_tuples() {
             r.push_str("DISTINCT TUPLES")
         }
         for (i, c) in b.columns.iter().enumerate() {
@@ -2022,7 +2022,7 @@ impl rewrite_engine::Rule<BoxRef> for SemiJoinRemovalRule {
                             // @note this should actually be an assert
                             if existential_quantifiers.len() == 1 {
                                 let q = existential_quantifiers.into_iter().next().unwrap();
-                                if q.borrow().input_box.borrow().distinct_tuples {
+                                if q.borrow().input_box.borrow().distinct_tuples() {
                                     return Some(q);
                                 }
                             }
