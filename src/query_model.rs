@@ -789,6 +789,11 @@ impl QGBox {
             }
             _ => {}
         }
+
+        if let DistinctOperation::Enforce = self.distinct_operation {
+            let num_columns = self.columns.len();
+            self.unique_keys.push((0..num_columns).collect());
+        }
     }
 
     fn visit_expressions<F>(&mut self, f: &mut F)
@@ -1404,16 +1409,15 @@ impl<'a> ModelGenerator<'a> {
             // add all columns from all quantifiers
             self.add_all_columns(&current_box);
         }
-        self.add_unique_keys(&current_box);
 
         // distinct property
         if select.distinct {
             let mut box_mut = current_box.borrow_mut();
             box_mut.distinct_tuples = true;
             box_mut.distinct_operation = DistinctOperation::Enforce;
-            let num_columns = box_mut.columns.len();
-            box_mut.add_unique_key((0..num_columns).collect());
         }
+
+        self.add_unique_keys(&current_box);
 
         Ok(current_box)
     }
