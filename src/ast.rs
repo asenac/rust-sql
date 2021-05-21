@@ -397,7 +397,10 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
                 if complete_keyword!(self, Table) {
                     result.push(Statement::CreateTable(self.parse_create_table_body()?));
                 } else if complete_keyword!(self, Index) {
-                    result.push(Statement::CreateIndex(self.parse_create_index_body()?));
+                    result.push(Statement::CreateIndex(self.parse_create_index_body(false)?));
+                } else if complete_keyword!(self, Unique) {
+                    expect_keyword!(self, Index)?;
+                    result.push(Statement::CreateIndex(self.parse_create_index_body(true)?));
                 } else {
                     return Err("invalid CREATE statement".to_string());
                 }
@@ -1058,8 +1061,7 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
         })
     }
 
-    fn parse_create_index_body(&mut self) -> Result<CreateIndex, String> {
-        let unique = complete_keyword!(self, Unique);
+    fn parse_create_index_body(&mut self, unique: bool) -> Result<CreateIndex, String> {
         let name = self.expect_name()?;
         expect_keyword!(self, On)?;
 

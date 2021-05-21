@@ -1315,6 +1315,11 @@ impl<'a> ModelGenerator<'a> {
                         make_ref(Expr::make_base_column(&table_box, i)),
                     );
                 }
+                for index in metadata.indexes.iter() {
+                    if index.unique {
+                        table_box.borrow_mut().add_unique_key(index.columns.clone());
+                    }
+                }
                 Ok(table_box)
             }
             Join(join_type, l, r, on) => {
