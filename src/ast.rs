@@ -7,6 +7,7 @@ pub enum Statement {
     Update(Update),
     Delete(Delete),
     CreateTable(CreateTable),
+    CreateIndex(CreateIndex),
 }
 
 #[derive(Debug)]
@@ -314,6 +315,14 @@ pub struct CreateTable {
     pub columns: Vec<ColumnDef>,
 }
 
+#[derive(Debug)]
+pub struct CreateIndex {
+    pub name: String,
+    pub unique: bool,
+    pub tablename: Identifier,
+    pub columns: Vec<String>,
+}
+
 pub struct Parser {}
 
 use crate::lexer;
@@ -385,8 +394,13 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
                 expect_keyword!(self, From)?;
                 result.push(Statement::Delete(self.parse_delete_body()?));
             } else if complete_keyword!(self, Create) {
-                expect_keyword!(self, Table)?;
-                result.push(Statement::CreateTable(self.parse_create_table_body()?));
+                if complete_keyword!(self, Table) {
+                    result.push(Statement::CreateTable(self.parse_create_table_body()?));
+                } else if complete_keyword!(self, Index) {
+                    result.push(Statement::CreateIndex(self.parse_create_index_body()?));
+                } else {
+                    return Err("invalid CREATE statement".to_string());
+                }
             }
             if !self.complete_substr_and_advance(";") {
                 break;
@@ -1040,6 +1054,30 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
         self.expect_substr_and_advance(")")?;
         Ok(CreateTable {
             name: identifier,
+            columns,
+        })
+    }
+
+    fn parse_create_index_body(&mut self) -> Result<CreateIndex, String> {
+        let unique = complete_keyword!(self, Unique);
+        let name = self.expect_name()?;
+        expect_keyword!(self, On)?;
+
+        let tablename = self.expect_identifier()?;
+
+        self.expect_substr_and_advance("(")?;
+        let mut columns = Vec::new();
+        parse_list!(self {
+            let name = self.expect_name()?;
+            // @todo parse direction
+            columns.push(name);
+        });
+        self.expect_substr_and_advance(")")?;
+
+        Ok(CreateIndex {
+            name,
+            unique,
+            tablename,
             columns,
         })
     }
