@@ -652,7 +652,7 @@ impl QGBox {
     fn recompute_unique_keys(&mut self) {
         self.unique_keys.clear();
 
-        match self.box_type {
+        match &self.box_type {
             BoxType::Select(_) => {
                 // collect non-subquery quantifiers
                 let mut quantifiers = self
@@ -769,7 +769,24 @@ impl QGBox {
                     }
                 }
             }
-            BoxType::BaseTable(_) => {}
+            BoxType::BaseTable(metadata) => {
+                let projected_cols: HashSet<_> = self
+                    .columns
+                    .iter()
+                    .filter_map(|x| {
+                        if let ExprType::BaseColumn(c) = &x.expr.borrow().expr_type {
+                            Some(c.position)
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+                for index in metadata.indexes.iter() {
+                    if index.unique && index.columns.iter().all(|x| projected_cols.contains(x)) {
+                        self.unique_keys.push(index.columns.clone());
+                    }
+                }
+            }
             _ => {}
         }
     }
