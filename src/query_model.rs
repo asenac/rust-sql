@@ -4,12 +4,21 @@ use std::cell::RefCell;
 use std::cmp::*;
 use std::collections::*;
 use std::fmt;
+use std::hash::Hash;
+use std::hash::Hasher;
 use std::rc::*;
 
 #[derive(Clone)]
 struct ColumnReference {
     quantifier: QuantifierRef,
     position: usize,
+}
+
+impl Hash for ColumnReference {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.quantifier.borrow().hash(state);
+        self.position.hash(state);
+    }
 }
 
 #[derive(Clone)]
@@ -745,6 +754,12 @@ impl PartialOrd for Quantifier {
 impl Ord for Quantifier {
     fn cmp(&self, other: &Self) -> Ordering {
         self.id.cmp(&other.id)
+    }
+}
+
+impl Hash for Quantifier {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
     }
 }
 
