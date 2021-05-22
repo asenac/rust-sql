@@ -65,6 +65,10 @@ impl FakeCatalog {
     pub fn add_table(&mut self, table: TableMetadata) {
         self.tables.insert(table.name.clone(), table);
     }
+
+    pub fn drop_table(&mut self, table: &TableMetadata) {
+        self.tables.remove(&table.name);
+    }
 }
 
 impl MetadataCatalog for FakeCatalog {

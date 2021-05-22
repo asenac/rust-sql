@@ -107,6 +107,13 @@ impl Interpreter {
                 }
                 self.catalog.add_table(metadata);
             }
+            DropTable(c) => {
+                if let Some(table) = self.catalog.get_table(c.name.get_name()).cloned() {
+                    self.catalog.drop_table(&table);
+                } else {
+                    return Err(format!("table {} not found", c.name.get_name()));
+                }
+            }
             CreateIndex(c) => {
                 if let Some(table) = self.catalog.get_table(c.tablename.get_name()) {
                     let mut cloned = table.clone();

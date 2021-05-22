@@ -8,6 +8,7 @@ pub enum Statement {
     Delete(Delete),
     CreateTable(CreateTable),
     CreateIndex(CreateIndex),
+    DropTable(DropTable),
 }
 
 #[derive(Debug)]
@@ -323,6 +324,11 @@ pub struct CreateIndex {
     pub columns: Vec<String>,
 }
 
+#[derive(Debug)]
+pub struct DropTable {
+    pub name: Identifier,
+}
+
 pub struct Parser {}
 
 use crate::lexer;
@@ -404,6 +410,9 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
                 } else {
                     return Err("invalid CREATE statement".to_string());
                 }
+            } else if complete_keyword!(self, Drop) {
+                expect_keyword!(self, Table)?;
+                result.push(Statement::DropTable(self.parse_drop_table_body()?));
             }
             if !self.complete_substr_and_advance(";") {
                 break;
@@ -1059,6 +1068,11 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
             name: identifier,
             columns,
         })
+    }
+
+    fn parse_drop_table_body(&mut self) -> Result<DropTable, String> {
+        let identifier = self.expect_identifier()?;
+        Ok(DropTable { name: identifier })
     }
 
     fn parse_create_index_body(&mut self, unique: bool) -> Result<CreateIndex, String> {
