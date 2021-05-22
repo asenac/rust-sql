@@ -231,6 +231,10 @@ impl Expr {
         }
     }
 
+    fn is_aggregate_function(&self) -> bool {
+        false
+    }
+
     fn dereference(&self) -> Option<ExprRef> {
         if let ExprType::ColumnReference(c) = &self.expr_type {
             let q = c.quantifier.borrow();
@@ -2062,6 +2066,73 @@ impl rewrite_engine::Rule<BoxRef> for SemiJoinRemovalRule {
 }
 
 //
+// GroupByRemoval
+//
+
+struct GroupByRemovalRule {}
+
+impl GroupByRemovalRule {
+    fn new() -> Self {
+        Self {}
+    }
+}
+
+impl rewrite_engine::Rule<BoxRef> for GroupByRemovalRule {
+    fn name(&self) -> &'static str {
+        "GroupByRemovalRule"
+    }
+    fn apply_top_down(&self) -> bool {
+        false
+    }
+    fn condition(&mut self, obj: &BoxRef) -> bool {
+        let obj = obj.borrow();
+        // note: this should be an assert
+        if obj.quantifiers.len() == 1 {
+            if let BoxType::Grouping(grouping) = &obj.box_type {
+                // no aggregate function is used. note: could this be relazed?
+                // sum(a) = a if a is unique, for example.
+                if !obj
+                    .columns
+                    .iter()
+                    .any(|c| c.expr.borrow().is_aggregate_function())
+                {
+                    let column_refs_in_key = grouping
+                        .groups
+                        .iter()
+                        .filter_map(|x| {
+                            let x = x.expr.borrow();
+                            if let ExprType::ColumnReference(c) = &x.expr_type {
+                                Some(c.position)
+                            } else {
+                                None
+                            }
+                        })
+                        .collect::<Vec<_>>();
+                    // all items in the grouping key must be column references
+                    if column_refs_in_key.len() == grouping.groups.len() {
+                        let q = obj.quantifiers.iter().next().unwrap();
+                        let q = q.borrow();
+                        let b = q.input_box.borrow();
+                        // there must be a unique key in the input box that
+                        // contains all members of the grouping key
+                        return b
+                            .unique_keys
+                            .iter()
+                            .any(|key| column_refs_in_key.iter().all(|x| key.contains(x)));
+                    }
+                }
+            }
+        }
+        false
+    }
+    fn action(&mut self, obj: &mut BoxRef) {
+        let mut obj = obj.borrow_mut();
+        obj.box_type = BoxType::Select(Select::new());
+        obj.recompute_unique_keys();
+    }
+}
+
+//
 // MergeRule
 //
 
@@ -2593,6 +2664,7 @@ pub fn rewrite_model(m: &mut Model) {
         Box::new(EmptyBoxesRule::new()),
         Box::new(ConstantLiftingRule::new()),
         Box::new(SemiJoinRemovalRule::new()),
+        Box::new(GroupByRemovalRule::new()),
     ];
     for _ in 0..5 {
         apply_rules(m, &mut rules);
