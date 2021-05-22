@@ -666,18 +666,12 @@ impl QGBox {
                     .quantifiers
                     .iter()
                     .filter(|q| !q.borrow().is_subquery())
-                    .filter(|q| {
-                        let q = q.borrow();
-                        match (is_outer_join, &q.quantifier_type) {
-                            (false, QuantifierType::Foreach) => true,
-                            (true, QuantifierType::PreservedForeach) => true,
-                            _ => false,
-                        }
-                    })
                     .cloned()
                     .collect::<Vec<_>>();
 
                 if quantifiers.len() == 1 {
+                    assert!(!is_outer_join);
+
                     let q = quantifiers.pop().expect("expected quantifier");
                     let mut input_col_to_col = HashMap::new();
 
@@ -713,6 +707,14 @@ impl QGBox {
                         let mut projected_classes = HashMap::new();
                         for (i, c) in self.columns.iter().enumerate() {
                             if let ExprType::ColumnReference(c) = &c.expr.borrow().expr_type {
+                                // outer join: the columns from the non-preserving side may
+                                // not be unique
+                                if is_outer_join
+                                    && c.quantifier.borrow().quantifier_type
+                                        == QuantifierType::Foreach
+                                {
+                                    continue;
+                                }
                                 if let Some(class) = classes.get(&c.to_desc()) {
                                     // the same class may be projected several times through different columns
                                     projected_classes
