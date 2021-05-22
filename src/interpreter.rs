@@ -6,17 +6,25 @@ use crate::query_model;
 use std::io::Write;
 use std::process::{Child, Command, Stdio};
 
-struct Pager {
+trait Pager {
+    fn sendln(&self, line: String);
+
+    fn wait(&mut self);
+}
+
+pub struct PagerProcess {
     child: Child,
 }
 
-impl Pager {
+impl PagerProcess {
     pub fn new(command: String) -> Self {
         let child = Command::new(command).stdin(Stdio::piped()).spawn().unwrap();
         Self { child }
     }
+}
 
-    pub fn sendln(&self, line: String) {
+impl Pager for PagerProcess {
+    fn sendln(&self, line: String) {
         self.child
             .stdin
             .as_ref()
@@ -25,12 +33,12 @@ impl Pager {
             .unwrap();
     }
 
-    pub fn wait(&mut self) {
+    fn wait(&mut self) {
         let _ = self.child.wait();
     }
 }
 
-impl Drop for Pager {
+impl Drop for PagerProcess {
     fn drop(&mut self) {
         let _ = self.child.kill();
     }
@@ -63,7 +71,7 @@ impl Interpreter {
         use ast::Statement::*;
         match stmt {
             Select(e) => {
-                let mut pager = Pager::new("magic-pager.sh".to_string());
+                let mut pager = PagerProcess::new("magic-pager.sh".to_string());
                 let mut generator = query_model::ModelGenerator::new(&self.catalog);
                 let mut model = generator.process(e)?;
                 let output = query_model::DotGenerator::new()
