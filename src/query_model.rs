@@ -654,6 +654,40 @@ impl QGBox {
     fn recompute_unique_keys(&mut self) {
         self.unique_keys.clear();
 
+        // helper function: look at the keys in the single input box and
+        // check if any of them is fully projected by the current box
+        let single_quantifier_case =
+            |quantifiers: Vec<QuantifierRef>, columns: &Vec<Column>| -> Vec<Vec<usize>> {
+                let q = quantifiers.iter().next().expect("expected quantifier");
+                // note: the same input column may be projected several times
+                let mut input_col_to_col = HashMap::new();
+                let mut keys = Vec::new();
+
+                for (col, column) in columns.iter().enumerate() {
+                    if let ExprType::ColumnReference(c) = &column.expr.borrow().expr_type {
+                        if c.quantifier == *q {
+                            input_col_to_col
+                                .entry(c.position)
+                                .or_insert_with(Vec::new)
+                                .push(col);
+                        }
+                    }
+                }
+
+                for key in q.borrow().input_box.borrow().unique_keys.iter() {
+                    let new_key = key
+                        .iter()
+                        .filter_map(|x| input_col_to_col.get(x))
+                        .cloned()
+                        .collect::<Vec<_>>();
+                    if new_key.len() == key.len() {
+                        keys.extend(new_key.into_iter().multi_cartesian_product());
+                    }
+                }
+
+                keys
+            };
+
         match &self.box_type {
             BoxType::OuterJoin | BoxType::Select(_) => {
                 let is_outer_join = if let BoxType::OuterJoin = &self.box_type {
@@ -662,7 +696,7 @@ impl QGBox {
                     false
                 };
                 // collect non-subquery quantifiers
-                let mut quantifiers = self
+                let quantifiers = self
                     .quantifiers
                     .iter()
                     .filter(|q| !q.borrow().is_subquery())
@@ -671,28 +705,11 @@ impl QGBox {
 
                 if quantifiers.len() == 1 {
                     assert!(!is_outer_join);
-
-                    let q = quantifiers.pop().expect("expected quantifier");
-                    let mut input_col_to_col = HashMap::new();
-
-                    for (col, column) in self.columns.iter().enumerate() {
-                        if let ExprType::ColumnReference(c) = &column.expr.borrow().expr_type {
-                            if c.quantifier == q {
-                                input_col_to_col.insert(c.position, col);
-                            }
-                        }
-                    }
-
-                    for key in q.borrow().input_box.borrow().unique_keys.iter() {
-                        let new_key = key
-                            .iter()
-                            .filter_map(|x| input_col_to_col.get(x))
-                            .cloned()
-                            .collect::<Vec<_>>();
-                        if new_key.len() == key.len() {
-                            self.add_unique_key(new_key);
-                        }
-                    }
+                    single_quantifier_case(quantifiers, &self.columns)
+                        .into_iter()
+                        .for_each(|key| {
+                            self.add_unique_key(key);
+                        });
                 } else if quantifiers.len() > 1 {
                     // general case: for any input unique key all key items
                     // must be connected to a unique key from all other quantifiers
@@ -805,6 +822,8 @@ impl QGBox {
                 }
             }
             BoxType::Grouping(grouping) => {
+                let quantifiers = self.quantifiers.iter().cloned().collect::<Vec<_>>();
+
                 let mut projected_key_columns = grouping
                     .groups
                     .iter()
@@ -827,10 +846,16 @@ impl QGBox {
                     for key in projected_key_columns.drain(..).multi_cartesian_product() {
                         self.add_unique_key(key);
                     }
-                    // @todo if the input quantifier has a unique key that is fully
-                    // included in the projected grouping key, then add it as a
-                    // unique key of the grouping relation
                 }
+
+                // if the input quantifier has a unique key that is fully
+                // included in the projected grouping key, then add it as a
+                // unique key of the grouping relation
+                single_quantifier_case(quantifiers, &self.columns)
+                    .into_iter()
+                    .for_each(|key| {
+                        self.add_unique_key(key);
+                    });
             }
             _ => {}
         }
@@ -839,6 +864,9 @@ impl QGBox {
             let num_columns = self.columns.len();
             self.unique_keys.push((0..num_columns).collect());
         }
+
+        // remove duplicated keys. We could remove keys which prefix is also a key
+        self.unique_keys.dedup();
     }
 
     fn visit_expressions<F>(&mut self, f: &mut F)
