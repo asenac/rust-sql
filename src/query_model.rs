@@ -1115,20 +1115,33 @@ pub struct ModelGenerator<'a> {
 }
 
 struct NameResolutionContext<'a> {
-    owner_box: BoxRef,
+    owner_box: Option<BoxRef>,
     quantifiers: Vec<QuantifierRef>,
     parent_quantifiers: HashMap<i32, QuantifierRef>,
     subquery_quantifiers: Option<HashMap<*const ast::QueryBlock, QuantifierRef>>,
+    ctes: HashMap<String, BoxRef>,
     parent_context: Option<&'a NameResolutionContext<'a>>,
 }
 
 impl<'a> NameResolutionContext<'a> {
     fn new(owner_box: BoxRef, parent_context: Option<&'a Self>) -> Self {
         Self {
-            owner_box,
+            owner_box: Some(owner_box),
             quantifiers: Vec::new(),
             parent_quantifiers: HashMap::new(),
             subquery_quantifiers: None,
+            ctes: HashMap::new(),
+            parent_context,
+        }
+    }
+
+    fn for_ctes(parent_context: Option<&'a Self>) -> Self {
+        Self {
+            owner_box: None,
+            quantifiers: Vec::new(),
+            parent_quantifiers: HashMap::new(),
+            subquery_quantifiers: None,
+            ctes: HashMap::new(),
             parent_context,
         }
     }
@@ -1240,8 +1253,10 @@ impl<'a> NameResolutionContext<'a> {
                     }
                     let parent_box = parent_box.unwrap();
                     let parent_box_id = parent_box.borrow().id;
-                    if parent_box_id == self.owner_box.borrow().id {
-                        break;
+                    if let Some(owner_box) = &self.owner_box {
+                        if parent_box_id == owner_box.borrow().id {
+                            break;
+                        }
                     }
                     // @todo we need ranging quantifiers!
                     let parent_q = self
@@ -1353,6 +1368,39 @@ impl<'a> ModelGenerator<'a> {
     }
 
     fn process_query_block(
+        &mut self,
+        query_block: &ast::QueryBlock,
+        parent_context: Option<&NameResolutionContext>,
+    ) -> Result<BoxRef, String> {
+        let mut current_context = NameResolutionContext::for_ctes(parent_context);
+        if let Some(ctes) = &query_block.ctes {
+            for cte in ctes.iter() {
+                // note: I'm assuming sibling CTEs cannot be seen
+                let mut select_box = self.process_query_block(&cte.select, parent_context)?;
+                if let Some(columns) = &cte.columns {
+                    if columns.len() != select_box.borrow().columns.len() {
+                        return Err(format!("number of columns mismatch"));
+                    }
+                    let other_box = self.make_select_box();
+                    let q = self.make_quantifier(select_box, &other_box);
+                    other_box.borrow_mut().add_quantifier(Rc::clone(&q));
+                    current_context.add_quantifier(&q);
+                    for (i, c) in columns.iter().enumerate() {
+                        let expr = Expr::make_column_ref(Rc::clone(&q), i);
+                        other_box
+                            .borrow_mut()
+                            .add_column(Some(c.clone()), make_ref(expr));
+                    }
+                    select_box = other_box;
+                }
+                current_context.ctes.insert(cte.name.clone(), select_box);
+            }
+        }
+        let result = self.process_query_block_body(query_block, Some(&current_context));
+        result
+    }
+
+    fn process_query_block_body(
         &mut self,
         query_block: &ast::QueryBlock,
         parent_context: Option<&NameResolutionContext>,
