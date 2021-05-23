@@ -122,7 +122,15 @@ pub enum QueryBlockSource {
 }
 
 #[derive(Debug)]
+pub struct View {
+    pub name: String,
+    pub columns: Option<Vec<String>>,
+    pub select: QueryBlock,
+}
+
+#[derive(Debug)]
 pub struct QueryBlock {
+    pub ctes: Option<Vec<View>>,
     pub source: QueryBlockSource,
     pub order_by_clause: Option<OrderByClause>,
     pub limit_clause: Option<Expr>,
@@ -131,6 +139,7 @@ pub struct QueryBlock {
 impl QueryBlock {
     fn new(source: QueryBlockSource) -> Self {
         Self {
+            ctes: None,
             source,
             order_by_clause: None,
             limit_clause: None,
@@ -389,8 +398,8 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
     fn parse_statements(mut self) -> Result<Vec<Statement>, String> {
         let mut result: Vec<Statement> = Vec::new();
         loop {
-            if complete_keyword!(self, Select) {
-                result.push(Statement::Select(self.parse_select_body()?));
+            if let Some(select) = self.parse_select()? {
+                result.push(Statement::Select(select));
             } else if complete_keyword!(self, Insert) {
                 expect_keyword!(self, Into)?;
                 result.push(Statement::Insert(self.parse_insert_body()?));
@@ -518,8 +527,8 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
 
     /// scalar subqueries are allowed within parenthesis
     fn parse_expr_within_parenthesis(&mut self) -> Result<Expr, String> {
-        if complete_keyword!(self, Select) {
-            Ok(Expr::ScalarSubquery(Box::new(self.parse_select_body()?)))
+        if let Some(select) = self.parse_select()? {
+            Ok(Expr::ScalarSubquery(Box::new(select)))
         } else {
             let mut result = Vec::new();
             parse_list!(self {
@@ -544,8 +553,7 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
             return Ok(result);
         } else if complete_keyword!(self, Exists) {
             self.expect_substr_and_advance("(")?;
-            expect_keyword!(self, Select)?;
-            let result = Expr::Exists(Box::new(self.parse_select_body()?));
+            let result = Expr::Exists(Box::new(self.expect_select()?));
             self.expect_substr_and_advance(")")?;
             return Ok(result);
         } else if complete_keyword!(self, True) {
@@ -611,8 +619,7 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
         let result = self.parse_expr_term()?;
         if complete_keyword!(self, In) {
             self.expect_substr_and_advance("(")?;
-            if complete_keyword!(self, Select) {
-                let select = self.parse_select_body()?;
+            if let Some(select) = self.parse_select()? {
                 self.expect_substr_and_advance(")")?;
                 Ok(Expr::InSelect(Box::new(result), Box::new(select)))
             } else {
@@ -694,14 +701,12 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
         let right = {
             if complete_keyword!(self, All) {
                 self.expect_substr_and_advance("(")?;
-                expect_keyword!(self, Select)?;
-                let result = Expr::All(Box::new(self.parse_select_body()?));
+                let result = Expr::All(Box::new(self.expect_select()?));
                 self.expect_substr_and_advance(")")?;
                 result
             } else if complete_keyword!(self, Any) {
                 self.expect_substr_and_advance("(")?;
-                expect_keyword!(self, Select)?;
-                let result = Expr::Any(Box::new(self.parse_select_body()?));
+                let result = Expr::Any(Box::new(self.expect_select()?));
                 self.expect_substr_and_advance(")")?;
                 result
             } else {
@@ -785,13 +790,11 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
             Ok(JoinItem::TableRef(c))
         } else if complete_keyword!(self, Lateral) {
             self.expect_substr_and_advance("(")?;
-            expect_keyword!(self, Select)?;
-            let select = self.parse_select_body()?;
+            let select = self.expect_select()?;
             self.expect_substr_and_advance(")")?;
             Ok(JoinItem::Lateral(select))
         } else if self.complete_substr_and_advance("(") {
-            expect_keyword!(self, Select)?;
-            let select = self.parse_select_body()?;
+            let select = self.expect_select()?;
             self.expect_substr_and_advance(")")?;
             Ok(JoinItem::DerivedTable(select))
         } else {
@@ -897,6 +900,47 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
     fn parse_query_expression(&mut self) -> Result<Select, String> {
         expect_keyword!(self, Select)?;
         self.parse_query_expression_body()
+    }
+
+    fn expect_select(&mut self) -> Result<QueryBlock, String> {
+        if let Some(select) = self.parse_select()? {
+            Ok(select)
+        } else {
+            Err(format!("expected SELECT"))
+        }
+    }
+
+    fn parse_select(&mut self) -> Result<Option<QueryBlock>, String> {
+        let mut ctes = None;
+        if complete_keyword!(self, With) {
+            let mut views = Vec::new();
+            parse_list!(self {
+                let name = self.expect_name()?;
+                let mut columns = None;
+                if self.complete_substr_and_advance("(") {
+                    let mut cols = Vec::new();
+                    parse_list!(self {
+                        let col = self.expect_name()?;
+                        cols.push(col);
+                    });
+                    self.expect_substr_and_advance(")")?;
+                    columns = Some(cols);
+                }
+                expect_keyword!(self, As)?;
+                self.expect_substr_and_advance("(")?;
+                let select = self.expect_select()?;
+                self.expect_substr_and_advance(")")?;
+                views.push(View{name, columns, select});
+            });
+            expect_keyword!(self, Select)?;
+            ctes = Some(views);
+        } else if !complete_keyword!(self, Select) {
+            return Ok(None);
+        }
+
+        let mut select = self.parse_select_body()?;
+        select.ctes = ctes;
+        Ok(Some(select))
     }
 
     fn parse_select_body(&mut self) -> Result<QueryBlock, String> {

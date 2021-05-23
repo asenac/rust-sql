@@ -53,6 +53,7 @@ pub enum ReservedKeyword {
     Values,
     When,
     Where,
+    With,
 }
 
 #[derive(Debug, PartialEq)]
@@ -181,6 +182,7 @@ fn get_reserved_keyword(input: &str) -> Option<ReservedKeyword> {
         "VALUES" => Some(Values),
         "WHEN" => Some(When),
         "WHERE" => Some(Where),
+        "WITH" => Some(With),
         _ => None,
     }
 }
