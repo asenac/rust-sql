@@ -1280,6 +1280,16 @@ impl<'a> NameResolutionContext<'a> {
             }
         }
     }
+
+    fn resolve_cte(&self, name: &str) -> Option<BoxRef> {
+        if let Some(cte) = self.ctes.get(name) {
+            return Some(cte.clone());
+        }
+        if let Some(parent) = self.parent_context {
+            return parent.resolve_cte(name);
+        }
+        None
+    }
 }
 
 impl<'a> ModelGenerator<'a> {
@@ -1598,6 +1608,9 @@ impl<'a> ModelGenerator<'a> {
             // but lateral joins do see its siblings
             Lateral(s) => self.process_query_block(s, Some(current_context)),
             TableRef(s) => {
+                if let Some(cte) = current_context.resolve_cte(&s.get_name()) {
+                    return Ok(cte);
+                }
                 // @todo suport for schemas and catalogs
                 let metadata = self.catalog.get_table(s.get_name());
                 if !metadata.is_some() {
@@ -2947,5 +2960,10 @@ mod tests {
         );
 
         test_valid_query("select case when a = 1 then true else false end as caseexpr from a");
+        test_valid_query("with b as (select a from a) select * from b");
+        test_valid_query("with b(b) as (select a from a) select * from b");
+        test_valid_query(
+            "with b(b) as (select a from a), c(c) as (select a from a) select * from b, c",
+        );
     }
 }
