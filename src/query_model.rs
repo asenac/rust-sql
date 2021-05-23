@@ -824,6 +824,7 @@ impl QGBox {
             BoxType::Grouping(grouping) => {
                 let quantifiers = self.quantifiers.iter().cloned().collect::<Vec<_>>();
 
+                // projected columns for each element of the grouping key
                 let mut projected_key_columns = grouping
                     .groups
                     .iter()
@@ -842,7 +843,11 @@ impl QGBox {
                     })
                     .filter(|x| !x.is_empty())
                     .collect::<Vec<_>>();
+                // the grouping key is a unique key of the output relation iff all
+                // the elements of the grouping key are projected
                 if projected_key_columns.len() == grouping.groups.len() {
+                    // note: multi_cartesian_product is used since the same key elements
+                    // may be projected several times
                     for key in projected_key_columns.drain(..).multi_cartesian_product() {
                         self.add_unique_key(key);
                     }
