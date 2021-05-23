@@ -804,8 +804,33 @@ impl QGBox {
                     }
                 }
             }
-            BoxType::Grouping(_grouping) => {
-                // @todo
+            BoxType::Grouping(grouping) => {
+                let mut projected_key_columns = grouping
+                    .groups
+                    .iter()
+                    .map(|x| {
+                        self.columns
+                            .iter()
+                            .enumerate()
+                            .filter_map(|(i, y)| {
+                                if x.expr.borrow().is_equiv(&y.expr.borrow()) {
+                                    Some(i)
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect::<Vec<_>>()
+                    })
+                    .filter(|x| !x.is_empty())
+                    .collect::<Vec<_>>();
+                if projected_key_columns.len() == grouping.groups.len() {
+                    for key in projected_key_columns.drain(..).multi_cartesian_product() {
+                        self.add_unique_key(key);
+                    }
+                    // @todo if the input quantifier has a unique key that is fully
+                    // included in the projected grouping key, then add it as a
+                    // unique key of the grouping relation
+                }
             }
             _ => {}
         }
@@ -1369,7 +1394,6 @@ impl<'a> ModelGenerator<'a> {
             // context for resolving the grouping keys
             current_context = NameResolutionContext::new(Rc::clone(&grouping_box), parent_context);
             current_context.add_quantifier(&q);
-            let mut unique_key = Vec::new();
             let mut input_column_in_group_key = HashSet::new();
             for key in &grouping.groups {
                 let expr = self.process_expr(&key.expr, &current_context)?;
@@ -1377,16 +1401,11 @@ impl<'a> ModelGenerator<'a> {
                     input_column_in_group_key.insert(c.position);
                 }
                 let mut grouping_box = grouping_box.borrow_mut();
-                // @todo we could infer the the shortest set of columns that make a unique key
-                unique_key.push(grouping_box.columns.len());
                 grouping_box.add_column(None, expr.clone());
                 grouping_box.add_group(KeyItem {
                     expr,
                     dir: key.direction,
                 });
-            }
-            if !unique_key.is_empty() {
-                grouping_box.borrow_mut().add_unique_key(unique_key);
             }
             // Import all columns with functional dependencies. If all the elements in
             // unique key of the input box are present in the grouping key, then we can
@@ -1406,6 +1425,9 @@ impl<'a> ModelGenerator<'a> {
                     }
                 }
             }
+
+            // @todo this could part of a finalization step
+            grouping_box.borrow_mut().recompute_unique_keys();
 
             // put a select box on top of the grouping box and use the grouping quantifier for name resolution
             current_box = self.make_select_box();
