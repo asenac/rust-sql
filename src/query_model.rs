@@ -535,6 +535,7 @@ struct QGBox {
     box_type: BoxType,
     columns: Vec<Column>,
     quantifiers: BTreeSet<QuantifierRef>,
+    ranging_quantifiers: Vec<QuantifierWeakRef>,
     predicates: Option<Vec<ExprRef>>,
     distinct_operation: DistinctOperation,
     unique_keys: Vec<Vec<usize>>,
@@ -553,6 +554,7 @@ impl QGBox {
             box_type,
             columns: Vec::new(),
             quantifiers: BTreeSet::new(),
+            ranging_quantifiers: Vec::new(),
             predicates: None,
             distinct_operation: DistinctOperation::Preserve,
             unique_keys: Vec::new(),
@@ -967,6 +969,7 @@ struct Quantifier {
     input_box: BoxRef,
     parent_box: Weak<RefCell<QGBox>>,
     alias: Option<String>,
+    weak_self: Option<QuantifierWeakRef>,
 }
 
 impl Quantifier {
@@ -975,14 +978,21 @@ impl Quantifier {
         quantifier_type: QuantifierType,
         input_box: BoxRef,
         parent_box: &BoxRef,
-    ) -> Self {
-        Self {
+    ) -> QuantifierRef {
+        let q = make_ref(Self {
             id,
             quantifier_type,
-            input_box,
+            input_box: input_box.clone(),
             parent_box: Rc::downgrade(parent_box),
             alias: None,
-        }
+            weak_self: None,
+        });
+        input_box
+            .borrow_mut()
+            .ranging_quantifiers
+            .push(Rc::downgrade(&q));
+        q.borrow_mut().weak_self = Some(Rc::downgrade(&q));
+        q
     }
 
     fn set_alias(&mut self, alias: String) {
@@ -1008,6 +1018,19 @@ impl Quantifier {
             | QuantifierType::Any => true,
             _ => false,
         }
+    }
+
+    fn weak(&self) -> QuantifierWeakRef {
+        self.weak_self.as_ref().unwrap().clone()
+    }
+}
+
+impl Drop for Quantifier {
+    fn drop(&mut self) {
+        self.input_box
+            .borrow_mut()
+            .ranging_quantifiers
+            .retain(|x| x.as_ptr() != self.weak().as_ptr())
     }
 }
 
@@ -1351,12 +1374,12 @@ impl<'a> ModelGenerator<'a> {
     }
 
     fn make_quantifier(&mut self, input_box: BoxRef, parent_box: &BoxRef) -> QuantifierRef {
-        make_ref(Quantifier::new(
+        Quantifier::new(
             self.get_quantifier_id(),
             QuantifierType::Foreach,
             input_box,
             &parent_box,
-        ))
+        )
     }
 
     fn process_query_block_source(
@@ -1690,7 +1713,6 @@ impl<'a> ModelGenerator<'a> {
                 subquery_box,
                 &select_box,
             );
-            let q = make_ref(q);
             current_context.add_subquery_quantifier(e as *const ast::QueryBlock, &q);
             select_box.borrow_mut().add_quantifier(q);
         };
@@ -1921,7 +1943,11 @@ impl DotGenerator {
 
         let mut box_stack = vec![Rc::clone(&m.top_box)];
         let mut quantifiers = Vec::new();
+        let mut visited_boxes = HashSet::new();
         while let Some(b) = box_stack.pop() {
+            if !visited_boxes.insert(b.as_ptr()) {
+                continue;
+            }
             let mut arrows: Vec<(ExprRef, QuantifierRef, QuantifierRef)> = Vec::new();
             let mut other_predicates: Vec<ExprRef> = Vec::new();
 
@@ -2111,6 +2137,7 @@ use crate::rewrite_engine;
 
 type BoxRef = Rc<RefCell<QGBox>>;
 type QuantifierRef = Rc<RefCell<Quantifier>>;
+type QuantifierWeakRef = Weak<RefCell<Quantifier>>;
 
 struct EmptyRule {}
 
@@ -2282,9 +2309,11 @@ impl rewrite_engine::Rule<BoxRef> for MergeRule {
                 for q in &borrowed_obj.quantifiers {
                     let borrowed_q = q.borrow();
                     if let QuantifierType::Foreach = borrowed_q.quantifier_type {
-                        if let BoxType::Select(inner_select) =
-                            &borrowed_q.input_box.borrow().box_type
-                        {
+                        let input_box = borrowed_q.input_box.borrow();
+                        if input_box.ranging_quantifiers.len() > 1 {
+                            continue;
+                        }
+                        if let BoxType::Select(inner_select) = &input_box.box_type {
                             if inner_select.order_by.is_none() && inner_select.limit.is_none() {
                                 self.to_merge.insert(Rc::clone(q));
                             } else if borrowed_obj.quantifiers.len() == 1
@@ -2303,6 +2332,9 @@ impl rewrite_engine::Rule<BoxRef> for MergeRule {
                     match borrowed_q.quantifier_type {
                         QuantifierType::PreservedForeach | QuantifierType::Foreach => {
                             let input_box = borrowed_q.input_box.borrow();
+                            if input_box.ranging_quantifiers.len() > 1 {
+                                continue;
+                            }
                             if let BoxType::Select(inner_select) = &input_box.box_type {
                                 if input_box.quantifiers.len() == 1
                                     && inner_select.order_by.is_none()
@@ -2834,12 +2866,7 @@ mod tests {
     fn test_merge_rule() {
         let top_box = make_ref(QGBox::new(0, BoxType::Select(Select::new())));
         let nested_box = make_ref(QGBox::new(1, BoxType::Select(Select::new())));
-        let quantifier = make_ref(Quantifier::new(
-            1,
-            QuantifierType::Foreach,
-            nested_box,
-            &top_box,
-        ));
+        let quantifier = Quantifier::new(1, QuantifierType::Foreach, nested_box, &top_box);
         top_box.borrow_mut().add_quantifier(quantifier);
         let mut m = Model { top_box };
         let mut rule = MergeRule::new();
@@ -2852,19 +2879,14 @@ mod tests {
     fn test_merge_rule_deep_apply() {
         let top_box = make_ref(QGBox::new(0, BoxType::Select(Select::new())));
         let nested_box1 = make_ref(QGBox::new(1, BoxType::Select(Select::new())));
-        let quantifier1 = make_ref(Quantifier::new(
+        let quantifier1 = Quantifier::new(
             1,
             QuantifierType::Foreach,
             Rc::clone(&nested_box1),
             &top_box,
-        ));
+        );
         let nested_box2 = make_ref(QGBox::new(2, BoxType::Select(Select::new())));
-        let quantifier2 = make_ref(Quantifier::new(
-            2,
-            QuantifierType::Foreach,
-            nested_box2,
-            &nested_box1,
-        ));
+        let quantifier2 = Quantifier::new(2, QuantifierType::Foreach, nested_box2, &nested_box1);
         nested_box1.borrow_mut().add_quantifier(quantifier2);
         top_box.borrow_mut().add_quantifier(quantifier1);
         let mut m = Model { top_box };
