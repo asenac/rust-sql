@@ -1611,6 +1611,8 @@ impl<'a> ModelGenerator<'a> {
         if join_term.alias.is_some() {
             q.borrow_mut()
                 .set_alias(join_term.alias.as_ref().unwrap().clone());
+        } else if let ast::JoinItem::TableRef(s) = &join_term.join_item {
+            q.borrow_mut().set_alias(s.get_name().to_string());
         }
         current_context.add_quantifier(&q);
         select_box.borrow_mut().add_quantifier(Rc::clone(&q));
@@ -2986,5 +2988,6 @@ mod tests {
             "with b(b) as (select a from a), c(c) as (select a from a) select * from b, c",
         );
         test_valid_query("with b(b) as (select a from a) select * from b, b c, (with c(c) as (select b from b) select * from c) as d");
+        test_valid_query("with b(b) as (select a from a) select * from b, b c, (with c(c) as (select b from b) select * from c, b where b.b = c.c) as d where b.b = c.b and b.b = d.c");
     }
 }
