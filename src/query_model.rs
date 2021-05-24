@@ -1090,11 +1090,7 @@ impl Model {
                 let q = uq.borrow();
                 let input_box = Rc::clone(&q.input_box);
                 if visited.contains(&input_box.as_ptr()) {
-                    // @todo we should break the loop here, to avoid memory leaks
-                    return Err(format!(
-                        "box in quantifier {} already visited, loop in the model",
-                        q.id
-                    ));
+                    continue;
                 }
 
                 // @todo perhaps use a COW wrapper
@@ -1140,7 +1136,6 @@ pub struct ModelGenerator<'a> {
 struct NameResolutionContext<'a> {
     owner_box: Option<BoxRef>,
     quantifiers: Vec<QuantifierRef>,
-    parent_quantifiers: HashMap<i32, QuantifierRef>,
     subquery_quantifiers: Option<HashMap<*const ast::QueryBlock, QuantifierRef>>,
     ctes: HashMap<String, BoxRef>,
     parent_context: Option<&'a NameResolutionContext<'a>>,
@@ -1151,7 +1146,6 @@ impl<'a> NameResolutionContext<'a> {
         Self {
             owner_box: Some(owner_box),
             quantifiers: Vec::new(),
-            parent_quantifiers: HashMap::new(),
             subquery_quantifiers: None,
             ctes: HashMap::new(),
             parent_context,
@@ -1162,7 +1156,6 @@ impl<'a> NameResolutionContext<'a> {
         Self {
             owner_box: None,
             quantifiers: Vec::new(),
-            parent_quantifiers: HashMap::new(),
             subquery_quantifiers: None,
             ctes: HashMap::new(),
             parent_context,
@@ -1170,8 +1163,6 @@ impl<'a> NameResolutionContext<'a> {
     }
 
     fn add_quantifier(&mut self, q: &QuantifierRef) {
-        self.parent_quantifiers
-            .insert(q.borrow().input_box.borrow().id, Rc::clone(q));
         self.quantifiers.push(Rc::clone(q))
     }
 
@@ -1200,7 +1191,6 @@ impl<'a> NameResolutionContext<'a> {
         for q in o.quantifiers {
             self.quantifiers.push(q);
         }
-        self.parent_quantifiers.extend(o.parent_quantifiers);
     }
 
     fn resolve_column(&self, table: Option<&str>, column: &str) -> Result<Option<ExprRef>, String> {
@@ -1276,16 +1266,23 @@ impl<'a> NameResolutionContext<'a> {
                     }
                     let parent_box = parent_box.unwrap();
                     let parent_box_id = parent_box.borrow().id;
-                    if let Some(owner_box) = &self.owner_box {
-                        if parent_box_id == owner_box.borrow().id {
-                            break;
-                        }
+                    if parent_box_id
+                        == self
+                            .owner_box
+                            .as_ref()
+                            .expect("cannot pull up column")
+                            .borrow()
+                            .id
+                    {
+                        break;
                     }
-                    // @todo we need ranging quantifiers!
-                    let parent_q = self
-                        .parent_quantifiers
-                        .get(&parent_box_id)
-                        .expect("must be a valid id");
+                    let parent_q = {
+                        let parent_box = parent_box.borrow();
+                        assert!(parent_box.ranging_quantifiers.len() == 1);
+                        parent_box.ranging_quantifiers[0]
+                            .upgrade()
+                            .expect("invalid ranging quantifier")
+                    };
                     c.position = parent_q
                         .borrow()
                         .input_box
@@ -1294,7 +1291,7 @@ impl<'a> NameResolutionContext<'a> {
                             Rc::clone(&c.quantifier),
                             c.position,
                         ));
-                    c.quantifier = Rc::clone(parent_q);
+                    c.quantifier = parent_q;
                 }
                 column_ref
             }
@@ -2987,5 +2984,6 @@ mod tests {
         test_valid_query(
             "with b(b) as (select a from a), c(c) as (select a from a) select * from b, c",
         );
+        test_valid_query("with b(b) as (select a from a) select * from b, b c, (with c(c) as (select b from b) select * from c) as d");
     }
 }
