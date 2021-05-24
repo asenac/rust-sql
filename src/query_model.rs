@@ -1421,6 +1421,7 @@ impl<'a> ModelGenerator<'a> {
                             .borrow_mut()
                             .add_column(Some(c.clone()), make_ref(expr));
                     }
+                    self.add_unique_keys(&other_box);
                     select_box = other_box;
                 }
                 current_context.ctes.insert(cte.name.clone(), select_box);
