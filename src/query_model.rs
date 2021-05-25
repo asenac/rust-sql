@@ -1060,8 +1060,35 @@ impl Hash for Quantifier {
     }
 }
 
+struct ModelIds {
+    next_box_id: i32,
+    next_quantifier_id: i32,
+}
+
+impl ModelIds {
+    fn new() -> Self {
+        Self {
+            next_box_id: 0,
+            next_quantifier_id: 0,
+        }
+    }
+
+    fn get_box_id(&mut self) -> i32 {
+        let id = self.next_box_id;
+        self.next_box_id += 1;
+        id
+    }
+
+    fn get_quantifier_id(&mut self) -> i32 {
+        let id = self.next_quantifier_id;
+        self.next_quantifier_id += 1;
+        id
+    }
+}
+
 pub struct Model {
     top_box: BoxRef,
+    ids: ModelIds,
 }
 
 impl Model {
@@ -1129,8 +1156,7 @@ fn make_ref<T>(t: T) -> Rc<RefCell<T>> {
 /// Generates a query graph model from the AST
 pub struct ModelGenerator<'a> {
     catalog: &'a dyn MetadataCatalog,
-    next_box_id: i32,
-    next_quantifier_id: i32,
+    ids: ModelIds,
 }
 
 struct NameResolutionContext<'a> {
@@ -1316,43 +1342,33 @@ impl<'a> ModelGenerator<'a> {
     pub fn new(catalog: &'a dyn MetadataCatalog) -> Self {
         Self {
             catalog,
-            // @todo move this to the model
-            next_box_id: 0,
-            next_quantifier_id: 0,
+            ids: ModelIds::new(),
         }
     }
 
     pub fn process(&mut self, quer_block: &ast::QueryBlock) -> Result<Model, String> {
         let top_box = self.process_query_block(quer_block, None)?;
-        let model = Model { top_box };
+        let model = Model {
+            top_box,
+            ids: std::mem::replace(&mut self.ids, ModelIds::new()),
+        };
         Ok(model)
     }
 
-    fn get_box_id(&mut self) -> i32 {
-        let id = self.next_box_id;
-        self.next_box_id += 1;
-        id
-    }
-
-    fn get_quantifier_id(&mut self) -> i32 {
-        let id = self.next_quantifier_id;
-        self.next_quantifier_id += 1;
-        id
+    fn make_box(&mut self, box_type: BoxType) -> BoxRef {
+        make_ref(QGBox::new(self.ids.get_box_id(), box_type))
     }
 
     fn make_select_box(&mut self) -> BoxRef {
-        make_ref(QGBox::new(
-            self.get_box_id(),
-            BoxType::Select(Select::new()),
-        ))
+        self.make_box(BoxType::Select(Select::new()))
     }
 
     fn make_outer_join_box(&mut self) -> BoxRef {
-        make_ref(QGBox::new(self.get_box_id(), BoxType::OuterJoin))
+        self.make_box(BoxType::OuterJoin)
     }
 
     fn make_union_box(&mut self, distinct: bool, mut branches: Vec<BoxRef>) -> BoxRef {
-        let union_box = make_ref(QGBox::new(self.get_box_id(), BoxType::Union));
+        let union_box = self.make_box(BoxType::Union);
         {
             let mut union_mut = union_box.borrow_mut();
             if distinct {
@@ -1372,7 +1388,7 @@ impl<'a> ModelGenerator<'a> {
 
     fn make_quantifier(&mut self, input_box: BoxRef, parent_box: &BoxRef) -> QuantifierRef {
         Quantifier::new(
-            self.get_quantifier_id(),
+            self.ids.get_quantifier_id(),
             QuantifierType::Foreach,
             input_box,
             &parent_box,
@@ -1497,10 +1513,7 @@ impl<'a> ModelGenerator<'a> {
             self.add_all_columns(&current_box);
             self.add_unique_keys(&current_box);
 
-            let grouping_box = make_ref(QGBox::new(
-                self.get_box_id(),
-                BoxType::Grouping(Grouping::new()),
-            ));
+            let grouping_box = self.make_box(BoxType::Grouping(Grouping::new()));
             let q = self.make_quantifier(current_box, &grouping_box);
             grouping_box.borrow_mut().add_quantifier(Rc::clone(&q));
             // context for resolving the grouping keys
@@ -1642,7 +1655,7 @@ impl<'a> ModelGenerator<'a> {
                 let metadata = metadata.unwrap();
                 // @todo avoid cloning the metadata. The catalog should return a ref counted instance
                 let base_table = BoxType::BaseTable(metadata.clone());
-                let table_box = make_ref(QGBox::new(self.get_box_id(), base_table));
+                let table_box = self.make_box(base_table);
                 // add the columns of the table
                 for (i, c) in metadata.columns.iter().enumerate() {
                     table_box.borrow_mut().add_column(
@@ -1708,7 +1721,7 @@ impl<'a> ModelGenerator<'a> {
                             e: &ast::QueryBlock,
                             subquery_box: BoxRef| {
             let q = Quantifier::new(
-                s.get_quantifier_id(),
+                s.ids.get_quantifier_id(),
                 quantifier_type,
                 subquery_box,
                 &select_box,
@@ -2855,7 +2868,10 @@ mod tests {
     #[test]
     fn test_empty_rule() {
         let top_box = make_ref(QGBox::new(0, BoxType::Select(Select::new())));
-        let mut m = Model { top_box };
+        let mut m = Model {
+            top_box,
+            ids: ModelIds::new(),
+        };
         let rule = Box::new(EmptyRule {});
         let mut rules = Vec::<RuleBox>::new();
         rules.push(rule);
@@ -2868,7 +2884,10 @@ mod tests {
         let nested_box = make_ref(QGBox::new(1, BoxType::Select(Select::new())));
         let quantifier = Quantifier::new(1, QuantifierType::Foreach, nested_box, &top_box);
         top_box.borrow_mut().add_quantifier(quantifier);
-        let mut m = Model { top_box };
+        let mut m = Model {
+            top_box,
+            ids: ModelIds::new(),
+        };
         let mut rule = MergeRule::new();
         assert_eq!(m.top_box.borrow().quantifiers.len(), 1);
         apply_rule(&mut m, &mut rule);
@@ -2889,7 +2908,10 @@ mod tests {
         let quantifier2 = Quantifier::new(2, QuantifierType::Foreach, nested_box2, &nested_box1);
         nested_box1.borrow_mut().add_quantifier(quantifier2);
         top_box.borrow_mut().add_quantifier(quantifier1);
-        let mut m = Model { top_box };
+        let mut m = Model {
+            top_box,
+            ids: ModelIds::new(),
+        };
         assert!(m.validate().is_ok());
         let mut rule = MergeRule::new();
         assert_eq!(m.top_box.borrow().quantifiers.len(), 1);
