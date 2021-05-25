@@ -72,7 +72,7 @@ impl Interpreter {
         match stmt {
             Select(e) => {
                 let mut pager = PagerProcess::new("magic-pager.sh".to_string());
-                let mut generator = query_model::ModelGenerator::new(&self.catalog);
+                let generator = query_model::ModelGenerator::new(&self.catalog);
                 let mut model = generator.process(e)?;
                 let output = query_model::DotGenerator::new()
                     .generate(&model, format!("{} (before rewrites)", line).as_str())?;

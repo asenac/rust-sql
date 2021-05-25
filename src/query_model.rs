@@ -1355,11 +1355,11 @@ impl<'a> ModelGenerator<'a> {
         }
     }
 
-    pub fn process(&mut self, quer_block: &ast::QueryBlock) -> Result<Model, String> {
+    pub fn process(mut self, quer_block: &ast::QueryBlock) -> Result<Model, String> {
         let top_box = self.process_query_block(quer_block, None)?;
         let model = Model {
             top_box,
-            ids: std::mem::replace(&mut self.ids, ModelIds::new()),
+            ids: self.ids,
         };
         Ok(model)
     }
@@ -2947,7 +2947,7 @@ mod tests {
             let stmts = result.ok().unwrap();
             assert_eq!(stmts.len(), 1);
             if let ast::Statement::Select(c) = &stmts[0] {
-                let mut generator = ModelGenerator::new(&catalog);
+                let generator = ModelGenerator::new(&catalog);
                 let model = generator.process(&c);
                 assert!(model.is_ok(), "{}", model.err().unwrap());
                 let mut model = model.ok().unwrap();
