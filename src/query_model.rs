@@ -1163,7 +1163,7 @@ struct NameResolutionContext<'a> {
     owner_box: Option<BoxRef>,
     quantifiers: Vec<QuantifierRef>,
     subquery_quantifiers: Option<HashMap<*const ast::QueryBlock, QuantifierRef>>,
-    ctes: HashMap<String, BoxRef>,
+    ctes: Option<HashMap<String, BoxRef>>,
     parent_context: Option<&'a NameResolutionContext<'a>>,
 }
 
@@ -1173,7 +1173,7 @@ impl<'a> NameResolutionContext<'a> {
             owner_box: Some(owner_box),
             quantifiers: Vec::new(),
             subquery_quantifiers: None,
-            ctes: HashMap::new(),
+            ctes: None,
             parent_context,
         }
     }
@@ -1183,7 +1183,7 @@ impl<'a> NameResolutionContext<'a> {
             owner_box: None,
             quantifiers: Vec::new(),
             subquery_quantifiers: None,
-            ctes: HashMap::new(),
+            ctes: Some(HashMap::new()),
             parent_context,
         }
     }
@@ -1328,13 +1328,22 @@ impl<'a> NameResolutionContext<'a> {
     }
 
     fn resolve_cte(&self, name: &str) -> Option<BoxRef> {
-        if let Some(cte) = self.ctes.get(name) {
-            return Some(cte.clone());
+        if let Some(ctes) = &self.ctes {
+            if let Some(cte) = ctes.get(name) {
+                return Some(cte.clone());
+            }
         }
         if let Some(parent) = self.parent_context {
             return parent.resolve_cte(name);
         }
         None
+    }
+
+    fn add_cte(&mut self, name: String, b: BoxRef) {
+        self.ctes
+            .as_mut()
+            .expect("invalid CTE context")
+            .insert(name, b);
     }
 }
 
@@ -1440,7 +1449,7 @@ impl<'a> ModelGenerator<'a> {
                     self.add_unique_keys(&other_box);
                     select_box = other_box;
                 }
-                current_context.ctes.insert(cte.name.clone(), select_box);
+                current_context.add_cte(cte.name.clone(), select_box);
             }
         }
         let result = self.process_query_block_body(query_block, Some(&current_context));
