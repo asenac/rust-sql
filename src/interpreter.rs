@@ -73,15 +73,19 @@ impl Interpreter {
             Select(e) => {
                 let mut pager = PagerProcess::new("magic-pager.sh".to_string());
                 let generator = query_model::ModelGenerator::new(&self.catalog);
-                let mut model = generator.process(e)?;
-                let output = query_model::DotGenerator::new()
-                    .generate(&model, format!("{} (before rewrites)", line).as_str())?;
+                let model = generator.process(e)?;
+                let output = query_model::DotGenerator::new().generate(
+                    &model.borrow(),
+                    format!("{} (before rewrites)", line).as_str(),
+                )?;
                 pager.sendln(output);
 
-                query_model::rewrite_model(&mut model);
+                query_model::rewrite_model(&model);
 
-                let output = query_model::DotGenerator::new()
-                    .generate(&model, format!("{} (after rewrites)", line).as_str())?;
+                let output = query_model::DotGenerator::new().generate(
+                    &model.borrow(),
+                    format!("{} (after rewrites)", line).as_str(),
+                )?;
                 pager.sendln(output);
                 pager.wait();
             }

@@ -9,6 +9,13 @@ use std::hash::Hash;
 use std::hash::Hasher;
 use std::rc::*;
 
+type BoxRef = Rc<RefCell<QGBox>>;
+type BoxWeakRef = Weak<RefCell<QGBox>>;
+type QuantifierRef = Rc<RefCell<Quantifier>>;
+type QuantifierWeakRef = Weak<RefCell<Quantifier>>;
+type ModelRef = Rc<RefCell<Model>>;
+type ModelWeakRef = Weak<RefCell<Model>>;
+
 type ColumnRefDesc = (i32, usize);
 
 #[derive(Clone)]
@@ -531,6 +538,7 @@ enum BoxType {
 }
 
 struct QGBox {
+    model: ModelWeakRef,
     id: i32,
     box_type: BoxType,
     columns: Vec<Column>,
@@ -548,8 +556,9 @@ fn make_quantifier_set(v: Vec<QuantifierRef>) -> BTreeSet<QuantifierRef> {
 }
 
 impl QGBox {
-    fn new(id: i32, box_type: BoxType) -> Self {
+    fn new(model: ModelWeakRef, id: i32, box_type: BoxType) -> Self {
         Self {
+            model,
             id,
             box_type,
             columns: Vec::new(),
@@ -1092,6 +1101,18 @@ pub struct Model {
 }
 
 impl Model {
+    fn new() -> ModelRef {
+        make_ref(Self {
+            // dummy box, will be replaced later
+            top_box: make_ref(QGBox::new(
+                ModelWeakRef::new(),
+                0,
+                BoxType::Select(Select::new()),
+            )),
+            ids: ModelIds::new(),
+        })
+    }
+
     fn replace_top_box(&mut self, new_box: BoxRef) -> BoxRef {
         let other = Rc::clone(&self.top_box);
         self.top_box = new_box;
@@ -1156,7 +1177,7 @@ fn make_ref<T>(t: T) -> Rc<RefCell<T>> {
 /// Generates a query graph model from the AST
 pub struct ModelGenerator<'a> {
     catalog: &'a dyn MetadataCatalog,
-    ids: ModelIds,
+    model: ModelRef,
 }
 
 struct NameResolutionContext<'a> {
@@ -1351,21 +1372,23 @@ impl<'a> ModelGenerator<'a> {
     pub fn new(catalog: &'a dyn MetadataCatalog) -> Self {
         Self {
             catalog,
-            ids: ModelIds::new(),
+            model: Model::new(),
         }
     }
 
-    pub fn process(mut self, quer_block: &ast::QueryBlock) -> Result<Model, String> {
+    pub fn process(mut self, quer_block: &ast::QueryBlock) -> Result<ModelRef, String> {
         let top_box = self.process_query_block(quer_block, None)?;
-        let model = Model {
-            top_box,
-            ids: self.ids,
-        };
-        Ok(model)
+        self.model.borrow_mut().replace_top_box(top_box);
+        Ok(self.model)
     }
 
     fn make_box(&mut self, box_type: BoxType) -> BoxRef {
-        make_ref(QGBox::new(self.ids.get_box_id(), box_type))
+        let model_ref = Rc::downgrade(&self.model);
+        make_ref(QGBox::new(
+            model_ref,
+            self.model.borrow_mut().ids.get_box_id(),
+            box_type,
+        ))
     }
 
     fn make_select_box(&mut self) -> BoxRef {
@@ -1397,7 +1420,7 @@ impl<'a> ModelGenerator<'a> {
 
     fn make_quantifier(&mut self, input_box: BoxRef, parent_box: &BoxRef) -> QuantifierRef {
         Quantifier::new(
-            self.ids.get_quantifier_id(),
+            self.model.borrow_mut().ids.get_quantifier_id(),
             QuantifierType::Foreach,
             input_box,
             &parent_box,
@@ -1730,7 +1753,7 @@ impl<'a> ModelGenerator<'a> {
                             e: &ast::QueryBlock,
                             subquery_box: BoxRef| {
             let q = Quantifier::new(
-                s.ids.get_quantifier_id(),
+                s.model.borrow_mut().ids.get_quantifier_id(),
                 quantifier_type,
                 subquery_box,
                 &select_box,
@@ -2156,10 +2179,6 @@ impl DotGenerator {
 //
 
 use crate::rewrite_engine;
-
-type BoxRef = Rc<RefCell<QGBox>>;
-type QuantifierRef = Rc<RefCell<Quantifier>>;
-type QuantifierWeakRef = Weak<RefCell<Quantifier>>;
 
 struct EmptyRule {}
 
@@ -2819,17 +2838,19 @@ impl<'a> rewrite_engine::Rule<ExprRef> for DereferenceRule<'a> {
     }
 }
 
-fn apply_rule(m: &mut Model, rule: &mut BoxRule) {
-    rewrite_engine::deep_apply_rule(rule, &mut m.top_box);
+fn apply_rule(m: &ModelRef, rule: &mut BoxRule) {
+    let mut top_box = m.borrow().top_box.clone();
+    rewrite_engine::deep_apply_rule(rule, &mut top_box);
+    m.borrow_mut().replace_top_box(top_box);
 }
 
-fn apply_rules(m: &mut Model, rules: &mut Vec<RuleBox>) {
+fn apply_rules(m: &ModelRef, rules: &mut Vec<RuleBox>) {
     for rule in rules.iter_mut() {
         apply_rule(m, &mut **rule);
     }
 }
 
-pub fn rewrite_model(m: &mut Model) {
+pub fn rewrite_model(m: &ModelRef) {
     let mut rules: Vec<RuleBox> = vec![
         Box::new(MergeRule::new()),
         Box::new(ColumnRemovalRule::new()),
@@ -2876,57 +2897,77 @@ mod tests {
 
     #[test]
     fn test_empty_rule() {
-        let top_box = make_ref(QGBox::new(0, BoxType::Select(Select::new())));
-        let mut m = Model {
-            top_box,
-            ids: ModelIds::new(),
-        };
+        let m = Model::new();
+        let top_box = make_ref(QGBox::new(
+            Rc::downgrade(&m),
+            0,
+            BoxType::Select(Select::new()),
+        ));
+        m.borrow_mut().replace_top_box(top_box);
         let rule = Box::new(EmptyRule {});
         let mut rules = Vec::<RuleBox>::new();
         rules.push(rule);
-        apply_rules(&mut m, &mut rules);
+        apply_rules(&m, &mut rules);
     }
 
     #[test]
     fn test_merge_rule() {
-        let top_box = make_ref(QGBox::new(0, BoxType::Select(Select::new())));
-        let nested_box = make_ref(QGBox::new(1, BoxType::Select(Select::new())));
+        let m = Model::new();
+        let m_weak = Rc::downgrade(&m);
+        let top_box = make_ref(QGBox::new(
+            m_weak.clone(),
+            0,
+            BoxType::Select(Select::new()),
+        ));
+        let nested_box = make_ref(QGBox::new(
+            m_weak.clone(),
+            1,
+            BoxType::Select(Select::new()),
+        ));
         let quantifier = Quantifier::new(1, QuantifierType::Foreach, nested_box, &top_box);
         top_box.borrow_mut().add_quantifier(quantifier);
-        let mut m = Model {
-            top_box,
-            ids: ModelIds::new(),
-        };
+        m.borrow_mut().replace_top_box(top_box);
         let mut rule = MergeRule::new();
-        assert_eq!(m.top_box.borrow().quantifiers.len(), 1);
-        apply_rule(&mut m, &mut rule);
-        assert_eq!(m.top_box.borrow().quantifiers.len(), 0);
+        assert_eq!(m.borrow().top_box.borrow().quantifiers.len(), 1);
+        apply_rule(&m, &mut rule);
+        assert_eq!(m.borrow().top_box.borrow().quantifiers.len(), 0);
     }
 
     #[test]
     fn test_merge_rule_deep_apply() {
-        let top_box = make_ref(QGBox::new(0, BoxType::Select(Select::new())));
-        let nested_box1 = make_ref(QGBox::new(1, BoxType::Select(Select::new())));
+        let m = Model::new();
+        let m_weak = Rc::downgrade(&m);
+        let top_box = make_ref(QGBox::new(
+            m_weak.clone(),
+            0,
+            BoxType::Select(Select::new()),
+        ));
+        let nested_box1 = make_ref(QGBox::new(
+            m_weak.clone(),
+            1,
+            BoxType::Select(Select::new()),
+        ));
         let quantifier1 = Quantifier::new(
             1,
             QuantifierType::Foreach,
             Rc::clone(&nested_box1),
             &top_box,
         );
-        let nested_box2 = make_ref(QGBox::new(2, BoxType::Select(Select::new())));
+        let nested_box2 = make_ref(QGBox::new(
+            m_weak.clone(),
+            2,
+            BoxType::Select(Select::new()),
+        ));
         let quantifier2 = Quantifier::new(2, QuantifierType::Foreach, nested_box2, &nested_box1);
         nested_box1.borrow_mut().add_quantifier(quantifier2);
         top_box.borrow_mut().add_quantifier(quantifier1);
-        let mut m = Model {
-            top_box,
-            ids: ModelIds::new(),
-        };
-        assert!(m.validate().is_ok());
+        m.borrow_mut().replace_top_box(top_box);
+        assert!(m.borrow().validate().is_ok());
         let mut rule = MergeRule::new();
-        assert_eq!(m.top_box.borrow().quantifiers.len(), 1);
-        apply_rule(&mut m, &mut rule);
-        assert!(m.validate().is_ok());
-        assert_eq!(m.top_box.borrow().quantifiers.len(), 0);
+        assert_eq!(m.borrow().top_box.borrow().quantifiers.len(), 1);
+        apply_rule(&m, &mut rule);
+        assert!(m.borrow().validate().is_ok());
+        assert_eq!(m.borrow().top_box.borrow().quantifiers.len(), 0);
     }
 
     #[test]
@@ -2951,17 +2992,17 @@ mod tests {
                 let model = generator.process(&c);
                 assert!(model.is_ok(), "{}", model.err().unwrap());
                 let mut model = model.ok().unwrap();
-                assert!(model.validate().is_ok());
+                assert!(model.borrow().validate().is_ok());
 
-                let output = DotGenerator::new().generate(&model, q);
+                let output = DotGenerator::new().generate(&model.borrow(), q);
                 assert!(output.is_ok());
                 let output = output.ok().unwrap();
                 println!("{}", output);
 
                 rewrite_model(&mut model);
-                assert!(model.validate().is_ok());
+                assert!(model.borrow().validate().is_ok());
 
-                let output = DotGenerator::new().generate(&model, q);
+                let output = DotGenerator::new().generate(&model.borrow(), q);
                 assert!(output.is_ok());
                 let output = output.ok().unwrap();
                 println!("{}", output);
