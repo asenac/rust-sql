@@ -556,8 +556,8 @@ fn make_quantifier_set(v: Vec<QuantifierRef>) -> BTreeSet<QuantifierRef> {
 }
 
 impl QGBox {
-    fn new(model: ModelWeakRef, id: i32, box_type: BoxType) -> Self {
-        Self {
+    fn new(model: ModelWeakRef, id: i32, box_type: BoxType) -> BoxRef {
+        make_ref(Self {
             model,
             id,
             box_type,
@@ -567,7 +567,7 @@ impl QGBox {
             predicates: None,
             distinct_operation: DistinctOperation::Preserve,
             unique_keys: Vec::new(),
-        }
+        })
     }
     /// use add_quantifier_to_box instead to properly set the parent box of the quantifier
     fn add_quantifier(&mut self, q: QuantifierRef) {
@@ -1104,11 +1104,7 @@ impl Model {
     fn new() -> ModelRef {
         make_ref(Self {
             // dummy box, will be replaced later
-            top_box: make_ref(QGBox::new(
-                ModelWeakRef::new(),
-                0,
-                BoxType::Select(Select::new()),
-            )),
+            top_box: QGBox::new(ModelWeakRef::new(), 0, BoxType::Select(Select::new())),
             ids: ModelIds::new(),
         })
     }
@@ -1384,11 +1380,11 @@ impl<'a> ModelGenerator<'a> {
 
     fn make_box(&mut self, box_type: BoxType) -> BoxRef {
         let model_ref = Rc::downgrade(&self.model);
-        make_ref(QGBox::new(
+        QGBox::new(
             model_ref,
             self.model.borrow_mut().ids.get_box_id(),
             box_type,
-        ))
+        )
     }
 
     fn make_select_box(&mut self) -> BoxRef {
@@ -2898,11 +2894,7 @@ mod tests {
     #[test]
     fn test_empty_rule() {
         let m = Model::new();
-        let top_box = make_ref(QGBox::new(
-            Rc::downgrade(&m),
-            0,
-            BoxType::Select(Select::new()),
-        ));
+        let top_box = QGBox::new(Rc::downgrade(&m), 0, BoxType::Select(Select::new()));
         m.borrow_mut().replace_top_box(top_box);
         let rule = Box::new(EmptyRule {});
         let mut rules = Vec::<RuleBox>::new();
@@ -2914,16 +2906,8 @@ mod tests {
     fn test_merge_rule() {
         let m = Model::new();
         let m_weak = Rc::downgrade(&m);
-        let top_box = make_ref(QGBox::new(
-            m_weak.clone(),
-            0,
-            BoxType::Select(Select::new()),
-        ));
-        let nested_box = make_ref(QGBox::new(
-            m_weak.clone(),
-            1,
-            BoxType::Select(Select::new()),
-        ));
+        let top_box = QGBox::new(m_weak.clone(), 0, BoxType::Select(Select::new()));
+        let nested_box = QGBox::new(m_weak.clone(), 1, BoxType::Select(Select::new()));
         let quantifier = Quantifier::new(1, QuantifierType::Foreach, nested_box, &top_box);
         top_box.borrow_mut().add_quantifier(quantifier);
         m.borrow_mut().replace_top_box(top_box);
@@ -2937,27 +2921,15 @@ mod tests {
     fn test_merge_rule_deep_apply() {
         let m = Model::new();
         let m_weak = Rc::downgrade(&m);
-        let top_box = make_ref(QGBox::new(
-            m_weak.clone(),
-            0,
-            BoxType::Select(Select::new()),
-        ));
-        let nested_box1 = make_ref(QGBox::new(
-            m_weak.clone(),
-            1,
-            BoxType::Select(Select::new()),
-        ));
+        let top_box = QGBox::new(m_weak.clone(), 0, BoxType::Select(Select::new()));
+        let nested_box1 = QGBox::new(m_weak.clone(), 1, BoxType::Select(Select::new()));
         let quantifier1 = Quantifier::new(
             1,
             QuantifierType::Foreach,
             Rc::clone(&nested_box1),
             &top_box,
         );
-        let nested_box2 = make_ref(QGBox::new(
-            m_weak.clone(),
-            2,
-            BoxType::Select(Select::new()),
-        ));
+        let nested_box2 = QGBox::new(m_weak.clone(), 2, BoxType::Select(Select::new()));
         let quantifier2 = Quantifier::new(2, QuantifierType::Foreach, nested_box2, &nested_box1);
         nested_box1.borrow_mut().add_quantifier(quantifier2);
         top_box.borrow_mut().add_quantifier(quantifier1);
