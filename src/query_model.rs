@@ -1449,8 +1449,8 @@ impl<'a> ModelGenerator<'a> {
         let mut current_context = NameResolutionContext::for_ctes(parent_context);
         if let Some(ctes) = &query_block.ctes {
             for cte in ctes.iter() {
-                // note: I'm assuming sibling CTEs cannot be seen
-                let mut select_box = self.process_query_block(&cte.select, parent_context)?;
+                let mut select_box =
+                    self.process_query_block(&cte.select, Some(&current_context))?;
                 if let Some(columns) = &cte.columns {
                     if columns.len() != select_box.borrow().columns.len() {
                         return Err(format!("number of columns mismatch"));
