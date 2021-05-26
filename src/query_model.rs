@@ -949,7 +949,7 @@ fn add_quantifier_to_box(b: &BoxRef, q: &QuantifierRef) {
     bq.parent_box = Rc::downgrade(&b);
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Copy, Clone)]
 enum QuantifierType {
     Foreach,
     PreservedForeach,
@@ -2347,9 +2347,6 @@ impl rewrite_engine::Rule<BoxRef> for MergeRule {
                     let borrowed_q = q.borrow();
                     if let QuantifierType::Foreach = borrowed_q.quantifier_type {
                         let input_box = borrowed_q.input_box.borrow();
-                        if input_box.ranging_quantifiers.len() > 1 {
-                            continue;
-                        }
                         if let BoxType::Select(inner_select) = &input_box.box_type {
                             if inner_select.order_by.is_none() && inner_select.limit.is_none() {
                                 self.to_merge.insert(Rc::clone(q));
@@ -2369,9 +2366,6 @@ impl rewrite_engine::Rule<BoxRef> for MergeRule {
                     match borrowed_q.quantifier_type {
                         QuantifierType::PreservedForeach | QuantifierType::Foreach => {
                             let input_box = borrowed_q.input_box.borrow();
-                            if input_box.ranging_quantifiers.len() > 1 {
-                                continue;
-                            }
                             if let BoxType::Select(inner_select) = &input_box.box_type {
                                 if input_box.quantifiers.len() == 1
                                     && inner_select.order_by.is_none()
@@ -2391,15 +2385,41 @@ impl rewrite_engine::Rule<BoxRef> for MergeRule {
         !self.to_merge.is_empty()
     }
     fn action(&mut self, obj: &mut BoxRef) {
-        // predicates in the boxes being removed that will be added to the current box
-        let mut pred_to_add = Vec::new();
         for q in &self.to_merge {
-            if let Some(pred_to_merge) = &q.borrow().input_box.borrow().predicates {
-                pred_to_add.extend(pred_to_merge.clone());
+            // predicates in the boxes being removed that will be added to the current box
+            let mut pred_to_add = Vec::new();
+            let mut to_replace = BTreeMap::new();
+
+            // borrow scope
+            {
+                let input_box = q.borrow().input_box.clone();
+                let input_box = input_box.borrow();
+                if let Some(pred_to_merge) = &input_box.predicates {
+                    pred_to_add.extend(pred_to_merge.clone());
+                }
+                for oq in &input_box.quantifiers {
+                    if input_box.ranging_quantifiers.len() == 1 {
+                        add_quantifier_to_box(obj, oq);
+                    } else {
+                        let b_oq = oq.borrow();
+                        let new_q = Quantifier::new(
+                            input_box
+                                .model
+                                .upgrade()
+                                .expect("invalid model")
+                                .borrow_mut()
+                                .ids
+                                .get_quantifier_id(),
+                            b_oq.quantifier_type,
+                            b_oq.input_box.clone(),
+                            &obj,
+                        );
+                        add_quantifier_to_box(obj, &new_q);
+                        to_replace.insert(oq.clone(), new_q);
+                    }
+                }
             }
-            for oq in &q.borrow().input_box.borrow().quantifiers {
-                add_quantifier_to_box(obj, oq);
-            }
+
             let mut obj = obj.borrow_mut();
             obj.remove_quantifier(q);
 
@@ -2414,23 +2434,24 @@ impl rewrite_engine::Rule<BoxRef> for MergeRule {
                     }
                 }
             }
+
+            let to_merge = make_quantifier_set(vec![q.clone()]);
+            let mut rule = DereferenceRule {
+                to_dereference: &to_merge,
+                to_replace: Some(&to_replace),
+            };
+            let mut f = |e: &mut ExprRef| {
+                rewrite_engine::deep_apply_rule(&mut rule, e);
+            };
+            obj.visit_expressions(&mut f);
+            if obj.predicates.is_none() {
+                obj.predicates = Some(pred_to_add);
+            } else {
+                obj.predicates.as_mut().unwrap().extend(pred_to_add);
+            }
         }
 
-        let mut rule = DereferenceRule {
-            to_dereference: &self.to_merge,
-        };
-        let mut f = |e: &mut ExprRef| {
-            rewrite_engine::deep_apply_rule(&mut rule, e);
-        };
-        obj.borrow_mut().visit_expressions(&mut f);
-        let mut mut_obj = obj.borrow_mut();
-        if mut_obj.predicates.is_none() {
-            mut_obj.predicates = Some(pred_to_add);
-        } else {
-            mut_obj.predicates.as_mut().unwrap().extend(pred_to_add);
-        }
-
-        mut_obj.recompute_unique_keys();
+        obj.borrow_mut().recompute_unique_keys();
 
         self.to_merge.clear();
     }
@@ -2688,7 +2709,6 @@ impl rewrite_engine::Rule<BoxRef> for ConstantLiftingRule {
                         }
                     };
                     while let Some(c) = get_col_ref(&dereferenced) {
-                        println!("{}", dereferenced.borrow());
                         let q = c.quantifier.borrow();
                         let input_box = q.input_box.borrow();
 
@@ -2749,6 +2769,7 @@ impl PushDownPredicatesRule {
         let to_dereference = make_quantifier_set(vec![q.clone()]);
         let mut rule = DereferenceRule {
             to_dereference: &to_dereference,
+            to_replace: None,
         };
         rewrite_engine::deep_apply_rule(&mut rule, &mut p);
         p
@@ -2803,11 +2824,12 @@ type RuleBox = Box<BoxRule>;
 
 struct DereferenceRule<'a> {
     to_dereference: &'a BTreeSet<QuantifierRef>,
+    to_replace: Option<&'a BTreeMap<QuantifierRef, QuantifierRef>>,
 }
 
 impl<'a> rewrite_engine::Rule<ExprRef> for DereferenceRule<'a> {
     fn name(&self) -> &'static str {
-        "EmptyRule"
+        "DereferenceRule"
     }
     fn apply_top_down(&self) -> bool {
         false
@@ -2829,7 +2851,42 @@ impl<'a> rewrite_engine::Rule<ExprRef> for DereferenceRule<'a> {
             }
         }
         if last.is_some() {
-            *obj = last.unwrap();
+            *obj = deep_clone(last.as_ref().unwrap());
+            if let Some(to_replace) = self.to_replace {
+                let mut rule = ReplaceQuantifierRule { to_replace };
+                rewrite_engine::deep_apply_rule(&mut rule, obj);
+            }
+        }
+    }
+}
+
+struct ReplaceQuantifierRule<'a> {
+    to_replace: &'a BTreeMap<QuantifierRef, QuantifierRef>,
+}
+
+impl<'a> rewrite_engine::Rule<ExprRef> for ReplaceQuantifierRule<'a> {
+    fn name(&self) -> &'static str {
+        "ReplaceQuantifierRule"
+    }
+    fn apply_top_down(&self) -> bool {
+        false
+    }
+    fn condition(&mut self, obj: &ExprRef) -> bool {
+        let o = obj.borrow();
+        if let ExprType::ColumnReference(c) = &o.expr_type {
+            self.to_replace.get(&c.quantifier).is_some()
+        } else {
+            false
+        }
+    }
+    fn action(&mut self, obj: &mut ExprRef) {
+        // note: expressions should not be shared pointers
+        *obj = deep_clone(obj);
+
+        if let ExprType::ColumnReference(c) = &mut obj.borrow_mut().expr_type {
+            if let Some(oq) = self.to_replace.get(&c.quantifier) {
+                c.quantifier = oq.clone();
+            }
         }
     }
 }
