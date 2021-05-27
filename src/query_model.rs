@@ -2156,7 +2156,7 @@ impl DotGenerator {
     }
 
     fn new_line(&mut self, s: &str) {
-        if self.output.rfind('\n') != Some(self.output.len()) {
+        if !self.output.is_empty() && self.output.rfind('\n') != Some(self.output.len()) {
             self.end_line();
             for _ in 0..self.indent * 4 {
                 self.output.push(' ');
@@ -3090,5 +3090,113 @@ mod tests {
         );
         test_valid_query("with b(b) as (select a from a) select * from b, b c, (with c(c) as (select b from b) select * from c) as d");
         test_valid_query("with b(b) as (select a from a) select * from b, b c, (with c(c) as (select b from b) select * from c, b where b.b = c.c) as d where b.b = c.b and b.b = d.c");
+    }
+
+    struct TestRunner {
+        catalog: FakeCatalog,
+    }
+    impl TestRunner {
+        pub fn new() -> Self {
+            Self {
+                catalog: FakeCatalog::new(),
+            }
+        }
+
+        pub fn process_ddl(&mut self, line: &str) -> Result<String, String> {
+            let parser = ast::Parser::new();
+            let result = parser.parse(line)?;
+            for stmt in result {
+                self.process_ddl_statement(&stmt)?;
+            }
+            Ok(String::new())
+        }
+
+        fn process_ddl_statement(&mut self, stmt: &ast::Statement) -> Result<(), String> {
+            use ast::Statement::*;
+            match stmt {
+                CreateTable(c) => {
+                    let mut metadata = TableMetadata::new(c.name.get_name());
+                    for c in &c.columns {
+                        metadata.add_column(&c.name);
+                    }
+                    self.catalog.add_table(metadata);
+                }
+                DropTable(c) => {
+                    if let Some(table) = self.catalog.get_table(c.name.get_name()).cloned() {
+                        self.catalog.drop_table(&table);
+                    } else {
+                        return Err(format!("table {} not found", c.name.get_name()));
+                    }
+                }
+                CreateIndex(c) => {
+                    if let Some(table) = self.catalog.get_table(c.tablename.get_name()) {
+                        let mut cloned = table.clone();
+                        let mut columns = Vec::new();
+                        for ic in c.columns.iter() {
+                            let mut idx = None;
+                            for (i, tc) in cloned.columns.iter().enumerate() {
+                                if tc.name == *ic {
+                                    idx = Some(i);
+                                    break;
+                                }
+                            }
+                            if let Some(i) = idx {
+                                columns.push(i);
+                            } else {
+                                return Err(format!("column {} not found", ic));
+                            }
+                        }
+                        cloned.indexes.push(Index {
+                            name: c.name.clone(),
+                            unique: c.unique,
+                            columns,
+                        });
+                        self.catalog.add_table(cloned);
+                    } else {
+                        return Err(format!("table {} not found", c.tablename.get_name()));
+                    }
+                }
+                _ => return Err(format!("unsupported statement: {:?}", stmt)),
+            }
+            Ok(())
+        }
+
+        pub fn process_query(&mut self, query: &str) -> Result<String, String> {
+            let parser = ast::Parser::new();
+            let mut result = parser.parse(query)?;
+            let mut output = String::new();
+            if let Some(stmt) = result.pop() {
+                use ast::Statement::*;
+                match stmt {
+                    Select(c) => {
+                        let generator = ModelGenerator::new(&self.catalog);
+                        let model = generator.process(&c)?;
+                        output.push_str(&DotGenerator::new().generate(&model.borrow(), query)?);
+                    }
+                    _ => return Err(format!("invalid query")),
+                }
+            }
+            Ok(output)
+        }
+    }
+
+    #[test]
+    fn run() {
+        use datadriven::walk;
+
+        walk("tests/querymodel", |f| {
+            let mut interpreter = TestRunner::new();
+            f.run(|test_case| -> String {
+                let result = match &test_case.directive[..] {
+                    "ddl" => interpreter.process_ddl(&test_case.input[..]),
+                    "query" => interpreter.process_query(&test_case.input[..]),
+                    _ => Err(format!("invalid test directive")),
+                };
+                match result {
+                    Ok(c) => format!("{}{}", c, if c.is_empty() { "" } else { "\n" }),
+                    Err(c) => format!("Err: {}{}", c, if c.is_empty() { "" } else { "\n" }),
+                }
+            })
+        });
     }
 }
