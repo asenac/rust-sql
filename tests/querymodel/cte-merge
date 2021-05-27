@@ -157,3 +157,48 @@ digraph G {
     edge [ arrowhead = none, style = dashed ]
     Q0 -> boxhead2 [ lhead = cluster2 ]
 }
+
+query apply=Merge
+with b(b) as (select a.a from a, a b where a.a = b.a) select * from b, b c;
+----
+digraph G {
+    compound = true
+    labeljust = l
+    label="with b(b) as (select a.a from a, a b where a.a = b.a) select * from b, b c;
+"
+    node [ shape = box ]
+    subgraph cluster6 {
+        label = "Box6:Select"
+        boxhead6 [ shape = record, label="{ 0: Q5.c0 AS B|1: Q7.c0 AS B }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q5 [ label="Q5(F)" ]
+            Q6 [ label="Q6(F)" ]
+            Q7 [ label="Q7(F)" ]
+            Q8 [ label="Q8(F)" ]
+            edge [ arrowhead = none, style = solid ]
+            Q5 -> Q6 [ label="(Q5.c0) = (Q6.c0)" ]
+            Q7 -> Q8 [ label="(Q7.c0) = (Q8.c0)" ]
+        }
+    }
+    subgraph cluster3 {
+        label = "Box3:BaseTable A"
+        boxhead3 [ shape = record, label="{ 0: c0 AS A|1: c1 AS B }" ]
+        {
+            rank = same
+        }
+    }
+    subgraph cluster2 {
+        label = "Box2:BaseTable A"
+        boxhead2 [ shape = record, label="{ 0: c0 AS A|1: c1 AS B }" ]
+        {
+            rank = same
+        }
+    }
+    edge [ arrowhead = none, style = dashed ]
+    Q5 -> boxhead2 [ lhead = cluster2 ]
+    Q6 -> boxhead3 [ lhead = cluster3 ]
+    Q7 -> boxhead2 [ lhead = cluster2 ]
+    Q8 -> boxhead3 [ lhead = cluster3 ]
+}

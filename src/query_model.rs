@@ -2395,7 +2395,8 @@ impl rewrite_engine::Rule<BoxRef> for MergeRule {
                 let input_box = q.borrow().input_box.clone();
                 let input_box = input_box.borrow();
                 if let Some(pred_to_merge) = &input_box.predicates {
-                    pred_to_add.extend(pred_to_merge.clone());
+                    // deep_clone :facepalm:
+                    pred_to_add.extend(pred_to_merge.iter().map(|x| deep_clone(x)));
                 }
                 for oq in &input_box.quantifiers {
                     if input_box.ranging_quantifiers.len() == 1 {
@@ -2443,11 +2444,22 @@ impl rewrite_engine::Rule<BoxRef> for MergeRule {
             let mut f = |e: &mut ExprRef| {
                 rewrite_engine::deep_apply_rule(&mut rule, e);
             };
+            // @todo we should descend the remaining quantifiers
             obj.visit_expressions(&mut f);
-            if obj.predicates.is_none() {
-                obj.predicates = Some(pred_to_add);
-            } else {
-                obj.predicates.as_mut().unwrap().extend(pred_to_add);
+            if !pred_to_add.is_empty() {
+                if !to_replace.is_empty() {
+                    let mut rule = ReplaceQuantifierRule {
+                        to_replace: &to_replace,
+                    };
+                    for obj in pred_to_add.iter_mut() {
+                        rewrite_engine::deep_apply_rule(&mut rule, obj);
+                    }
+                }
+                if obj.predicates.is_none() {
+                    obj.predicates = Some(pred_to_add);
+                } else {
+                    obj.predicates.as_mut().unwrap().extend(pred_to_add);
+                }
             }
         }
 
