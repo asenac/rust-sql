@@ -3161,7 +3161,11 @@ mod tests {
             Ok(())
         }
 
-        pub fn process_query(&mut self, query: &str) -> Result<String, String> {
+        pub fn process_query(
+            &mut self,
+            query: &str,
+            rules: Option<&Vec<String>>,
+        ) -> Result<String, String> {
             let parser = ast::Parser::new();
             let mut result = parser.parse(query)?;
             let mut output = String::new();
@@ -3171,12 +3175,26 @@ mod tests {
                     Select(c) => {
                         let generator = ModelGenerator::new(&self.catalog);
                         let model = generator.process(&c)?;
+                        if let Some(rules) = &rules {
+                            for rule in rules.iter() {
+                                Self::apply_rule(&model, rule)?;
+                            }
+                        }
                         output.push_str(&DotGenerator::new().generate(&model.borrow(), query)?);
                     }
                     _ => return Err(format!("invalid query")),
                 }
             }
             Ok(output)
+        }
+
+        fn apply_rule(model: &ModelRef, rule: &String) -> Result<(), String> {
+            let mut rule: RuleBox = match &rule[..] {
+                "merge" => Box::new(MergeRule::new()),
+                _ => return Err(format!("invalid rule")),
+            };
+            super::apply_rule(model, &mut *rule);
+            Ok(())
         }
     }
 
@@ -3189,7 +3207,9 @@ mod tests {
             f.run(|test_case| -> String {
                 let result = match &test_case.directive[..] {
                     "ddl" => interpreter.process_ddl(&test_case.input[..]),
-                    "query" => interpreter.process_query(&test_case.input[..]),
+                    "query" => {
+                        interpreter.process_query(&test_case.input[..], test_case.args.get("apply"))
+                    }
                     _ => Err(format!("invalid test directive")),
                 };
                 match result {
