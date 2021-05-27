@@ -129,7 +129,7 @@ digraph G {
     Q0 -> boxhead2 [ lhead = cluster2 ]
 }
 
-query apply=merge
+query apply=Merge
 with b(b) as (select a from a), c(c) as (select b from b) select * from b;
 ----
 digraph G {

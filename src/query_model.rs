@@ -3190,7 +3190,8 @@ mod tests {
 
         fn apply_rule(model: &ModelRef, rule: &String) -> Result<(), String> {
             let mut rule: RuleBox = match &rule[..] {
-                "merge" => Box::new(MergeRule::new()),
+                "Merge" => Box::new(MergeRule::new()),
+                "GroupByRemoval" => Box::new(GroupByRemovalRule::new()),
                 _ => return Err(format!("invalid rule")),
             };
             super::apply_rule(model, &mut *rule);
