@@ -2271,6 +2271,7 @@ mod tests {
                 "Merge" => Box::new(MergeRule::new()),
                 "GroupByRemoval" => Box::new(GroupByRemovalRule::new()),
                 "EmptyBoxes" => Box::new(EmptyBoxesRule::new()),
+                "PushDownPredicates" => Box::new(PushDownPredicatesRule::new()),
                 _ => return Err(format!("invalid rule")),
             };
             super::apply_rule(model, &mut *rule);
