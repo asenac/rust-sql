@@ -2086,6 +2086,7 @@ impl DotGenerator {
 
         self.dec();
         self.new_line("}");
+        self.new_line(""); // final empty line
         Ok(self.output)
     }
 
