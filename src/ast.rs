@@ -1,6 +1,6 @@
 use std::iter::*;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Statement {
     Select(QueryBlock),
     Insert(Insert),
@@ -12,7 +12,7 @@ pub enum Statement {
     DropTable(DropTable),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Identifier {
     parts: Vec<String>,
 }
@@ -35,20 +35,20 @@ impl Identifier {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SelectItem {
     pub expr: Expr,
     pub alias: Option<String>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum JoinType {
     Inner,
     LeftOuter,
     RightOuter,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum JoinItem {
     TableRef(Identifier),
     Join(JoinType, Box<JoinTerm>, Box<JoinTerm>, Option<Expr>),
@@ -56,7 +56,7 @@ pub enum JoinItem {
     Lateral(QueryBlock),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct JoinTerm {
     pub join_item: JoinItem,
     pub alias: Option<String>,
@@ -68,7 +68,7 @@ pub enum Direction {
     Descending,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct OrderByItem {
     pub expr: Expr,
     pub direction: Direction,
@@ -76,13 +76,13 @@ pub struct OrderByItem {
 
 type OrderByClause = Vec<OrderByItem>;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Grouping {
     pub groups: OrderByClause,
     pub having_clause: Option<Expr>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Select {
     pub selection_list: Option<Vec<SelectItem>>,
     pub from_clause: Vec<JoinTerm>,
@@ -107,14 +107,14 @@ impl Select {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Union {
     pub distinct: bool,
     pub left: Box<QueryBlockSource>,
     pub right: Box<QueryBlockSource>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum QueryBlockSource {
     Select(Select),
     Union(Union),
@@ -122,14 +122,14 @@ pub enum QueryBlockSource {
     Intersect(Box<QueryBlockSource>, Box<QueryBlockSource>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct View {
     pub name: String,
     pub columns: Option<Vec<String>>,
     pub select: QueryBlock,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct QueryBlock {
     pub ctes: Option<Vec<View>>,
     pub source: QueryBlockSource,
@@ -148,14 +148,14 @@ impl QueryBlock {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Delete {
     pub target: Identifier,
     pub where_clause: Option<Expr>,
     pub limit_clause: Option<Expr>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Update {
     pub target: Identifier,
     pub assignments: Vec<Assignment>,
@@ -163,26 +163,26 @@ pub struct Update {
     pub limit_clause: Option<Expr>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Assignment {
     pub name: String,
     pub expr: Expr,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Insert {
     pub target: Identifier,
     pub columns: Option<Vec<String>>,
     pub source: InsertSource,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum InsertSource {
     Values(Vec<Vec<Expr>>),
     Select(QueryBlock),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum BinaryExprType {
     Eq,
     Neq,
@@ -192,7 +192,7 @@ pub enum BinaryExprType {
     GreaterEq,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum NaryExprType {
     And,
     Or,
@@ -202,13 +202,13 @@ pub enum NaryExprType {
     Div,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CaseExpr {
     pub case_branches: Vec<(Box<Expr>, Box<Expr>)>,
     pub else_branch: Option<Box<Expr>>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Expr {
     Parameter(u64),
     Reference(Identifier),
@@ -306,7 +306,7 @@ impl<'a> Iterator for ExprIterator<'a> {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum TypeDef {
     String,
     Integer,
@@ -314,19 +314,19 @@ pub enum TypeDef {
     Double,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ColumnDef {
     pub name: String,
     pub data_type: TypeDef,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CreateTable {
     pub name: Identifier,
     pub columns: Vec<ColumnDef>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CreateIndex {
     pub name: String,
     pub unique: bool,
@@ -334,7 +334,7 @@ pub struct CreateIndex {
     pub columns: Vec<String>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct DropTable {
     pub name: Identifier,
 }
