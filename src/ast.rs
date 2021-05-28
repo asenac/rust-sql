@@ -8,6 +8,7 @@ pub enum Statement {
     Delete(Delete),
     CreateTable(CreateTable),
     CreateIndex(CreateIndex),
+    CreateView(View),
     DropTable(DropTable),
 }
 
@@ -416,6 +417,8 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
                 } else if complete_keyword!(self, Unique) {
                     expect_keyword!(self, Index)?;
                     result.push(Statement::CreateIndex(self.parse_create_index_body(true)?));
+                } else if complete_keyword!(self, View) {
+                    result.push(Statement::CreateView(self.parse_view()?));
                 } else {
                     return Err("invalid CREATE statement".to_string());
                 }
@@ -914,22 +917,39 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
         }
     }
 
+    fn parse_column_list(&mut self) -> Result<Option<Vec<String>>, String> {
+        if self.complete_substr_and_advance("(") {
+            let mut cols = Vec::new();
+            parse_list!(self {
+                let col = self.expect_name()?;
+                cols.push(col);
+            });
+            self.expect_substr_and_advance(")")?;
+            Ok(Some(cols))
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn parse_view(&mut self) -> Result<View, String> {
+        let name = self.expect_name()?;
+        let columns = self.parse_column_list()?;
+        expect_keyword!(self, As)?;
+        let select = self.expect_select()?;
+        Ok(View {
+            name,
+            columns,
+            select,
+        })
+    }
+
     fn parse_select(&mut self) -> Result<Option<QueryBlock>, String> {
         let mut ctes = None;
         if complete_keyword!(self, With) {
             let mut views = Vec::new();
             parse_list!(self {
                 let name = self.expect_name()?;
-                let mut columns = None;
-                if self.complete_substr_and_advance("(") {
-                    let mut cols = Vec::new();
-                    parse_list!(self {
-                        let col = self.expect_name()?;
-                        cols.push(col);
-                    });
-                    self.expect_substr_and_advance(")")?;
-                    columns = Some(cols);
-                }
+                let columns = self.parse_column_list()?;
                 expect_keyword!(self, As)?;
                 self.expect_substr_and_advance("(")?;
                 let select = self.expect_select()?;
@@ -1025,16 +1045,7 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
 
     fn parse_insert_body(&mut self) -> Result<Insert, String> {
         let identifier = self.expect_identifier()?;
-        let mut columns: Option<Vec<String>> = None;
-        if self.complete_substr_and_advance("(") {
-            let mut cols = Vec::new();
-            parse_list!(self {
-                let name = self.expect_name()?;
-                cols.push(name);
-            });
-            self.expect_substr_and_advance(")")?;
-            columns = Some(cols);
-        }
+        let columns = self.parse_column_list()?;
         if complete_keyword!(self, Select) {
             let select = self.parse_select_body()?;
             Ok(Insert {
