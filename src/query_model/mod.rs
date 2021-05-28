@@ -607,6 +607,12 @@ impl QGBox {
         }
     }
 
+    fn remove_predicate(&mut self, predicate: &ExprRef) {
+        if let Some(predicates) = &mut self.predicates {
+            predicates.retain(|x| x.as_ptr() != predicate.as_ptr());
+        }
+    }
+
     fn add_unique_key(&mut self, key: Vec<usize>) {
         self.unique_keys.push(key);
     }
@@ -930,6 +936,21 @@ impl QGBox {
     fn distinct_tuples(&self) -> bool {
         self.distinct_operation == DistinctOperation::Enforce || !self.unique_keys.is_empty()
     }
+
+    fn add_all_columns(&mut self) {
+        let quantifiers = self.quantifiers.clone();
+        for q in quantifiers {
+            let bq = q.borrow();
+            if bq.is_subquery() {
+                continue;
+            }
+            let input_box = bq.input_box.borrow();
+            for (i, c) in input_box.columns.iter().enumerate() {
+                let expr = Expr::make_column_ref(Rc::clone(&q), i);
+                self.add_column(c.name.clone(), make_ref(expr));
+            }
+        }
+    }
 }
 
 fn add_quantifier_to_box(b: &BoxRef, q: &QuantifierRef) {
@@ -1023,6 +1044,21 @@ impl Quantifier {
 
     fn weak(&self) -> QuantifierWeakRef {
         self.weak_self.as_ref().unwrap().clone()
+    }
+
+    fn replace_input_box(&mut self, b: BoxRef) {
+        // deatch from previous box
+        self.input_box
+            .borrow_mut()
+            .ranging_quantifiers
+            .retain(|x| x.as_ptr() != self.weak().as_ptr());
+
+        // attach to new box
+        self.input_box = b;
+        self.input_box
+            .borrow_mut()
+            .ranging_quantifiers
+            .push(self.weak());
     }
 }
 
@@ -1755,8 +1791,8 @@ impl rewrite_engine::Rule<BoxRef> for ConstantLiftingRule {
 //
 
 struct PushDownPredicatesRule {
-    // source -> destination
-    to_pushdown: Vec<Vec<(ExprRef, BoxRef)>>,
+    // source -> path -> destination
+    to_pushdown: Vec<Vec<(ExprRef, BoxRef, Option<QuantifierRef>)>>,
 }
 
 impl PushDownPredicatesRule {
@@ -1789,24 +1825,30 @@ impl rewrite_engine::Rule<BoxRef> for PushDownPredicatesRule {
     }
     fn condition(&mut self, obj: &BoxRef) -> bool {
         self.to_pushdown.clear();
-        let mut stack: Vec<Vec<(ExprRef, BoxRef)>> = Vec::new();
+        let mut stack: Vec<Vec<(ExprRef, BoxRef, Option<QuantifierRef>)>> = Vec::new();
         if let Some(predicates) = &obj.borrow().predicates {
-            stack.extend(predicates.iter().map(|x| vec![(x.clone(), obj.clone())]));
+            stack.extend(
+                predicates
+                    .iter()
+                    .map(|x| vec![(x.clone(), obj.clone(), None)]),
+            );
         }
 
         while !stack.is_empty() {
             let mut path = stack.pop().unwrap();
-            let (p, b) = path.last().unwrap().clone();
+            let (p, b, _) = path.last().unwrap().clone();
             let quantifiers = get_quantifiers(&p);
             if quantifiers.len() == 1 {
                 let q_ref = quantifiers.iter().next().unwrap();
                 let only_quantifier = q_ref.borrow();
                 match (&b.borrow().box_type, &only_quantifier.quantifier_type) {
                     (BoxType::OuterJoin, QuantifierType::PreservedForeach)
-                    | (BoxType::Select(_), QuantifierType::Foreach) => {
+                    | (BoxType::Select(_), QuantifierType::Foreach)
+                    | (BoxType::Grouping(_), QuantifierType::Foreach) => {
+                        // @todo special handling for aggregate functions
                         let p = Self::dereference_predicate(&p, &q_ref);
                         // append the predicate to the stack
-                        path.push((p, only_quantifier.input_box.clone()));
+                        path.push((p, only_quantifier.input_box.clone(), Some(q_ref.clone())));
                         stack.push(path);
                     }
                     _ => {}
@@ -1818,8 +1860,46 @@ impl rewrite_engine::Rule<BoxRef> for PushDownPredicatesRule {
 
         !self.to_pushdown.is_empty()
     }
-    fn action(&mut self, _obj: &mut BoxRef) {
-        // @todo
+    fn action(&mut self, obj: &mut BoxRef) {
+        let model = obj.borrow().model.upgrade().expect("expect valid model");
+        // println!(
+        //     "Predicate Pushdown {:?}",
+        //     self.to_pushdown
+        //         .iter()
+        //         .map(|x| x
+        //             .iter()
+        //             .map(|(x, y, _)| format!("{} {}", x.borrow(), y.borrow().id))
+        //             .collect::<Vec<_>>())
+        //         .collect::<Vec<_>>()
+        // );
+        for mut path in self.to_pushdown.drain(..) {
+            let (p, _, q) = path.pop().expect("expect last element");
+            let q = q.expect("valid quantifier");
+
+            let select = QGBox::new(
+                Rc::downgrade(&model),
+                model.borrow_mut().ids.get_box_id(),
+                BoxType::Select(Select::new()),
+            );
+
+            let new_q = Quantifier::new(
+                model.borrow_mut().ids.get_quantifier_id(),
+                QuantifierType::Foreach,
+                q.borrow().input_box.clone(),
+                &select,
+            );
+            add_quantifier_to_box(&select, &new_q);
+            select.borrow_mut().add_all_columns();
+            select.borrow_mut().recompute_unique_keys();
+
+            q.borrow_mut().replace_input_box(select.clone());
+
+            let p = Self::dereference_predicate(&p, &new_q);
+            select.borrow_mut().add_predicate(p);
+
+            let (p, _, _) = path.into_iter().next().unwrap();
+            obj.borrow_mut().remove_predicate(&p);
+        }
     }
 }
 
@@ -1915,6 +1995,7 @@ pub fn rewrite_model(m: &ModelRef) {
         Box::new(ConstantLiftingRule::new()),
         Box::new(SemiJoinRemovalRule::new()),
         Box::new(GroupByRemovalRule::new()),
+        Box::new(PushDownPredicatesRule::new()),
     ];
     for _ in 0..5 {
         apply_rules(m, &mut rules);

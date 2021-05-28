@@ -91,7 +91,7 @@ impl<'a> NameResolutionContext<'a> {
                 let r = self.resolve_column_in_quantifier(q, column);
                 if r.is_some() {
                     if found.is_some() {
-                        return Err(format!("column {} is ambigouts", column));
+                        return Err(format!("column {} is ambigous", column));
                     }
                     found = r;
                 }
@@ -458,20 +458,7 @@ impl<'a> ModelGenerator<'a> {
     }
 
     fn add_all_columns(&mut self, select_box: &BoxRef) {
-        let quantifiers = select_box.borrow().quantifiers.clone();
-        for q in quantifiers {
-            let bq = q.borrow();
-            if bq.is_subquery() {
-                continue;
-            }
-            let input_box = bq.input_box.borrow();
-            for (i, c) in input_box.columns.iter().enumerate() {
-                let expr = Expr::make_column_ref(Rc::clone(&q), i);
-                select_box
-                    .borrow_mut()
-                    .add_column(c.name.clone(), make_ref(expr));
-            }
-        }
+        select_box.borrow_mut().add_all_columns();
     }
 
     fn add_unique_keys(&mut self, select_box: &BoxRef) {
