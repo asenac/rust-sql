@@ -28,15 +28,8 @@ digraph G {
             rank = same
             node [ shape = circle ]
             Q0 [ label="Q0(F)" ]
-        }
-    }
-    subgraph cluster5 {
-        label = "Box5:Select"
-        boxhead5 [ shape = record, label="{ 0: Q2.c0 AS A| (c0) \> (10) }" ]
-        {
-            rank = same
-            node [ shape = circle ]
-            Q2 [ label="Q2(F)" ]
+            edge [ arrowhead = none, style = solid ]
+            Q0 -> Q0 [ label="(Q0.c0) > (10)" ]
         }
     }
     subgraph cluster4 {
@@ -48,8 +41,7 @@ digraph G {
     }
     edge [ arrowhead = none, style = dashed ]
     Q1 -> boxhead3 [ lhead = cluster3 ]
-    Q0 -> boxhead5 [ lhead = cluster5 ]
-    Q2 -> boxhead4 [ lhead = cluster4 ]
+    Q0 -> boxhead4 [ lhead = cluster4 ]
 }
 
 ----
@@ -99,15 +91,8 @@ digraph G {
             rank = same
             node [ shape = circle ]
             Q0 [ label="Q0(F)" ]
-        }
-    }
-    subgraph cluster7 {
-        label = "Box7:Select"
-        boxhead7 [ shape = record, label="{ 0: Q4.c0 AS A| (c0) \> (10) }" ]
-        {
-            rank = same
-            node [ shape = circle ]
-            Q4 [ label="Q4(F)" ]
+            edge [ arrowhead = none, style = solid ]
+            Q0 -> Q0 [ label="(Q0.c0) > (10)" ]
         }
     }
     subgraph cluster4 {
@@ -121,8 +106,7 @@ digraph G {
     Q3 -> boxhead5 [ lhead = cluster5 ]
     Q2 -> boxhead1 [ lhead = cluster1 ]
     Q1 -> boxhead3 [ lhead = cluster3 ]
-    Q0 -> boxhead7 [ lhead = cluster7 ]
-    Q4 -> boxhead4 [ lhead = cluster4 ]
+    Q0 -> boxhead4 [ lhead = cluster4 ]
 }
 
 ----
@@ -163,15 +147,8 @@ digraph G {
             rank = same
             node [ shape = circle ]
             Q0 [ label="Q0(F)" ]
-        }
-    }
-    subgraph cluster5 {
-        label = "Box5:Select"
-        boxhead5 [ shape = record, label="{ 0: Q3.c0 AS A| (c0) \> (10) }" ]
-        {
-            rank = same
-            node [ shape = circle ]
-            Q3 [ label="Q3(F)" ]
+            edge [ arrowhead = none, style = solid ]
+            Q0 -> Q0 [ label="(Q0.c0) > (10)" ]
         }
     }
     subgraph cluster2 {
@@ -184,8 +161,7 @@ digraph G {
     edge [ arrowhead = none, style = dashed ]
     Q2 -> boxhead3 [ lhead = cluster3 ]
     Q1 -> boxhead1 [ lhead = cluster1 ]
-    Q0 -> boxhead5 [ lhead = cluster5 ]
-    Q3 -> boxhead2 [ lhead = cluster2 ]
+    Q0 -> boxhead2 [ lhead = cluster2 ]
 }
 
 ----
@@ -229,11 +205,13 @@ digraph G {
     }
     subgraph cluster5 {
         label = "Box5:Select"
-        boxhead5 [ shape = record, label="{ 0: Q3.c0 AS A| (c0) \> (10) }" ]
+        boxhead5 [ shape = record, label="{ 0: Q3.c0 AS A }" ]
         {
             rank = same
             node [ shape = circle ]
             Q3 [ label="Q3(F)" ]
+            edge [ arrowhead = none, style = solid ]
+            Q3 -> Q3 [ label="(Q3.c0) > (10)" ]
         }
     }
     subgraph cluster3 {
@@ -304,6 +282,212 @@ digraph G {
     Q2 -> boxhead3 [ lhead = cluster3 ]
     Q3 -> boxhead3 [ lhead = cluster3 ]
     Q1 -> boxhead1 [ lhead = cluster1 ]
+    Q0 -> boxhead2 [ lhead = cluster2 ]
+}
+
+----
+----
+
+query
+select a from (select a from a union all select a from a) where a > 10;
+----
+----
+digraph G {
+    compound = true
+    labeljust = l
+    label="select a from (select a from a union all select a from a) where a > 10;
+"
+    node [ shape = box ]
+    subgraph cluster1 {
+        label = "Box1:Select"
+        boxhead1 [ shape = record, label="{ 0: Q5.c0 AS A }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q5 [ label="Q5(F)" ]
+            edge [ arrowhead = none, style = solid ]
+            Q5 -> Q5 [ label="(Q5.c0) > (10)" ]
+        }
+    }
+    subgraph cluster2 {
+        label = "Box2:Select"
+        boxhead2 [ shape = record, label="{ 0: Q4.c0 AS A }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q4 [ label="Q4(F)" ]
+        }
+    }
+    subgraph cluster7 {
+        label = "Box7:Union"
+        boxhead7 [ shape = record, label="{ 0: Q2.c0 AS A }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q2 [ label="Q2(F)" ]
+            Q3 [ label="Q3(F)" ]
+        }
+    }
+    subgraph cluster5 {
+        label = "Box5:Select"
+        boxhead5 [ shape = record, label="{ 0: Q1.c0 AS A }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q1 [ label="Q1(F)" ]
+        }
+    }
+    subgraph cluster6 {
+        label = "Box6:BaseTable A"
+        boxhead6 [ shape = record, label="{ 0: c0 AS A }" ]
+        {
+            rank = same
+        }
+    }
+    subgraph cluster3 {
+        label = "Box3:Select"
+        boxhead3 [ shape = record, label="{ 0: Q0.c0 AS A }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q0 [ label="Q0(F)" ]
+        }
+    }
+    subgraph cluster4 {
+        label = "Box4:BaseTable A"
+        boxhead4 [ shape = record, label="{ 0: c0 AS A }" ]
+        {
+            rank = same
+        }
+    }
+    edge [ arrowhead = none, style = dashed ]
+    Q5 -> boxhead2 [ lhead = cluster2 ]
+    Q4 -> boxhead7 [ lhead = cluster7 ]
+    Q2 -> boxhead3 [ lhead = cluster3 ]
+    Q3 -> boxhead5 [ lhead = cluster5 ]
+    Q1 -> boxhead6 [ lhead = cluster6 ]
+    Q0 -> boxhead4 [ lhead = cluster4 ]
+}
+
+----
+----
+
+
+query apply=PushDownPredicates
+select a from (select a from a union all select a from a) where a > 10;
+----
+----
+digraph G {
+    compound = true
+    labeljust = l
+    label="select a from (select a from a union all select a from a) where a > 10;
+"
+    node [ shape = box ]
+    subgraph cluster1 {
+        label = "Box1:Select"
+        boxhead1 [ shape = record, label="{ 0: Q5.c0 AS A }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q5 [ label="Q5(F)" ]
+        }
+    }
+    subgraph cluster2 {
+        label = "Box2:Select"
+        boxhead2 [ shape = record, label="{ 0: Q4.c0 AS A }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q4 [ label="Q4(F)" ]
+        }
+    }
+    subgraph cluster7 {
+        label = "Box7:Union"
+        boxhead7 [ shape = record, label="{ 0: Q2.c0 AS A }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q2 [ label="Q2(F)" ]
+            Q3 [ label="Q3(F)" ]
+        }
+    }
+    subgraph cluster5 {
+        label = "Box5:Select"
+        boxhead5 [ shape = record, label="{ 0: Q1.c0 AS A }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q1 [ label="Q1(F)" ]
+            edge [ arrowhead = none, style = solid ]
+            Q1 -> Q1 [ label="(Q1.c0) > (10)" ]
+        }
+    }
+    subgraph cluster6 {
+        label = "Box6:BaseTable A"
+        boxhead6 [ shape = record, label="{ 0: c0 AS A }" ]
+        {
+            rank = same
+        }
+    }
+    subgraph cluster3 {
+        label = "Box3:Select"
+        boxhead3 [ shape = record, label="{ 0: Q0.c0 AS A }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q0 [ label="Q0(F)" ]
+            edge [ arrowhead = none, style = solid ]
+            Q0 -> Q0 [ label="(Q0.c0) > (10)" ]
+        }
+    }
+    subgraph cluster4 {
+        label = "Box4:BaseTable A"
+        boxhead4 [ shape = record, label="{ 0: c0 AS A }" ]
+        {
+            rank = same
+        }
+    }
+    edge [ arrowhead = none, style = dashed ]
+    Q5 -> boxhead2 [ lhead = cluster2 ]
+    Q4 -> boxhead7 [ lhead = cluster7 ]
+    Q2 -> boxhead3 [ lhead = cluster3 ]
+    Q3 -> boxhead5 [ lhead = cluster5 ]
+    Q1 -> boxhead6 [ lhead = cluster6 ]
+    Q0 -> boxhead4 [ lhead = cluster4 ]
+}
+
+----
+----
+
+query apply=PushDownPredicates
+select a from a where a > 10;
+----
+----
+digraph G {
+    compound = true
+    labeljust = l
+    label="select a from a where a > 10;
+"
+    node [ shape = box ]
+    subgraph cluster1 {
+        label = "Box1:Select"
+        boxhead1 [ shape = record, label="{ 0: Q0.c0 AS A }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q0 [ label="Q0(F)" ]
+            edge [ arrowhead = none, style = solid ]
+            Q0 -> Q0 [ label="(Q0.c0) > (10)" ]
+        }
+    }
+    subgraph cluster2 {
+        label = "Box2:BaseTable A"
+        boxhead2 [ shape = record, label="{ 0: c0 AS A }" ]
+        {
+            rank = same
+        }
+    }
+    edge [ arrowhead = none, style = dashed ]
     Q0 -> boxhead2 [ lhead = cluster2 ]
 }
 

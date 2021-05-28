@@ -621,6 +621,13 @@ impl QGBox {
         !self.predicates.is_none() && !self.predicates.as_ref().unwrap().is_empty()
     }
 
+    fn is_select(&self) -> bool {
+        match self.box_type {
+            BoxType::Select(_) => true,
+            _ => false,
+        }
+    }
+
     fn get_box_type_str(&self) -> &'static str {
         match self.box_type {
             BoxType::Select(_) => "Select",
@@ -1791,8 +1798,8 @@ impl rewrite_engine::Rule<BoxRef> for ConstantLiftingRule {
 //
 
 struct PushDownPredicatesRule {
-    // source -> path -> destination
-    to_pushdown: Vec<Vec<(ExprRef, BoxRef, Option<QuantifierRef>)>>,
+    // original predicate -> predicate -> quantifier
+    to_pushdown: Vec<(ExprRef, ExprRef, QuantifierRef)>,
 }
 
 impl PushDownPredicatesRule {
@@ -1845,7 +1852,8 @@ impl rewrite_engine::Rule<BoxRef> for PushDownPredicatesRule {
                 if only_quantifier.input_box.borrow().ranging_quantifiers.len() > 1 {
                     continue;
                 }
-                match (&b.borrow().box_type, &only_quantifier.quantifier_type) {
+                let b = b.borrow();
+                match (&b.box_type, &only_quantifier.quantifier_type) {
                     (BoxType::OuterJoin, QuantifierType::PreservedForeach)
                     | (BoxType::Select(_), QuantifierType::Foreach)
                     | (BoxType::Grouping(_), QuantifierType::Foreach) => {
@@ -1855,10 +1863,43 @@ impl rewrite_engine::Rule<BoxRef> for PushDownPredicatesRule {
                         path.push((p, only_quantifier.input_box.clone(), Some(q_ref.clone())));
                         stack.push(path);
                     }
+                    (BoxType::Union, QuantifierType::Foreach) => {
+                        drop(only_quantifier);
+                        for q in b.quantifiers.iter() {
+                            let mut path = path.clone();
+                            let mut p = deep_clone(&p);
+                            // Replace the first quantifier with the current one
+                            let to_replace = {
+                                let mut t = BTreeMap::new();
+                                t.insert(q_ref.clone(), q.clone());
+                                t
+                            };
+                            let mut rule = ReplaceQuantifierRule {
+                                to_replace: &to_replace,
+                            };
+                            rewrite_engine::deep_apply_rule(&mut rule, &mut p);
+
+                            // Dereference the current quantifier
+                            let to_dereference = make_quantifier_set(vec![q.clone()]);
+                            let mut rule = DereferenceRule {
+                                to_dereference: &to_dereference,
+                                to_replace: None,
+                            };
+                            rewrite_engine::deep_apply_rule(&mut rule, &mut p);
+
+                            // Push the new path
+                            path.push((p, q.borrow().input_box.clone(), Some(q.clone())));
+                            stack.push(path);
+                        }
+                    }
                     _ => {}
                 }
-            } else if path.len() > 1 {
-                self.to_pushdown.push(path);
+            } else if path.len() > 2 {
+                // @todo we don't not to save the entire path but just the last two steps
+                let (original_p, _, _) = path.iter().next().unwrap().clone();
+                let (_, _, q) = path.pop().unwrap();
+                let (p, _, _) = path.pop().unwrap();
+                self.to_pushdown.push((original_p, p, q.unwrap()));
             }
         }
 
@@ -1866,43 +1907,35 @@ impl rewrite_engine::Rule<BoxRef> for PushDownPredicatesRule {
     }
     fn action(&mut self, obj: &mut BoxRef) {
         let model = obj.borrow().model.upgrade().expect("expect valid model");
-        // println!(
-        //     "Predicate Pushdown {:?}",
-        //     self.to_pushdown
-        //         .iter()
-        //         .map(|x| x
-        //             .iter()
-        //             .map(|(x, y, _)| format!("{} {}", x.borrow(), y.borrow().id))
-        //             .collect::<Vec<_>>())
-        //         .collect::<Vec<_>>()
-        // );
-        for mut path in self.to_pushdown.drain(..) {
-            let (p, _, q) = path.pop().expect("expect last element");
-            let q = q.expect("valid quantifier");
+        for (original_p, p, q) in self.to_pushdown.drain(..) {
+            let parent_box = q.borrow().parent_box.upgrade().unwrap();
+            if parent_box.borrow().is_select() {
+                // if the parent box is already a select, just add the predicate there
+                parent_box.borrow_mut().add_predicate(p);
+            } else {
+                let select = QGBox::new(
+                    Rc::downgrade(&model),
+                    model.borrow_mut().ids.get_box_id(),
+                    BoxType::Select(Select::new()),
+                );
 
-            let select = QGBox::new(
-                Rc::downgrade(&model),
-                model.borrow_mut().ids.get_box_id(),
-                BoxType::Select(Select::new()),
-            );
+                let new_q = Quantifier::new(
+                    model.borrow_mut().ids.get_quantifier_id(),
+                    QuantifierType::Foreach,
+                    q.borrow().input_box.clone(),
+                    &select,
+                );
+                add_quantifier_to_box(&select, &new_q);
+                select.borrow_mut().add_all_columns();
+                select.borrow_mut().recompute_unique_keys();
 
-            let new_q = Quantifier::new(
-                model.borrow_mut().ids.get_quantifier_id(),
-                QuantifierType::Foreach,
-                q.borrow().input_box.clone(),
-                &select,
-            );
-            add_quantifier_to_box(&select, &new_q);
-            select.borrow_mut().add_all_columns();
-            select.borrow_mut().recompute_unique_keys();
+                q.borrow_mut().replace_input_box(select.clone());
 
-            q.borrow_mut().replace_input_box(select.clone());
+                let p = Self::dereference_predicate(&p, &q);
+                select.borrow_mut().add_predicate(p);
+            }
 
-            let p = Self::dereference_predicate(&p, &new_q);
-            select.borrow_mut().add_predicate(p);
-
-            let (p, _, _) = path.into_iter().next().unwrap();
-            obj.borrow_mut().remove_predicate(&p);
+            obj.borrow_mut().remove_predicate(&original_p);
         }
     }
 }
