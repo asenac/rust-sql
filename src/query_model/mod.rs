@@ -1841,6 +1841,10 @@ impl rewrite_engine::Rule<BoxRef> for PushDownPredicatesRule {
             if quantifiers.len() == 1 {
                 let q_ref = quantifiers.iter().next().unwrap();
                 let only_quantifier = q_ref.borrow();
+                // cannnot push down the predicate into a shared box
+                if only_quantifier.input_box.borrow().ranging_quantifiers.len() > 1 {
+                    continue;
+                }
                 match (&b.borrow().box_type, &only_quantifier.quantifier_type) {
                     (BoxType::OuterJoin, QuantifierType::PreservedForeach)
                     | (BoxType::Select(_), QuantifierType::Foreach)

@@ -252,3 +252,60 @@ digraph G {
 
 ----
 ----
+
+query apply=PushDownPredicates
+with b(b) as (select a from a) select * from b, b c where b.b > 10;
+----
+----
+digraph G {
+    compound = true
+    labeljust = l
+    label="with b(b) as (select a from a) select * from b, b c where b.b > 10;
+"
+    node [ shape = box ]
+    subgraph cluster5 {
+        label = "Box5:Select"
+        boxhead5 [ shape = record, label="{ 0: Q2.c0 AS B|1: Q3.c0 AS B }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q2 [ label="Q2(F)" ]
+            Q3 [ label="Q3(F)" ]
+            edge [ arrowhead = none, style = solid ]
+            Q2 -> Q2 [ label="(Q2.c0) > (10)" ]
+        }
+    }
+    subgraph cluster3 {
+        label = "Box3:Select"
+        boxhead3 [ shape = record, label="{ 0: Q1.c0 AS B }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q1 [ label="Q1(F)" ]
+        }
+    }
+    subgraph cluster1 {
+        label = "Box1:Select"
+        boxhead1 [ shape = record, label="{ 0: Q0.c0 AS A }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q0 [ label="Q0(F)" ]
+        }
+    }
+    subgraph cluster2 {
+        label = "Box2:BaseTable A"
+        boxhead2 [ shape = record, label="{ 0: c0 AS A }" ]
+        {
+            rank = same
+        }
+    }
+    edge [ arrowhead = none, style = dashed ]
+    Q2 -> boxhead3 [ lhead = cluster3 ]
+    Q3 -> boxhead3 [ lhead = cluster3 ]
+    Q1 -> boxhead1 [ lhead = cluster1 ]
+    Q0 -> boxhead2 [ lhead = cluster2 ]
+}
+
+----
+----
