@@ -785,7 +785,6 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
     }
 
     fn parse_join_item(&mut self) -> Result<JoinItem, String> {
-        // @todo parse JoinItem::Join
         if let Some(c) = self.parse_identifier() {
             Ok(JoinItem::TableRef(c))
         } else if complete_keyword!(self, Lateral) {
@@ -794,9 +793,14 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
             self.expect_substr_and_advance(")")?;
             Ok(JoinItem::Lateral(select))
         } else if self.complete_substr_and_advance("(") {
-            let select = self.expect_select()?;
-            self.expect_substr_and_advance(")")?;
-            Ok(JoinItem::DerivedTable(select))
+            if let Some(select) = self.parse_select()? {
+                self.expect_substr_and_advance(")")?;
+                Ok(JoinItem::DerivedTable(select))
+            } else {
+                let join_term: JoinTerm = self.parse_join_tree()?;
+                self.expect_substr_and_advance(")")?;
+                Ok(join_term.join_item)
+            }
         } else {
             Err(String::from("invalid join term"))
         }
