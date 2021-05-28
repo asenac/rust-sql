@@ -302,13 +302,13 @@ fn collect_column_references(expr_ref: &ExprRef, column_references: &mut PerBoxC
     }
 }
 
-fn get_quantifiers(expr: &ExprRef) -> BTreeSet<QuantifierRef> {
-    let mut result: BTreeSet<QuantifierRef> = BTreeSet::new();
+fn get_quantifiers(expr: &ExprRef) -> QuantifierSet {
+    let mut result = BTreeSet::new();
     collect_quantifiers(&mut result, expr);
     result
 }
 
-fn get_existential_quantifiers(expr: &ExprRef) -> BTreeSet<QuantifierRef> {
+fn get_existential_quantifiers(expr: &ExprRef) -> QuantifierSet {
     get_quantifiers(expr)
         .iter()
         .filter(|q| q.borrow().quantifier_type == QuantifierType::Existential)
@@ -316,7 +316,7 @@ fn get_existential_quantifiers(expr: &ExprRef) -> BTreeSet<QuantifierRef> {
         .collect()
 }
 
-fn collect_quantifiers(quantifiers: &mut BTreeSet<QuantifierRef>, expr: &ExprRef) {
+fn collect_quantifiers(quantifiers: &mut QuantifierSet, expr: &ExprRef) {
     let mut stack = vec![Rc::clone(expr)];
     while let Some(expr) = stack.pop() {
         let e = expr.borrow();
@@ -532,14 +532,14 @@ struct QGBox {
     id: i32,
     box_type: BoxType,
     columns: Vec<Column>,
-    quantifiers: BTreeSet<QuantifierRef>,
+    quantifiers: QuantifierSet,
     ranging_quantifiers: Vec<QuantifierWeakRef>,
     predicates: Option<Vec<ExprRef>>,
     distinct_operation: DistinctOperation,
     unique_keys: Vec<Vec<usize>>,
 }
 
-fn make_quantifier_set(v: Vec<QuantifierRef>) -> BTreeSet<QuantifierRef> {
+fn make_quantifier_set(v: Vec<QuantifierRef>) -> QuantifierSet {
     let mut s = BTreeSet::new();
     s.extend(v);
     s
@@ -962,6 +962,8 @@ impl fmt::Display for QuantifierType {
     }
 }
 
+type QuantifierSet = BTreeSet<QuantifierRef>;
+
 struct Quantifier {
     id: i32,
     quantifier_type: QuantifierType,
@@ -1182,7 +1184,7 @@ impl rewrite_engine::Rule<BoxRef> for EmptyRule {
 }
 
 struct SemiJoinRemovalRule {
-    to_convert: BTreeSet<QuantifierRef>,
+    to_convert: QuantifierSet,
 }
 
 impl SemiJoinRemovalRule {
@@ -1309,7 +1311,7 @@ impl rewrite_engine::Rule<BoxRef> for GroupByRemovalRule {
 //
 
 struct MergeRule {
-    to_merge: BTreeSet<QuantifierRef>,
+    to_merge: QuantifierSet,
 }
 
 impl MergeRule {
@@ -1825,7 +1827,7 @@ type BoxRule = dyn rewrite_engine::Rule<BoxRef>;
 type RuleBox = Box<BoxRule>;
 
 struct DereferenceRule<'a> {
-    to_dereference: &'a BTreeSet<QuantifierRef>,
+    to_dereference: &'a QuantifierSet,
     to_replace: Option<&'a BTreeMap<QuantifierRef, QuantifierRef>>,
 }
 
