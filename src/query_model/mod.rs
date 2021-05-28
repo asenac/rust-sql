@@ -1821,6 +1821,17 @@ impl PushDownPredicatesRule {
         rewrite_engine::deep_apply_rule(&mut rule, &mut p);
         p
     }
+
+    fn finish_path(&mut self, path: Vec<(ExprRef, BoxRef, Option<QuantifierRef>)>) {
+        let mut path = path;
+        if path.len() > 2 {
+            // @todo we don't not to save the entire path but just the last two steps
+            let (original_p, _, _) = path.iter().next().unwrap().clone();
+            let (_, _, q) = path.pop().unwrap();
+            let (p, _, _) = path.pop().unwrap();
+            self.to_pushdown.push((original_p, p, q.unwrap()));
+        }
+    }
 }
 
 impl rewrite_engine::Rule<BoxRef> for PushDownPredicatesRule {
@@ -1849,9 +1860,7 @@ impl rewrite_engine::Rule<BoxRef> for PushDownPredicatesRule {
                 let q_ref = quantifiers.iter().next().unwrap();
                 let only_quantifier = q_ref.borrow();
                 // cannnot push down the predicate into a shared box
-                if only_quantifier.input_box.borrow().ranging_quantifiers.len() > 1 {
-                    continue;
-                }
+                let is_dead_end = only_quantifier.input_box.borrow().ranging_quantifiers.len() > 1;
                 let b = b.borrow();
                 match (&b.box_type, &only_quantifier.quantifier_type) {
                     (BoxType::OuterJoin, QuantifierType::PreservedForeach)
@@ -1861,7 +1870,11 @@ impl rewrite_engine::Rule<BoxRef> for PushDownPredicatesRule {
                         let p = Self::dereference_predicate(&p, &q_ref);
                         // append the predicate to the stack
                         path.push((p, only_quantifier.input_box.clone(), Some(q_ref.clone())));
-                        stack.push(path);
+                        if is_dead_end {
+                            self.finish_path(path);
+                        } else {
+                            stack.push(path);
+                        }
                     }
                     (BoxType::Union, QuantifierType::Foreach) => {
                         drop(only_quantifier);
@@ -1889,17 +1902,18 @@ impl rewrite_engine::Rule<BoxRef> for PushDownPredicatesRule {
 
                             // Push the new path
                             path.push((p, q.borrow().input_box.clone(), Some(q.clone())));
-                            stack.push(path);
+                            if is_dead_end {
+                                // note: this should not be possible
+                                self.finish_path(path);
+                            } else {
+                                stack.push(path);
+                            }
                         }
                     }
                     _ => {}
                 }
-            } else if path.len() > 2 {
-                // @todo we don't not to save the entire path but just the last two steps
-                let (original_p, _, _) = path.iter().next().unwrap().clone();
-                let (_, _, q) = path.pop().unwrap();
-                let (p, _, _) = path.pop().unwrap();
-                self.to_pushdown.push((original_p, p, q.unwrap()));
+            } else {
+                self.finish_path(path);
             }
         }
 
