@@ -302,22 +302,6 @@ impl Expr {
     }
 }
 
-fn collect_column_refs(expr: &ExprRef) -> Vec<ExprRef> {
-    let mut stack = vec![Rc::clone(expr)];
-    let mut result = Vec::new();
-    while let Some(expr) = stack.pop() {
-        let e = expr.borrow();
-        if e.is_column_ref() {
-            result.push(Rc::clone(&expr));
-        } else if let Some(operands) = &e.operands {
-            for o in operands {
-                stack.push(Rc::clone(&o));
-            }
-        }
-    }
-    result
-}
-
 fn get_quantifiers(expr: &ExprRef) -> BTreeSet<QuantifierRef> {
     let mut result: BTreeSet<QuantifierRef> = BTreeSet::new();
     collect_quantifiers(&mut result, expr);
