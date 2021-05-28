@@ -3164,6 +3164,7 @@ mod tests {
             &mut self,
             query: &str,
             rules: Option<&Vec<String>>,
+            dump: bool,
         ) -> Result<String, String> {
             let parser = ast::Parser::new();
             let mut result = parser.parse(query)?;
@@ -3179,7 +3180,9 @@ mod tests {
                                 Self::apply_rule(&model, rule)?;
                             }
                         }
-                        output.push_str(&DotGenerator::new().generate(&model.borrow(), query)?);
+                        if dump {
+                            output.push_str(&DotGenerator::new().generate(&model.borrow(), query)?);
+                        }
                     }
                     _ => return Err(format!("invalid query")),
                 }
@@ -3206,11 +3209,11 @@ mod tests {
         walk("tests/querymodel", |f| {
             let mut interpreter = TestRunner::new();
             f.run(|test_case| -> String {
+                let apply = test_case.args.get("apply");
                 let result = match &test_case.directive[..] {
                     "ddl" => interpreter.process_ddl(&test_case.input[..]),
-                    "query" => {
-                        interpreter.process_query(&test_case.input[..], test_case.args.get("apply"))
-                    }
+                    "query" => interpreter.process_query(&test_case.input[..], apply, true),
+                    "check" => interpreter.process_query(&test_case.input[..], apply, false),
                     _ => Err(format!("invalid test directive")),
                 };
                 match result {
