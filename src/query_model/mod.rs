@@ -100,23 +100,6 @@ type ExprRef = Rc<RefCell<Expr>>;
 type ColumnReferenceMap = HashMap<usize, Vec<ExprRef>>;
 type PerBoxColumnReferenceMap = HashMap<i32, ColumnReferenceMap>;
 
-fn collect_column_references(expr_ref: &ExprRef, column_references: &mut PerBoxColumnReferenceMap) {
-    let expr = expr_ref.borrow();
-    if let ExprType::ColumnReference(c) = &expr.expr_type {
-        column_references
-            .entry(c.quantifier.borrow().input_box.borrow().id)
-            .or_insert(HashMap::new())
-            .entry(c.position)
-            .or_insert(Vec::new())
-            .push(expr_ref.clone());
-    }
-    if let Some(operands) = &expr.operands {
-        for o in operands {
-            collect_column_references(o, column_references);
-        }
-    }
-}
-
 #[derive(Clone)]
 struct Expr {
     expr_type: ExprType,
@@ -298,6 +281,23 @@ impl Expr {
                 .iter()
                 .all(|x| x.iter().any(|x| x.borrow().is_existential_operand())),
             _ => false,
+        }
+    }
+}
+
+fn collect_column_references(expr_ref: &ExprRef, column_references: &mut PerBoxColumnReferenceMap) {
+    let expr = expr_ref.borrow();
+    if let ExprType::ColumnReference(c) = &expr.expr_type {
+        column_references
+            .entry(c.quantifier.borrow().input_box.borrow().id)
+            .or_insert(HashMap::new())
+            .entry(c.position)
+            .or_insert(Vec::new())
+            .push(expr_ref.clone());
+    }
+    if let Some(operands) = &expr.operands {
+        for o in operands {
+            collect_column_references(o, column_references);
         }
     }
 }
