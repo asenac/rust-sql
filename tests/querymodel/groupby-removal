@@ -5,6 +5,7 @@ create table a(a, b); create unique index aa on a(a);
 query
 select a, b from a group by a;
 ----
+----
 digraph G {
     compound = true
     labeljust = l
@@ -51,8 +52,12 @@ digraph G {
     Q0 -> boxhead2 [ lhead = cluster2 ]
 }
 
+----
+----
+
 query apply=GroupByRemoval
 select a, b from a group by a;
+----
 ----
 digraph G {
     compound = true
@@ -100,8 +105,12 @@ digraph G {
     Q0 -> boxhead2 [ lhead = cluster2 ]
 }
 
+----
+----
+
 query apply=(GroupByRemoval,Merge)
 select a, b from a group by a;
+----
 ----
 digraph G {
     compound = true
@@ -128,3 +137,6 @@ digraph G {
     edge [ arrowhead = none, style = dashed ]
     Q0 -> boxhead2 [ lhead = cluster2 ]
 }
+
+----
+----

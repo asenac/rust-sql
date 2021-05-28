@@ -5,6 +5,7 @@ create table a(a, b); create index aa on a(a);
 query
 select * from a;
 ----
+----
 digraph G {
     compound = true
     labeljust = l
@@ -31,8 +32,12 @@ digraph G {
     Q0 -> boxhead2 [ lhead = cluster2 ]
 }
 
+----
+----
+
 query
 with b(b) as (select a from a) select * from b;
+----
 ----
 digraph G {
     compound = true
@@ -80,8 +85,12 @@ digraph G {
     Q0 -> boxhead2 [ lhead = cluster2 ]
 }
 
+----
+----
+
 query
 with b(b) as (select a from a), c(c) as (select b from b) select * from b;
+----
 ----
 digraph G {
     compound = true
@@ -129,8 +138,12 @@ digraph G {
     Q0 -> boxhead2 [ lhead = cluster2 ]
 }
 
+----
+----
+
 query apply=Merge
 with b(b) as (select a from a), c(c) as (select b from b) select * from b;
+----
 ----
 digraph G {
     compound = true
@@ -158,8 +171,12 @@ digraph G {
     Q0 -> boxhead2 [ lhead = cluster2 ]
 }
 
+----
+----
+
 query apply=Merge
 with b(b) as (select a.a from a, a b where a.a = b.a) select * from b, b c;
+----
 ----
 digraph G {
     compound = true
@@ -202,3 +219,6 @@ digraph G {
     Q7 -> boxhead2 [ lhead = cluster2 ]
     Q8 -> boxhead3 [ lhead = cluster3 ]
 }
+
+----
+----

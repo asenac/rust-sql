@@ -5,6 +5,7 @@ create table a(a, b);
 query apply=EmptyBoxes
 select * from a left join a b on false;
 ----
+----
 digraph G {
     compound = true
     labeljust = l
@@ -41,8 +42,12 @@ digraph G {
     Q0 -> boxhead3 [ lhead = cluster3 ]
 }
 
+----
+----
+
 query apply=(EmptyBoxes,Merge)
 select * from a left join a b on false;
+----
 ----
 digraph G {
     compound = true
@@ -69,3 +74,6 @@ digraph G {
     edge [ arrowhead = none, style = dashed ]
     Q0 -> boxhead3 [ lhead = cluster3 ]
 }
+
+----
+----
