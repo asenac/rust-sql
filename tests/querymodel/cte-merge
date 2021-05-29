@@ -223,7 +223,6 @@ digraph G {
 ----
 ----
 
-# @todo bug: predicate referencing deleted quantifier
 query apply=Merge
 with b(c) as (select a from a) select * from b c, b d, lateral(select a from a where c.c > 10 group by a);
 ----
@@ -263,7 +262,7 @@ digraph G {
     }
     subgraph cluster7 {
         label = "Box7:Select"
-        boxhead7 [ shape = record, label="{ 0: Q4.c0 AS A|1: Q4.c1 AS B| (Q2.c0) \> (10) }" ]
+        boxhead7 [ shape = record, label="{ 0: Q4.c0 AS A|1: Q4.c1 AS B| (Q8.c0) \> (10) }" ]
         {
             rank = same
             node [ shape = circle ]

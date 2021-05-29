@@ -98,6 +98,7 @@ enum ExprType {
 
 type ExprRef = Rc<RefCell<Expr>>;
 type ColumnReferenceMap = HashMap<usize, Vec<ExprRef>>;
+type PerQuantifierColumnReferenceMap = BTreeMap<QuantifierRef, ColumnReferenceMap>;
 type PerBoxColumnReferenceMap = HashMap<i32, ColumnReferenceMap>;
 
 #[derive(Clone)]
@@ -285,11 +286,34 @@ impl Expr {
     }
 }
 
-fn collect_column_references(expr_ref: &ExprRef, column_references: &mut PerBoxColumnReferenceMap) {
+fn visit_boxes_recurisvely<F>(obj: BoxRef, mut f: F)
+where
+    F: FnMut(&BoxRef),
+{
+    let mut stack = vec![obj];
+    let mut visited = HashSet::new();
+
+    while !stack.is_empty() {
+        let top = stack.pop().unwrap();
+        let box_id = top.borrow().id;
+        if visited.insert(box_id) {
+            f(&top);
+            for q in top.borrow().quantifiers.iter() {
+                let q = q.borrow();
+                stack.push(q.input_box.clone());
+            }
+        }
+    }
+}
+
+fn collect_column_references(
+    expr_ref: &ExprRef,
+    column_references: &mut PerQuantifierColumnReferenceMap,
+) {
     let expr = expr_ref.borrow();
     if let ExprType::ColumnReference(c) = &expr.expr_type {
         column_references
-            .entry(c.quantifier.borrow().input_box.borrow().id)
+            .entry(c.quantifier.clone())
             .or_insert(HashMap::new())
             .entry(c.position)
             .or_insert(Vec::new())
@@ -304,24 +328,40 @@ fn collect_column_references(expr_ref: &ExprRef, column_references: &mut PerBoxC
 
 fn collect_column_references_recursively(
     obj: BoxRef,
-    column_references: &mut PerBoxColumnReferenceMap,
+    column_references: &mut PerQuantifierColumnReferenceMap,
 ) {
-    let mut stack = vec![obj];
-    let mut visited = HashSet::new();
+    visit_boxes_recurisvely(obj, |obj| {
+        let mut f = |e: &mut ExprRef| {
+            collect_column_references(e, column_references);
+        };
+        obj.borrow_mut().visit_expressions(&mut f);
+    });
+}
 
-    while !stack.is_empty() {
-        let top = stack.pop().unwrap();
-        let box_id = top.borrow().id;
-        if visited.insert(box_id) {
-            let mut f = |e: &mut ExprRef| {
-                collect_column_references(e, column_references);
-            };
-            top.borrow_mut().visit_expressions(&mut f);
-            for q in top.borrow().quantifiers.iter() {
-                let q = q.borrow();
-                stack.push(q.input_box.clone());
-            }
+fn collect_used_columns(expr_ref: &ExprRef, column_references: &mut PerBoxColumnReferenceMap) {
+    let expr = expr_ref.borrow();
+    if let ExprType::ColumnReference(c) = &expr.expr_type {
+        column_references
+            .entry(c.quantifier.borrow().input_box.borrow().id)
+            .or_insert(HashMap::new())
+            .entry(c.position)
+            .or_insert(Vec::new())
+            .push(expr_ref.clone());
+    }
+    if let Some(operands) = &expr.operands {
+        for o in operands {
+            collect_used_columns(o, column_references);
         }
+    }
+}
+
+/// Note: this is very column-removal specific
+fn collect_used_columns_recursively(obj: BoxRef, column_references: &mut PerBoxColumnReferenceMap) {
+    visit_boxes_recurisvely(obj, |top| {
+        let mut f = |e: &mut ExprRef| {
+            collect_used_columns(e, column_references);
+        };
+        top.borrow_mut().visit_expressions(&mut f);
         let top = top.borrow();
 
         // Note: mark the used from the same branch as used for the rest of the branches
@@ -344,7 +384,7 @@ fn collect_column_references_recursively(
                 column_references.insert(id, used_cols.clone());
             }
         }
-    }
+    });
 }
 
 fn get_quantifiers(expr: &ExprRef) -> QuantifierSet {
@@ -1462,6 +1502,12 @@ impl rewrite_engine::Rule<BoxRef> for MergeRule {
         !self.to_merge.is_empty()
     }
     fn action(&mut self, obj: &mut BoxRef) {
+        // collect all column references under `obj` to be able to replace the
+        // column references to the quantifiers being removed from within correlated
+        // siblings.
+        let mut column_references = BTreeMap::new();
+        collect_column_references_recursively(obj.clone(), &mut column_references);
+
         for q in &self.to_merge {
             // predicates in the boxes being removed that will be added to the current box
             let mut pred_to_add = Vec::new();
@@ -1479,6 +1525,8 @@ impl rewrite_engine::Rule<BoxRef> for MergeRule {
                     if input_box.ranging_quantifiers.len() == 1 {
                         add_quantifier_to_box(obj, oq);
                     } else {
+                        // this is a CTE: we must clone its quantifiers before adding
+                        // to the current box
                         let b_oq = oq.borrow();
                         let new_q = Quantifier::new(
                             input_box
@@ -1513,21 +1561,35 @@ impl rewrite_engine::Rule<BoxRef> for MergeRule {
                 }
             }
 
-            let to_merge = make_quantifier_set(vec![q.clone()]);
-            let mut rule = DereferenceRule {
-                to_dereference: &to_merge,
-                to_replace: Some(&to_replace),
+            let mut rule = ReplaceQuantifierRule {
+                to_replace: &to_replace,
             };
-            let mut f = |e: &mut ExprRef| {
-                rewrite_engine::deep_apply_rule(&mut rule, e);
-            };
-            // @todo we should descend the remaining quantifiers
-            obj.visit_expressions(&mut f);
+
+            if let Some(column_refs) = column_references.remove(q) {
+                column_refs
+                    .into_iter()
+                    .map(|(_, v)| v)
+                    .flatten()
+                    // note: it is theoretically possible for the map to contain multiple references
+                    // to the same underlying expression
+                    .sorted_by_key(|e| e.as_ptr())
+                    .dedup_by(|x, y| x.as_ptr() == y.as_ptr())
+                    .for_each(|e| {
+                        let original_e = e.clone();
+                        let mut e = e.borrow().dereference().expect("expected column reference");
+                        if !to_replace.is_empty() {
+                            rewrite_engine::deep_apply_rule(&mut rule, &mut e);
+                        }
+                        // note: this is sort of a trick: instead of traversing the subgraph using
+                        // the rewrite engine we have already collected all column references to
+                        // all quantifiers, and here we overwrite the expression
+                        *original_e.borrow_mut() = e.borrow().clone();
+                    });
+            }
             if !pred_to_add.is_empty() {
+                // predicates come from the box pointed by the quantifier being removed, so they
+                // are already dereferenced.
                 if !to_replace.is_empty() {
-                    let mut rule = ReplaceQuantifierRule {
-                        to_replace: &to_replace,
-                    };
                     for obj in pred_to_add.iter_mut() {
                         rewrite_engine::deep_apply_rule(&mut rule, obj);
                     }
@@ -1624,10 +1686,7 @@ impl rewrite_engine::Rule<BoxRef> for ColumnRemovalRule {
             // Re-compute the column referneces map starting from the top level box of the
             // query graph
             let mut column_references = HashMap::new();
-            collect_column_references_recursively(
-                self.top_box.clone().unwrap(),
-                &mut column_references,
-            );
+            collect_used_columns_recursively(self.top_box.clone().unwrap(), &mut column_references);
             self.column_references = Some(column_references);
         }
         self.stack_count += 1;
@@ -1823,7 +1882,6 @@ impl PushDownPredicatesRule {
         let to_dereference = make_quantifier_set(vec![q.clone()]);
         let mut rule = DereferenceRule {
             to_dereference: &to_dereference,
-            to_replace: None,
         };
         rewrite_engine::deep_apply_rule(&mut rule, &mut p);
         p
@@ -1903,7 +1961,6 @@ impl rewrite_engine::Rule<BoxRef> for PushDownPredicatesRule {
                             let to_dereference = make_quantifier_set(vec![q.clone()]);
                             let mut rule = DereferenceRule {
                                 to_dereference: &to_dereference,
-                                to_replace: None,
                             };
                             rewrite_engine::deep_apply_rule(&mut rule, &mut p);
 
@@ -1966,7 +2023,6 @@ type RuleBox = Box<BoxRule>;
 
 struct DereferenceRule<'a> {
     to_dereference: &'a QuantifierSet,
-    to_replace: Option<&'a BTreeMap<QuantifierRef, QuantifierRef>>,
 }
 
 impl<'a> rewrite_engine::Rule<ExprRef> for DereferenceRule<'a> {
@@ -1994,10 +2050,6 @@ impl<'a> rewrite_engine::Rule<ExprRef> for DereferenceRule<'a> {
         }
         if last.is_some() {
             *obj = deep_clone(last.as_ref().unwrap());
-            if let Some(to_replace) = self.to_replace {
-                let mut rule = ReplaceQuantifierRule { to_replace };
-                rewrite_engine::deep_apply_rule(&mut rule, obj);
-            }
         }
     }
 }
