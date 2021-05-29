@@ -222,3 +222,68 @@ digraph G {
 
 ----
 ----
+
+# @todo bug: predicate referencing deleted quantifier
+query apply=Merge
+with b(c) as (select a from a) select * from b c, b d, lateral(select a from a where c.c > 10 group by a);
+----
+----
+digraph G {
+    compound = true
+    labeljust = l
+    label="with b(c) as (select a from a) select * from b c, b d, lateral(select a from a where c.c > 10 group by a);
+"
+    node [ shape = box ]
+    subgraph cluster5 {
+        label = "Box5:Select"
+        boxhead5 [ shape = record, label="{ 0: Q8.c0 AS C|1: Q9.c0 AS C|2: Q6.c0 AS A }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q6 [ label="Q6(F)" ]
+            Q8 [ label="Q8(F)" ]
+            Q9 [ label="Q9(F)" ]
+        }
+    }
+    subgraph cluster2 {
+        label = "Box2:BaseTable A"
+        boxhead2 [ shape = record, label="{ 0: c0 AS A|1: c1 AS B }" ]
+        {
+            rank = same
+        }
+    }
+    subgraph cluster9 {
+        label = "Box9:Grouping"
+        boxhead9 [ shape = record, label="{ DISTINCT TUPLES|0: Q5.c0 AS A| GROUP Q5.c0 Ascending| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q5 [ label="Q5(F)" ]
+        }
+    }
+    subgraph cluster7 {
+        label = "Box7:Select"
+        boxhead7 [ shape = record, label="{ 0: Q4.c0 AS A|1: Q4.c1 AS B| (Q2.c0) \> (10) }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q4 [ label="Q4(F)" ]
+        }
+    }
+    subgraph cluster8 {
+        label = "Box8:BaseTable A"
+        boxhead8 [ shape = record, label="{ 0: c0 AS A|1: c1 AS B }" ]
+        {
+            rank = same
+        }
+    }
+    edge [ arrowhead = none, style = dashed ]
+    Q6 -> boxhead9 [ lhead = cluster9 ]
+    Q8 -> boxhead2 [ lhead = cluster2 ]
+    Q9 -> boxhead2 [ lhead = cluster2 ]
+    Q5 -> boxhead7 [ lhead = cluster7 ]
+    Q4 -> boxhead8 [ lhead = cluster8 ]
+}
+
+----
+----
