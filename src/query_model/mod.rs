@@ -302,6 +302,51 @@ fn collect_column_references(expr_ref: &ExprRef, column_references: &mut PerBoxC
     }
 }
 
+fn collect_column_references_recursively(
+    obj: BoxRef,
+    column_references: &mut PerBoxColumnReferenceMap,
+) {
+    let mut stack = vec![obj];
+    let mut visited = HashSet::new();
+
+    while !stack.is_empty() {
+        let top = stack.pop().unwrap();
+        let box_id = top.borrow().id;
+        if visited.insert(box_id) {
+            let mut f = |e: &mut ExprRef| {
+                collect_column_references(e, column_references);
+            };
+            top.borrow_mut().visit_expressions(&mut f);
+            for q in top.borrow().quantifiers.iter() {
+                let q = q.borrow();
+                stack.push(q.input_box.clone());
+            }
+        }
+        let top = top.borrow();
+
+        // Note: mark the used from the same branch as used for the rest of the branches
+        if let BoxType::Union = top.box_type {
+            let first_branch_id = top
+                .first_quantifier()
+                .unwrap()
+                .borrow()
+                .input_box
+                .borrow()
+                .id;
+            let used_cols = column_references
+                .entry(first_branch_id)
+                .or_default()
+                .into_iter()
+                .map(|(col, _)| (*col, Vec::new()))
+                .collect::<ColumnReferenceMap>();
+            for q in top.quantifiers.iter().skip(1) {
+                let id = q.borrow().input_box.borrow().id;
+                column_references.insert(id, used_cols.clone());
+            }
+        }
+    }
+}
+
 fn get_quantifiers(expr: &ExprRef) -> QuantifierSet {
     let mut result = BTreeSet::new();
     collect_quantifiers(&mut result, expr);
@@ -1578,46 +1623,11 @@ impl rewrite_engine::Rule<BoxRef> for ColumnRemovalRule {
         if self.column_references.is_none() {
             // Re-compute the column referneces map starting from the top level box of the
             // query graph
-            let mut stack = self.top_box.iter().cloned().collect::<Vec<_>>();
-            let mut visited = HashSet::new();
-
             let mut column_references = HashMap::new();
-            while !stack.is_empty() {
-                let top = stack.pop().unwrap();
-                let box_id = top.borrow().id;
-                if visited.insert(box_id) {
-                    let mut f = |e: &mut ExprRef| {
-                        collect_column_references(e, &mut column_references);
-                    };
-                    top.borrow_mut().visit_expressions(&mut f);
-                    for q in top.borrow().quantifiers.iter() {
-                        let q = q.borrow();
-                        stack.push(q.input_box.clone());
-                    }
-                }
-                let top = top.borrow();
-
-                // Note: mark the used from the same branch as used for the rest of the branches
-                if let BoxType::Union = top.box_type {
-                    let first_branch_id = top
-                        .first_quantifier()
-                        .unwrap()
-                        .borrow()
-                        .input_box
-                        .borrow()
-                        .id;
-                    let used_cols = column_references
-                        .entry(first_branch_id)
-                        .or_default()
-                        .into_iter()
-                        .map(|(col, _)| (*col, Vec::new()))
-                        .collect::<ColumnReferenceMap>();
-                    for q in top.quantifiers.iter().skip(1) {
-                        let id = q.borrow().input_box.borrow().id;
-                        column_references.insert(id, used_cols.clone());
-                    }
-                }
-            }
+            collect_column_references_recursively(
+                self.top_box.clone().unwrap(),
+                &mut column_references,
+            );
             self.column_references = Some(column_references);
         }
         self.stack_count += 1;
