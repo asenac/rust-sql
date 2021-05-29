@@ -49,9 +49,15 @@ pub enum JoinType {
 }
 
 #[derive(Debug, Clone)]
+pub enum JoinCond {
+    On(Expr),
+    Using(Vec<String>),
+}
+
+#[derive(Debug, Clone)]
 pub enum JoinItem {
     TableRef(Identifier),
-    Join(JoinType, Box<JoinTerm>, Box<JoinTerm>, Option<Expr>),
+    Join(JoinType, Box<JoinTerm>, Box<JoinTerm>, Option<JoinCond>),
     DerivedTable(QueryBlock),
     Lateral(QueryBlock),
 }
@@ -849,15 +855,21 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
                 return Ok(left_item);
             }
             let right_item = self.parse_join_term()?;
-            let mut on_clause: Option<Expr> = None;
+            let mut join_cond = None;
             if complete_keyword!(self, On) {
-                on_clause = Some(self.parse_expr()?);
+                join_cond = Some(JoinCond::On(self.parse_expr()?));
+            } else if complete_keyword!(self, Using) {
+                if let Some(columns) = self.parse_column_list()? {
+                    join_cond = Some(JoinCond::Using(columns));
+                } else {
+                    return Err(format!("expected column list for USING clause"));
+                }
             }
             let join = JoinItem::Join(
                 join_type.unwrap(),
                 Box::new(left_item),
                 Box::new(right_item),
-                on_clause,
+                join_cond,
             );
             left_item = JoinTerm {
                 join_item: join,

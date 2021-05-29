@@ -550,7 +550,7 @@ impl<'a> ModelGenerator<'a> {
                 }
                 Ok(table_box)
             }
-            Join(join_type, l, r, on) => {
+            Join(join_type, l, r, join_cond) => {
                 let select_box = match join_type {
                     JoinType::LeftOuter | JoinType::RightOuter => self.make_outer_join_box(),
                     JoinType::Inner => self.make_select_box(),
@@ -569,11 +569,17 @@ impl<'a> ModelGenerator<'a> {
                     rq.borrow_mut().quantifier_type = QuantifierType::PreservedForeach;
                 }
 
-                if let Some(expr) = &on {
-                    // subqueries in the ON clause should not see the siblings in the current context
-                    self.add_subqueries(&select_box, expr, &mut child_context)?;
-                    let expr = self.process_expr(expr, &child_context)?;
-                    select_box.borrow_mut().add_predicate(expr);
+                match &join_cond {
+                    Some(ast::JoinCond::On(expr)) => {
+                        // subqueries in the ON clause should not see the siblings in the current context
+                        self.add_subqueries(&select_box, expr, &mut child_context)?;
+                        let expr = self.process_expr(expr, &child_context)?;
+                        select_box.borrow_mut().add_predicate(expr);
+                    }
+                    Some(ast::JoinCond::Using(_)) => {
+                        return Err(format!("USING clause not supported yet"));
+                    }
+                    None => {}
                 }
 
                 // merge the temporary context into the current one
