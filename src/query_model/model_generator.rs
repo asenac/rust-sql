@@ -74,6 +74,13 @@ impl<'a> NameResolutionContext<'a> {
         }
     }
 
+    fn save_quantifiers(&self) -> Vec<QuantifierRef> {
+        self.quantifiers.clone()
+    }
+    fn restore_quantifiers(&mut self, quantifiers: Vec<QuantifierRef>) {
+        self.quantifiers = quantifiers;
+    }
+
     fn resolve_column(&self, table: Option<&str>, column: &str) -> Result<Option<ExprRef>, String> {
         if table.is_some() {
             let tn = table.unwrap();
@@ -472,17 +479,41 @@ impl<'a> ModelGenerator<'a> {
         select_box: &BoxRef,
         current_context: &mut NameResolutionContext,
     ) -> Result<QuantifierRef, String> {
-        let b = self.process_join_item(&join_term.join_item, current_context)?;
-        let q = self.make_quantifier(b, &select_box);
-        if join_term.alias.is_some() {
-            q.borrow_mut()
-                .set_alias(join_term.alias.as_ref().unwrap().clone());
-        } else if let ast::JoinItem::TableRef(s) = &join_term.join_item {
-            q.borrow_mut().set_alias(s.get_name().to_string());
+        use ast::JoinItem::*;
+        let alias = if join_term.alias.is_some() {
+            join_term.alias.clone()
+        } else if let TableRef(s) = &join_term.join_item {
+            Some(s.get_name().to_string())
+        } else {
+            None
+        };
+        // @todo refactor this a bit
+        // note: if the quantifier has an alias, the quantifiers within the join
+        // are hidden for name resolution purposes... more or less.
+        // @todo USING-clause may be problematic
+        if let Some(alias) = alias {
+            let quantifiers = current_context.save_quantifiers();
+            let b = self.process_join_item(&join_term.join_item, current_context)?;
+            let q = self.make_quantifier(b, &select_box);
+            q.borrow_mut().set_alias(alias);
+            current_context.restore_quantifiers(quantifiers);
+            current_context.add_quantifier(&q);
+            select_box.borrow_mut().add_quantifier(Rc::clone(&q));
+            Ok(q)
+        } else {
+            let b = self.process_join_item(&join_term.join_item, current_context)?;
+            let q = self.make_quantifier(b, &select_box);
+            match &join_term.join_item {
+                DerivedTable(_) | Lateral(_) => {
+                    // we need to add the quantifier anyway, since derived relations
+                    // use a child context that is discarded
+                    current_context.add_quantifier(&q);
+                }
+                _ => {}
+            }
+            select_box.borrow_mut().add_quantifier(Rc::clone(&q));
+            Ok(q)
         }
-        current_context.add_quantifier(&q);
-        select_box.borrow_mut().add_quantifier(Rc::clone(&q));
-        Ok(q)
     }
 
     fn process_join_item(

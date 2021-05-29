@@ -1,5 +1,5 @@
 ddl
-create table a(a, b, c)
+create table a(a, b, c); create table b(d, e, f);
 ----
 
 query
@@ -1960,6 +1960,128 @@ digraph G {
     Q0 -> boxhead2 [ lhead = cluster2 ]
     Q5 -> boxhead7 [ lhead = cluster7 ]
     Q4 -> boxhead3 [ lhead = cluster3 ]
+}
+
+----
+----
+
+query
+select a from a left join b on c > 10 where a < 10 and a.a > 10 and d = 10 and b.d = 10;
+----
+----
+digraph G {
+    compound = true
+    labeljust = l
+    label="select a from a left join b on c > 10 where a < 10 and a.a > 10 and d = 10 and b.d = 10;
+"
+    node [ shape = box ]
+    subgraph cluster1 {
+        label = "Box1:Select"
+        boxhead1 [ shape = record, label="{ 0: Q2.c0 AS A }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q2 [ label="Q2(F)" ]
+            edge [ arrowhead = none, style = solid ]
+            Q2 -> Q2 [ label="(Q2.c0) < (10)" ]
+            Q2 -> Q2 [ label="(Q2.c0) > (10)" ]
+            Q2 -> Q2 [ label="(Q2.c3) = (10)" ]
+            Q2 -> Q2 [ label="(Q2.c3) = (10)" ]
+        }
+    }
+    subgraph cluster2 {
+        label = "Box2:OuterJoin"
+        boxhead2 [ shape = record, label="{ 0: Q0.c0 AS A|1: Q0.c1 AS B|2: Q0.c2 AS C|3: Q1.c0 AS D|4: Q1.c1 AS E|5: Q1.c2 AS F }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q0 [ label="Q0(P)" ]
+            Q1 [ label="Q1(F)" ]
+            edge [ arrowhead = none, style = solid ]
+            Q0 -> Q0 [ label="(Q0.c2) > (10)" ]
+        }
+    }
+    subgraph cluster4 {
+        label = "Box4:BaseTable B"
+        boxhead4 [ shape = record, label="{ 0: c0 AS D|1: c1 AS E|2: c2 AS F }" ]
+        {
+            rank = same
+        }
+    }
+    subgraph cluster3 {
+        label = "Box3:BaseTable A"
+        boxhead3 [ shape = record, label="{ 0: c0 AS A|1: c1 AS B|2: c2 AS C }" ]
+        {
+            rank = same
+        }
+    }
+    edge [ arrowhead = none, style = dashed ]
+    Q2 -> boxhead2 [ lhead = cluster2 ]
+    Q0 -> boxhead3 [ lhead = cluster3 ]
+    Q1 -> boxhead4 [ lhead = cluster4 ]
+}
+
+----
+----
+
+# table A is hiden by the alias of the join
+query
+select a.a from (a left join b on c > 10) c;
+----
+Err: column A not found
+
+# ... but the column is still visible through the alias or unqualified
+query
+select a from (a left join b on c > 10) c where c.d is null;
+----
+----
+digraph G {
+    compound = true
+    labeljust = l
+    label="select a from (a left join b on c > 10) c where c.d is null;
+"
+    node [ shape = box ]
+    subgraph cluster1 {
+        label = "Box1:Select"
+        boxhead1 [ shape = record, label="{ 0: Q2.c0 AS A }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q2 [ label="Q2(F)" ]
+            edge [ arrowhead = none, style = solid ]
+            Q2 -> Q2 [ label="(Q2.c3) IS NULL" ]
+        }
+    }
+    subgraph cluster2 {
+        label = "Box2:OuterJoin"
+        boxhead2 [ shape = record, label="{ 0: Q0.c0 AS A|1: Q0.c1 AS B|2: Q0.c2 AS C|3: Q1.c0 AS D|4: Q1.c1 AS E|5: Q1.c2 AS F }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q0 [ label="Q0(P)" ]
+            Q1 [ label="Q1(F)" ]
+            edge [ arrowhead = none, style = solid ]
+            Q0 -> Q0 [ label="(Q0.c2) > (10)" ]
+        }
+    }
+    subgraph cluster4 {
+        label = "Box4:BaseTable B"
+        boxhead4 [ shape = record, label="{ 0: c0 AS D|1: c1 AS E|2: c2 AS F }" ]
+        {
+            rank = same
+        }
+    }
+    subgraph cluster3 {
+        label = "Box3:BaseTable A"
+        boxhead3 [ shape = record, label="{ 0: c0 AS A|1: c1 AS B|2: c2 AS C }" ]
+        {
+            rank = same
+        }
+    }
+    edge [ arrowhead = none, style = dashed ]
+    Q2 -> boxhead2 [ lhead = cluster2 ]
+    Q0 -> boxhead3 [ lhead = cluster3 ]
+    Q1 -> boxhead4 [ lhead = cluster4 ]
 }
 
 ----
