@@ -566,7 +566,7 @@ impl QGBox {
     fn remove_quantifier(&mut self, q: &QuantifierRef) {
         self.quantifiers.remove(q);
     }
-    fn add_column(&mut self, mut name: Option<String>, expr: ExprRef) {
+    fn add_column(&mut self, mut name: Option<String>, expr: ExprRef) -> usize {
         if name.is_none() {
             if let ExprType::ColumnReference(c) = &expr.borrow().expr_type {
                 let q = c.quantifier.borrow();
@@ -574,7 +574,9 @@ impl QGBox {
                 name = input_box.columns[c.position].name.clone();
             }
         }
+        let pos = self.columns.len();
         self.columns.push(Column { name, expr });
+        pos
     }
     fn add_column_if_not_exists(&mut self, expr: Expr) -> usize {
         for (i, c) in self.columns.iter().enumerate() {
@@ -582,12 +584,7 @@ impl QGBox {
                 return i;
             }
         }
-        let pos = self.columns.len();
-        self.columns.push(Column {
-            name: None,
-            expr: make_ref(expr),
-        });
-        pos
+        self.add_column(None, make_ref(expr))
     }
     fn add_predicate(&mut self, predicate: ExprRef) {
         let predicates = {
