@@ -143,6 +143,14 @@ impl<'a> NameResolutionContext<'a> {
         None
     }
 
+    fn get_column_in_quantifier(&self, q: &QuantifierRef, column: &str) -> Result<ExprRef, String> {
+        if let Some(c) = self.resolve_column_in_quantifier(q, column) {
+            Ok(c)
+        } else {
+            Err(format!("column {} not found", column))
+        }
+    }
+
     fn pullup_column_ref(&self, column_ref: Expr) -> Expr {
         let mut column_ref = column_ref;
         match &mut column_ref.expr_type {
@@ -575,18 +583,52 @@ impl<'a> ModelGenerator<'a> {
                         self.add_subqueries(&select_box, expr, &mut child_context)?;
                         let expr = self.process_expr(expr, &child_context)?;
                         select_box.borrow_mut().add_predicate(expr);
+                        // project all columns from its quantifiers
+                        self.add_all_columns(&select_box);
                     }
-                    Some(ast::JoinCond::Using(_)) => {
-                        return Err(format!("USING clause not supported yet"));
+                    Some(ast::JoinCond::Using(columns)) => {
+                        let mut lcolumns = HashSet::new();
+                        let mut rcolumns = HashSet::new();
+
+                        for c in columns.iter() {
+                            let lc = child_context.get_column_in_quantifier(&lq, c)?;
+                            if let ExprType::ColumnReference(c) = &lc.borrow().expr_type {
+                                lcolumns.insert(c.position);
+                            }
+                            let rc = child_context.get_column_in_quantifier(&rq, c)?;
+                            if let ExprType::ColumnReference(c) = &rc.borrow().expr_type {
+                                rcolumns.insert(c.position);
+                            }
+                            select_box
+                                .borrow_mut()
+                                .add_column(Some(c.clone()), lc.clone());
+                            let p = make_ref(Expr::make_cmp(CmpOpType::Eq, lc, rc));
+                            select_box.borrow_mut().add_predicate(p);
+                        }
+
+                        // add remaining columns
+                        for i in 0..lq.borrow().input_box.borrow().columns.len() {
+                            if !lcolumns.contains(&i) {
+                                let c = make_ref(Expr::make_column_ref(lq.clone(), i));
+                                select_box.borrow_mut().add_column(None, c);
+                            }
+                        }
+                        for i in 0..rq.borrow().input_box.borrow().columns.len() {
+                            if !rcolumns.contains(&i) {
+                                let c = make_ref(Expr::make_column_ref(rq.clone(), i));
+                                select_box.borrow_mut().add_column(None, c);
+                            }
+                        }
                     }
-                    None => {}
+                    None => {
+                        // project all columns from its quantifiers
+                        self.add_all_columns(&select_box);
+                    }
                 }
 
                 // merge the temporary context into the current one
                 current_context.merge_quantifiers(child_context);
 
-                // project all columns from its quantifiers
-                self.add_all_columns(&select_box);
                 self.add_unique_keys(&select_box);
                 Ok(select_box)
             } // _ => Err(String::from("not implemented")),

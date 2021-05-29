@@ -1,0 +1,179 @@
+ddl
+create table a(a, b, c); create table b(a, b, d);
+----
+
+query
+select * from a inner join b using (a);
+----
+----
+digraph G {
+    compound = true
+    labeljust = l
+    label="select * from a inner join b using (a);
+"
+    node [ shape = box ]
+    subgraph cluster1 {
+        label = "Box1:Select"
+        boxhead1 [ shape = record, label="{ 0: Q2.c0 AS A|1: Q2.c1 AS B|2: Q2.c2 AS C|3: Q2.c3 AS B|4: Q2.c4 AS D }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q2 [ label="Q2(F)" ]
+        }
+    }
+    subgraph cluster2 {
+        label = "Box2:Select"
+        boxhead2 [ shape = record, label="{ 0: Q0.c0 AS A|1: Q0.c1 AS B|2: Q0.c2 AS C|3: Q1.c1 AS B|4: Q1.c2 AS D }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q0 [ label="Q0(F)" ]
+            Q1 [ label="Q1(F)" ]
+            edge [ arrowhead = none, style = solid ]
+            Q0 -> Q1 [ label="(Q0.c0) = (Q1.c0)" ]
+        }
+    }
+    subgraph cluster4 {
+        label = "Box4:BaseTable B"
+        boxhead4 [ shape = record, label="{ 0: c0 AS A|1: c1 AS B|2: c2 AS D }" ]
+        {
+            rank = same
+        }
+    }
+    subgraph cluster3 {
+        label = "Box3:BaseTable A"
+        boxhead3 [ shape = record, label="{ 0: c0 AS A|1: c1 AS B|2: c2 AS C }" ]
+        {
+            rank = same
+        }
+    }
+    edge [ arrowhead = none, style = dashed ]
+    Q2 -> boxhead2 [ lhead = cluster2 ]
+    Q0 -> boxhead3 [ lhead = cluster3 ]
+    Q1 -> boxhead4 [ lhead = cluster4 ]
+}
+
+----
+----
+
+
+query
+select * from a inner join b using (a, b);
+----
+----
+digraph G {
+    compound = true
+    labeljust = l
+    label="select * from a inner join b using (a, b);
+"
+    node [ shape = box ]
+    subgraph cluster1 {
+        label = "Box1:Select"
+        boxhead1 [ shape = record, label="{ 0: Q2.c0 AS A|1: Q2.c1 AS B|2: Q2.c2 AS C|3: Q2.c3 AS D }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q2 [ label="Q2(F)" ]
+        }
+    }
+    subgraph cluster2 {
+        label = "Box2:Select"
+        boxhead2 [ shape = record, label="{ 0: Q0.c0 AS A|1: Q0.c1 AS B|2: Q0.c2 AS C|3: Q1.c2 AS D }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q0 [ label="Q0(F)" ]
+            Q1 [ label="Q1(F)" ]
+            edge [ arrowhead = none, style = solid ]
+            Q0 -> Q1 [ label="(Q0.c0) = (Q1.c0)" ]
+            Q0 -> Q1 [ label="(Q0.c1) = (Q1.c1)" ]
+        }
+    }
+    subgraph cluster4 {
+        label = "Box4:BaseTable B"
+        boxhead4 [ shape = record, label="{ 0: c0 AS A|1: c1 AS B|2: c2 AS D }" ]
+        {
+            rank = same
+        }
+    }
+    subgraph cluster3 {
+        label = "Box3:BaseTable A"
+        boxhead3 [ shape = record, label="{ 0: c0 AS A|1: c1 AS B|2: c2 AS C }" ]
+        {
+            rank = same
+        }
+    }
+    edge [ arrowhead = none, style = dashed ]
+    Q2 -> boxhead2 [ lhead = cluster2 ]
+    Q0 -> boxhead3 [ lhead = cluster3 ]
+    Q1 -> boxhead4 [ lhead = cluster4 ]
+}
+
+----
+----
+
+
+query
+select * from a inner join b using (c);
+----
+Err: column C not found
+
+
+# @todo this is wrong, Q2.c5 should not be projected. It is pulled up from the WHERE clause.
+query
+select * from a inner join b using (a) where b.a > 10;
+----
+----
+digraph G {
+    compound = true
+    labeljust = l
+    label="select * from a inner join b using (a) where b.a > 10;
+"
+    node [ shape = box ]
+    subgraph cluster1 {
+        label = "Box1:Select"
+        boxhead1 [ shape = record, label="{ 0: Q2.c0 AS A|1: Q2.c1 AS B|2: Q2.c2 AS C|3: Q2.c3 AS B|4: Q2.c4 AS D|5: Q2.c5 }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q2 [ label="Q2(F)" ]
+            edge [ arrowhead = none, style = solid ]
+            Q2 -> Q2 [ label="(Q2.c5) > (10)" ]
+        }
+    }
+    subgraph cluster2 {
+        label = "Box2:Select"
+        boxhead2 [ shape = record, label="{ 0: Q0.c0 AS A|1: Q0.c1 AS B|2: Q0.c2 AS C|3: Q1.c1 AS B|4: Q1.c2 AS D|5: Q1.c0 }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q0 [ label="Q0(F)" ]
+            Q1 [ label="Q1(F)" ]
+            edge [ arrowhead = none, style = solid ]
+            Q0 -> Q1 [ label="(Q0.c0) = (Q1.c0)" ]
+        }
+    }
+    subgraph cluster4 {
+        label = "Box4:BaseTable B"
+        boxhead4 [ shape = record, label="{ 0: c0 AS A|1: c1 AS B|2: c2 AS D }" ]
+        {
+            rank = same
+        }
+    }
+    subgraph cluster3 {
+        label = "Box3:BaseTable A"
+        boxhead3 [ shape = record, label="{ 0: c0 AS A|1: c1 AS B|2: c2 AS C }" ]
+        {
+            rank = same
+        }
+    }
+    edge [ arrowhead = none, style = dashed ]
+    Q2 -> boxhead2 [ lhead = cluster2 ]
+    Q0 -> boxhead3 [ lhead = cluster3 ]
+    Q1 -> boxhead4 [ lhead = cluster4 ]
+}
+
+----
+----
+
+
