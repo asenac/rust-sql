@@ -1508,7 +1508,10 @@ impl rewrite_engine::Rule<BoxRef> for MergeRule {
         let mut column_references = BTreeMap::new();
         collect_column_references_recursively(obj.clone(), &mut column_references);
 
-        for q in &self.to_merge {
+        let mut to_merge = self.to_merge.iter().cloned().collect::<Vec<_>>();
+        self.to_merge.clear();
+
+        for q in to_merge.drain(..) {
             // predicates in the boxes being removed that will be added to the current box
             let mut pred_to_add = Vec::new();
             let mut to_replace = BTreeMap::new();
@@ -1547,7 +1550,7 @@ impl rewrite_engine::Rule<BoxRef> for MergeRule {
             }
 
             let mut obj = obj.borrow_mut();
-            obj.remove_quantifier(q);
+            obj.remove_quantifier(&q);
 
             // @todo revisit this
             if let BoxType::Select(outer_select) = &mut obj.box_type {
@@ -1565,7 +1568,7 @@ impl rewrite_engine::Rule<BoxRef> for MergeRule {
                 to_replace: &to_replace,
             };
 
-            if let Some(column_refs) = column_references.remove(q) {
+            if let Some(column_refs) = column_references.remove(&q) {
                 column_refs
                     .into_iter()
                     .map(|(_, v)| v)
@@ -1603,8 +1606,6 @@ impl rewrite_engine::Rule<BoxRef> for MergeRule {
         }
 
         obj.borrow_mut().recompute_unique_keys();
-
-        self.to_merge.clear();
     }
 }
 

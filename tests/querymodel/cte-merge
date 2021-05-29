@@ -186,17 +186,17 @@ digraph G {
     node [ shape = box ]
     subgraph cluster6 {
         label = "Box6:Select"
-        boxhead6 [ shape = record, label="{ 0: Q5.c0 AS B|1: Q7.c0 AS B }" ]
+        boxhead6 [ shape = record, label="{ 0: Q5.c0 AS B|1: Q0.c0 AS B }" ]
         {
             rank = same
             node [ shape = circle ]
+            Q0 [ label="Q0(F)" ]
+            Q1 [ label="Q1(F)" ]
             Q5 [ label="Q5(F)" ]
             Q6 [ label="Q6(F)" ]
-            Q7 [ label="Q7(F)" ]
-            Q8 [ label="Q8(F)" ]
             edge [ arrowhead = none, style = solid ]
             Q5 -> Q6 [ label="(Q5.c0) = (Q6.c0)" ]
-            Q7 -> Q8 [ label="(Q7.c0) = (Q8.c0)" ]
+            Q0 -> Q1 [ label="(Q0.c0) = (Q1.c0)" ]
         }
     }
     subgraph cluster3 {
@@ -214,10 +214,10 @@ digraph G {
         }
     }
     edge [ arrowhead = none, style = dashed ]
+    Q0 -> boxhead2 [ lhead = cluster2 ]
+    Q1 -> boxhead3 [ lhead = cluster3 ]
     Q5 -> boxhead2 [ lhead = cluster2 ]
     Q6 -> boxhead3 [ lhead = cluster3 ]
-    Q7 -> boxhead2 [ lhead = cluster2 ]
-    Q8 -> boxhead3 [ lhead = cluster3 ]
 }
 
 ----
@@ -235,13 +235,13 @@ digraph G {
     node [ shape = box ]
     subgraph cluster5 {
         label = "Box5:Select"
-        boxhead5 [ shape = record, label="{ 0: Q8.c0 AS C|1: Q9.c0 AS C|2: Q6.c0 AS A }" ]
+        boxhead5 [ shape = record, label="{ 0: Q8.c0 AS C|1: Q0.c0 AS C|2: Q6.c0 AS A }" ]
         {
             rank = same
             node [ shape = circle ]
+            Q0 [ label="Q0(F)" ]
             Q6 [ label="Q6(F)" ]
             Q8 [ label="Q8(F)" ]
-            Q9 [ label="Q9(F)" ]
         }
     }
     subgraph cluster2 {
@@ -277,9 +277,9 @@ digraph G {
         }
     }
     edge [ arrowhead = none, style = dashed ]
+    Q0 -> boxhead2 [ lhead = cluster2 ]
     Q6 -> boxhead9 [ lhead = cluster9 ]
     Q8 -> boxhead2 [ lhead = cluster2 ]
-    Q9 -> boxhead2 [ lhead = cluster2 ]
     Q5 -> boxhead7 [ lhead = cluster7 ]
     Q4 -> boxhead8 [ lhead = cluster8 ]
 }
