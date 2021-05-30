@@ -2084,6 +2084,66 @@ impl rewrite_engine::Rule<BoxRef> for PushDownPredicatesRule {
     }
 }
 
+/// Converts an outer join box into a select box if there box right above
+/// is a select box that contains an explicit IS NOT NULL predicate on a
+/// column coming from the non-preserving side of the outer join.
+struct OuterToInnerJoinRule {
+    to_convert: QuantifierSet,
+}
+
+impl OuterToInnerJoinRule {
+    fn new() -> Self {
+        Self {
+            to_convert: QuantifierSet::new(),
+        }
+    }
+}
+
+impl rewrite_engine::Rule<BoxRef> for OuterToInnerJoinRule {
+    fn name(&self) -> &'static str {
+        "OuterToInnerJoinRule"
+    }
+    fn apply_top_down(&self) -> bool {
+        false
+    }
+    fn condition(&mut self, obj: &BoxRef) -> bool {
+        self.to_convert.clear();
+        let obj = obj.borrow();
+        if let BoxType::Select(_) = &obj.box_type {
+            if let Some(predicates) = &obj.predicates {
+                for p in predicates {
+                    if let Some(expr) = p.borrow().is_not_null() {
+                        let expr = expr.borrow();
+                        if let ExprType::ColumnReference(c1) = &expr.expr_type {
+                            let input_box = c1.quantifier.borrow().input_box.clone();
+                            let input_box = input_box.borrow();
+                            if let BoxType::OuterJoin = &input_box.box_type {
+                                if let Some(deref) = expr.dereference() {
+                                    if let ExprType::ColumnReference(c2) = &deref.borrow().expr_type
+                                    {
+                                        if let QuantifierType::Foreach =
+                                            c2.quantifier.borrow().quantifier_type
+                                        {
+                                            self.to_convert.insert(c1.quantifier.clone());
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        !self.to_convert.is_empty()
+    }
+    fn action(&mut self, _obj: &mut BoxRef) {
+        for q in self.to_convert.iter() {
+            q.borrow().input_box.borrow_mut().box_type = BoxType::Select(Select::new());
+        }
+        self.to_convert.clear();
+    }
+}
+
 type BoxRule = dyn rewrite_engine::Rule<BoxRef>;
 type RuleBox = Box<BoxRule>;
 
@@ -2172,6 +2232,7 @@ pub fn rewrite_model(m: &ModelRef) {
         Box::new(SemiJoinRemovalRule::new()),
         Box::new(GroupByRemovalRule::new()),
         Box::new(PushDownPredicatesRule::new()),
+        Box::new(OuterToInnerJoinRule::new()),
     ];
     for _ in 0..5 {
         apply_rules(m, &mut rules);
@@ -2451,6 +2512,7 @@ mod tests {
                 "GroupByRemoval" => Box::new(GroupByRemovalRule::new()),
                 "EmptyBoxes" => Box::new(EmptyBoxesRule::new()),
                 "PushDownPredicates" => Box::new(PushDownPredicatesRule::new()),
+                "OuterToInnerJoin" => Box::new(OuterToInnerJoinRule::new()),
                 _ => return Err(format!("invalid rule")),
             };
             super::apply_rule(model, &mut *rule);
