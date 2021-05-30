@@ -42,13 +42,21 @@ struct BaseColumn {
     position: usize,
 }
 
-#[derive(Clone)]
+impl PartialEq for BaseColumn {
+    fn eq(&self, other: &Self) -> bool {
+        self.position == other.position && self.parent_box.as_ptr() == other.parent_box.as_ptr()
+    }
+}
+
+impl Eq for BaseColumn {}
+
+#[derive(Clone, PartialEq)]
 enum LogicalExprType {
     And,
     Or,
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 enum Value {
     BigInt(i64),
     Boolean(bool),
@@ -72,7 +80,7 @@ impl fmt::Display for Value {
 
 impl Value {}
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 enum CmpOpType {
     Eq,
     Neq,
@@ -197,12 +205,29 @@ impl Expr {
 
     fn is_equiv(&self, o: &Self) -> bool {
         match (&self.expr_type, &o.expr_type) {
+            (ExprType::BaseColumn(l), ExprType::BaseColumn(r)) => l == r,
+            (ExprType::Literal(l), ExprType::Literal(r)) => l == r,
             (ExprType::ColumnReference(l), ExprType::ColumnReference(r)) => {
                 l.position == r.position && l.quantifier == r.quantifier
             }
+            (ExprType::Cmp(l), ExprType::Cmp(r)) => l == r && self.equiv_operands(o),
+            (ExprType::Logical(l), ExprType::Logical(r)) => l == r && self.equiv_operands(o),
             (ExprType::Parameter(l), ExprType::Parameter(r)) => l == r,
+            (ExprType::Case, ExprType::Case)
+            | (ExprType::IsNull, ExprType::IsNull)
+            | (ExprType::InList, ExprType::InList)
+            | (ExprType::Tuple, ExprType::Tuple) => self.equiv_operands(o),
             _ => false,
         }
+    }
+
+    fn equiv_operands(&self, o: &Self) -> bool {
+        let l = self.operands.as_ref().expect("operands expected");
+        let r = o.operands.as_ref().expect("operands expected");
+        l.len() != r.len()
+            && l.iter()
+                .zip(r.iter())
+                .all(|(x, y)| x.borrow().is_equiv(&y.borrow()))
     }
 
     fn is_column_ref(&self) -> bool {
