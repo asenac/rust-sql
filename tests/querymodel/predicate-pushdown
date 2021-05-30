@@ -10,7 +10,7 @@ digraph G {
     compound = true
     labeljust = l
     label="select a from (select a from a) where a > 10
-"
+ + PushDownPredicates"
     node [ shape = box ]
     subgraph cluster1 {
         label = "Box1:Select"
@@ -55,7 +55,7 @@ digraph G {
     compound = true
     labeljust = l
     label="select a from (select a from a) group by a having a > 10
-"
+ + PushDownPredicates"
     node [ shape = box ]
     subgraph cluster6 {
         label = "Box6:Select"
@@ -120,7 +120,7 @@ digraph G {
     compound = true
     labeljust = l
     label="select a from a group by a having a > 10
-"
+ + PushDownPredicates"
     node [ shape = box ]
     subgraph cluster4 {
         label = "Box4:Select"
@@ -175,7 +175,7 @@ digraph G {
     compound = true
     labeljust = l
     label="select a.a from a left join b on true where a.a > 10
-"
+ + PushDownPredicates"
     node [ shape = box ]
     subgraph cluster1 {
         label = "Box1:Select"
@@ -239,7 +239,7 @@ digraph G {
     compound = true
     labeljust = l
     label="with b(b) as (select a from a) select * from b, b c where b.b > 10;
-"
+ + PushDownPredicates"
     node [ shape = box ]
     subgraph cluster5 {
         label = "Box5:Select"
@@ -296,7 +296,7 @@ digraph G {
     compound = true
     labeljust = l
     label="with b(b) as (select a from a) select * from (select * from (select * from b)) b, b c where b.b > 10;
-"
+ + PushDownPredicates"
     node [ shape = box ]
     subgraph cluster5 {
         label = "Box5:Select"
@@ -459,7 +459,7 @@ digraph G {
     compound = true
     labeljust = l
     label="select a from (select a from a union all select a from a) where a > 10;
-"
+ + PushDownPredicates"
     node [ shape = box ]
     subgraph cluster1 {
         label = "Box1:Select"
@@ -545,7 +545,7 @@ digraph G {
     compound = true
     labeljust = l
     label="select a from a where a > 10;
-"
+ + PushDownPredicates"
     node [ shape = box ]
     subgraph cluster1 {
         label = "Box1:Select"
@@ -585,7 +585,7 @@ digraph G {
     compound = true
     labeljust = l
     label="select * from a left join b using(a) left join a c on b.a = c.a where b.b is null;
-"
+ + PushDownPredicates"
     node [ shape = box ]
     subgraph cluster1 {
         label = "Box1:Select"

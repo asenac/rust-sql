@@ -2363,15 +2363,18 @@ mod tests {
                 use ast::Statement::*;
                 match stmt {
                     Select(c) => {
+                        let mut label = query.to_string();
                         let generator = ModelGenerator::new(&self.catalog);
                         let model = generator.process(&c)?;
                         if let Some(rules) = &rules {
                             for rule in rules.iter() {
                                 Self::apply_rule(&model, rule)?;
+                                label.push_str(&format!(" + {}", rule));
                             }
                         }
                         if dump {
-                            output.push_str(&DotGenerator::new().generate(&model.borrow(), query)?);
+                            output
+                                .push_str(&DotGenerator::new().generate(&model.borrow(), &label)?);
                         }
                     }
                     _ => return Err(format!("invalid query")),

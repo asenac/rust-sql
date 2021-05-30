@@ -10,7 +10,7 @@ digraph G {
     compound = true
     labeljust = l
     label="select * from a left join a b on false;
-"
+ + EmptyBoxes"
     node [ shape = box ]
     subgraph cluster1 {
         label = "Box1:Select"
@@ -53,7 +53,7 @@ digraph G {
     compound = true
     labeljust = l
     label="select * from a left join a b on false;
-"
+ + EmptyBoxes + Merge"
     node [ shape = box ]
     subgraph cluster1 {
         label = "Box1:Select"

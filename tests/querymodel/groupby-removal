@@ -63,7 +63,7 @@ digraph G {
     compound = true
     labeljust = l
     label="select a, b from a group by a;
-"
+ + GroupByRemoval"
     node [ shape = box ]
     subgraph cluster4 {
         label = "Box4:Select"
@@ -116,7 +116,7 @@ digraph G {
     compound = true
     labeljust = l
     label="select a, b from a group by a;
-"
+ + GroupByRemoval + Merge"
     node [ shape = box ]
     subgraph cluster4 {
         label = "Box4:Select"

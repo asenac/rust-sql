@@ -149,7 +149,7 @@ digraph G {
     compound = true
     labeljust = l
     label="with b(b) as (select a from a), c(c) as (select b from b) select * from b;
-"
+ + Merge"
     node [ shape = box ]
     subgraph cluster8 {
         label = "Box8:Select"
@@ -182,7 +182,7 @@ digraph G {
     compound = true
     labeljust = l
     label="with b(b) as (select a.a from a, a b where a.a = b.a) select * from b, b c;
-"
+ + Merge"
     node [ shape = box ]
     subgraph cluster6 {
         label = "Box6:Select"
@@ -231,7 +231,7 @@ digraph G {
     compound = true
     labeljust = l
     label="with b(c) as (select a from a) select * from b c, b d, lateral(select a from a where c.c > 10 group by a);
-"
+ + Merge"
     node [ shape = box ]
     subgraph cluster5 {
         label = "Box5:Select"
