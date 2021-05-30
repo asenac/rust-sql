@@ -1370,6 +1370,50 @@ impl rewrite_engine::Rule<BoxRef> for EmptyRule {
     fn action(&mut self, _obj: &mut BoxRef) {}
 }
 
+struct SingleTraversalRule {
+    rules: Vec<RuleBox>,
+    current: usize,
+}
+
+impl SingleTraversalRule {
+    fn new(rules: Vec<RuleBox>) -> Self {
+        Self { rules, current: 0 }
+    }
+}
+
+impl rewrite_engine::Rule<BoxRef> for SingleTraversalRule {
+    fn name(&self) -> &'static str {
+        "SingleTraversalRule"
+    }
+    fn apply_top_down(&self) -> bool {
+        if let Some(r) = self.rules.iter().next() {
+            r.apply_top_down()
+        } else {
+            false
+        }
+    }
+    fn condition(&mut self, obj: &BoxRef) -> bool {
+        self.current = 0;
+        while self.current < self.rules.len() {
+            if self.rules[self.current].condition(obj) {
+                return true;
+            }
+            self.current += 1;
+        }
+        true
+    }
+    fn action(&mut self, obj: &mut BoxRef) {
+        self.rules[self.current].action(obj);
+        self.current += 1;
+        while self.current < self.rules.len() {
+            if self.rules[self.current].condition(obj) {
+                self.rules[self.current].action(obj);
+            }
+            self.current += 1;
+        }
+    }
+}
+
 struct SemiJoinRemovalRule {
     to_convert: QuantifierSet,
 }
@@ -2513,12 +2557,26 @@ mod tests {
         }
 
         fn get_rule_by_name(rule: &str) -> Result<RuleBox, String> {
+            let mut rules = Vec::new();
+            for name in rule.split("+") {
+                let rule = Self::get_single_rule_by_name(name)?;
+                rules.push(rule);
+            }
+            Ok(match rules.len() {
+                1 => rules.pop().unwrap(),
+                _ => Box::new(SingleTraversalRule::new(rules)),
+            })
+        }
+
+        fn get_single_rule_by_name(rule: &str) -> Result<RuleBox, String> {
             let rule: RuleBox = match rule {
-                "Merge" => Box::new(MergeRule::new()),
-                "GroupByRemoval" => Box::new(GroupByRemovalRule::new()),
+                "ColumnRemoval" => Box::new(ColumnRemovalRule::new()),
+                "ConstantLifting" => Box::new(ConstantLiftingRule::new()),
                 "EmptyBoxes" => Box::new(EmptyBoxesRule::new()),
-                "PushDownPredicates" => Box::new(PushDownPredicatesRule::new()),
+                "GroupByRemoval" => Box::new(GroupByRemovalRule::new()),
+                "Merge" => Box::new(MergeRule::new()),
                 "OuterToInnerJoin" => Box::new(OuterToInnerJoinRule::new()),
+                "PushDownPredicates" => Box::new(PushDownPredicatesRule::new()),
                 _ => return Err(format!("invalid rule")),
             };
             Ok(rule)
