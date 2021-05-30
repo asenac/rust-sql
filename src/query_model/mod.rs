@@ -102,6 +102,7 @@ enum ExprType {
     Case,
     IsNull,
     Tuple,
+    Not,
 }
 
 type ExprRef = Rc<RefCell<Expr>>;
@@ -196,6 +197,13 @@ impl Expr {
         }
     }
 
+    fn make_not(operand: ExprRef) -> Self {
+        Self {
+            expr_type: ExprType::Not,
+            operands: Some(vec![operand]),
+        }
+    }
+
     fn make_tuple(operands: Vec<ExprRef>) -> Self {
         Self {
             expr_type: ExprType::Tuple,
@@ -214,6 +222,7 @@ impl Expr {
             (ExprType::Logical(l), ExprType::Logical(r)) => l == r && self.equiv_operands(o),
             (ExprType::Parameter(l), ExprType::Parameter(r)) => l == r,
             (ExprType::Case, ExprType::Case)
+            | (ExprType::Not, ExprType::Not)
             | (ExprType::IsNull, ExprType::IsNull)
             | (ExprType::InList, ExprType::InList)
             | (ExprType::Tuple, ExprType::Tuple) => self.equiv_operands(o),
@@ -579,6 +588,10 @@ impl fmt::Display for Expr {
                     write!(f, ", {}", o.borrow())?;
                 }
                 write!(f, ")")
+            }
+            Not => {
+                let operands = self.operands.as_ref().unwrap();
+                write!(f, "NOT ({})", operands[0].borrow())
             }
         }
     }

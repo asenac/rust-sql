@@ -208,6 +208,11 @@ pub enum NaryExprType {
     Div,
 }
 
+#[derive(Debug, PartialEq, Clone)]
+pub enum UnaryExprType {
+    Not,
+}
+
 #[derive(Debug, Clone)]
 pub struct CaseExpr {
     pub case_branches: Vec<(Box<Expr>, Box<Expr>)>,
@@ -221,7 +226,7 @@ pub enum Expr {
     NumericLiteral(i64),
     BooleanLiteral(bool),
     StringLiteral(String),
-    Unary(Box<Expr>),
+    Unary(UnaryExprType, Box<Expr>),
     Nary(NaryExprType, Vec<Box<Expr>>),
     Binary(BinaryExprType, Box<Expr>, Box<Expr>),
     ScalarSubquery(Box<QueryBlock>),
@@ -278,7 +283,7 @@ impl<'a> Iterator for ExprIterator<'a> {
                         self.stack.push(e);
                     }
                 }
-                IsNull(e) | Unary(e) => {
+                IsNull(e) | Unary(_, e) => {
                     self.stack.push(e);
                 }
                 Binary(_, l, r) => {
@@ -641,8 +646,16 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
                 Ok(Expr::InList(Box::new(result), terms))
             }
         } else if complete_keyword!(self, Is) {
+            let not = complete_keyword!(self, Not);
             expect_keyword!(self, Null)?;
-            Ok(Expr::IsNull(Box::new(result)))
+            if not {
+                Ok(Expr::Unary(
+                    UnaryExprType::Not,
+                    Box::new(Expr::IsNull(Box::new(result))),
+                ))
+            } else {
+                Ok(Expr::IsNull(Box::new(result)))
+            }
         } else if complete_keyword!(self, Between) {
             let min = self.parse_expr_term()?;
             expect_keyword!(self, And)?;

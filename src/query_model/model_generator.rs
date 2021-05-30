@@ -834,6 +834,12 @@ impl<'a> ModelGenerator<'a> {
                     _ => Err(String::from("expression not supported!")),
                 }
             }
+            ast::Expr::Unary(t, operand) => {
+                let operand = self.process_expr(operand, current_context)?;
+                match t {
+                    ast::UnaryExprType::Not => Ok(make_ref(Expr::make_not(operand))),
+                }
+            }
             ast::Expr::Case(case_expr) => {
                 let mut operands = Vec::new();
                 for (c, t) in case_expr.case_branches.iter() {
