@@ -233,7 +233,7 @@ impl Expr {
     fn equiv_operands(&self, o: &Self) -> bool {
         let l = self.operands.as_ref().expect("operands expected");
         let r = o.operands.as_ref().expect("operands expected");
-        l.len() != r.len()
+        l.len() == r.len()
             && l.iter()
                 .zip(r.iter())
                 .all(|(x, y)| x.borrow().is_equiv(&y.borrow()))
@@ -287,6 +287,16 @@ impl Expr {
             }
             _ => false,
         }
+    }
+
+    fn is_not_null(&self) -> Option<ExprRef> {
+        if let ExprType::Not = &self.expr_type {
+            let op = self.operands.as_ref().unwrap()[0].borrow();
+            if let ExprType::IsNull = &op.expr_type {
+                return Some(op.operands.as_ref().unwrap()[0].clone());
+            }
+        }
+        None
     }
 
     fn result_arity(&self) -> usize {
@@ -720,10 +730,24 @@ impl QGBox {
                 vec![predicate]
             }
         };
-        if self.predicates.is_some() {
-            self.predicates.as_mut().unwrap().extend(predicates);
-        } else {
-            self.predicates = Some(predicates);
+        if predicates.len() > 0 {
+            if self.predicates.is_none() {
+                self.predicates = Some(Vec::new());
+            }
+            // do not insert duplicated predicates
+            let mut_p = self.predicates.as_mut().unwrap();
+            for p in predicates {
+                let mut found = false;
+                for existing in mut_p.iter() {
+                    if p.borrow().is_equiv(&existing.borrow()) {
+                        found = true;
+                        break;
+                    }
+                }
+                if !found {
+                    mut_p.push(p);
+                }
+            }
         }
     }
 

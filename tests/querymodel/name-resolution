@@ -1986,7 +1986,6 @@ digraph G {
             Q2 -> Q2 [ label="(Q2.c0) < (10)" ]
             Q2 -> Q2 [ label="(Q2.c0) > (10)" ]
             Q2 -> Q2 [ label="(Q2.c3) = (10)" ]
-            Q2 -> Q2 [ label="(Q2.c3) = (10)" ]
         }
     }
     subgraph cluster2 {
