@@ -2506,8 +2506,14 @@ mod tests {
             Ok(output)
         }
 
-        fn apply_rule(model: &ModelRef, rule: &String) -> Result<(), String> {
-            let mut rule: RuleBox = match &rule[..] {
+        fn apply_rule(model: &ModelRef, rule: &str) -> Result<(), String> {
+            let mut rule: RuleBox = Self::get_rule_by_name(rule)?;
+            super::apply_rule(model, &mut *rule);
+            Ok(())
+        }
+
+        fn get_rule_by_name(rule: &str) -> Result<RuleBox, String> {
+            let rule: RuleBox = match rule {
                 "Merge" => Box::new(MergeRule::new()),
                 "GroupByRemoval" => Box::new(GroupByRemovalRule::new()),
                 "EmptyBoxes" => Box::new(EmptyBoxesRule::new()),
@@ -2515,8 +2521,7 @@ mod tests {
                 "OuterToInnerJoin" => Box::new(OuterToInnerJoinRule::new()),
                 _ => return Err(format!("invalid rule")),
             };
-            super::apply_rule(model, &mut *rule);
-            Ok(())
+            Ok(rule)
         }
     }
 
