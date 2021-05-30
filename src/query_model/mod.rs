@@ -1929,6 +1929,9 @@ impl rewrite_engine::Rule<BoxRef> for PushDownPredicatesRule {
                 let is_dead_end = only_quantifier.input_box.borrow().ranging_quantifiers.len() > 1;
                 let b = b.borrow();
                 match (&b.box_type, &only_quantifier.quantifier_type) {
+                    (BoxType::OuterJoin, QuantifierType::Foreach) => {
+                        self.finish_path(path);
+                    }
                     (BoxType::OuterJoin, QuantifierType::PreservedForeach)
                     | (BoxType::Select(_), QuantifierType::Foreach)
                     | (BoxType::Grouping(_), QuantifierType::Foreach) => {
