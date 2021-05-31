@@ -24,7 +24,7 @@ type ModelWeakRef = Weak<RefCell<Model>>;
 
 type ColumnRefDesc = (i32, usize);
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 struct ColumnReference {
     quantifier: QuantifierRef,
     position: usize,
@@ -44,19 +44,33 @@ struct BaseColumn {
 
 impl PartialEq for BaseColumn {
     fn eq(&self, other: &Self) -> bool {
-        self.position == other.position && self.parent_box.as_ptr() == other.parent_box.as_ptr()
+        assert!(self.parent_box.as_ptr() == other.parent_box.as_ptr());
+        self.position == other.position
     }
 }
 
 impl Eq for BaseColumn {}
 
-#[derive(Clone, PartialEq, Eq)]
+impl Ord for BaseColumn {
+    fn cmp(&self, other: &Self) -> Ordering {
+        assert!(self.parent_box.as_ptr() == other.parent_box.as_ptr());
+        self.position.cmp(&other.position)
+    }
+}
+
+impl PartialOrd for BaseColumn {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 enum LogicalExprType {
     And,
     Or,
 }
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 enum Value {
     Null,
     BigInt(i64),
@@ -80,7 +94,7 @@ impl fmt::Display for Value {
 
 impl Value {}
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 enum CmpOpType {
     Eq,
     Neq,
@@ -107,7 +121,7 @@ impl Commutate for CmpOpType {
     }
 }
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 enum ExprType {
     BaseColumn(BaseColumn),
     ColumnReference(ColumnReference),
@@ -127,7 +141,7 @@ type ColumnReferenceMap = HashMap<usize, Vec<ExprRef>>;
 type PerQuantifierColumnReferenceMap = BTreeMap<QuantifierRef, ColumnReferenceMap>;
 type PerBoxColumnReferenceMap = HashMap<i32, ColumnReferenceMap>;
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 struct Expr {
     expr_type: ExprType,
     operands: Option<Vec<ExprRef>>,
@@ -347,6 +361,50 @@ impl Expr {
                 .iter()
                 .all(|x| x.iter().any(|x| x.borrow().is_existential_operand())),
             _ => false,
+        }
+    }
+
+    fn normalize(&mut self) {
+        if let Some(operands) = &self.operands {
+            for o in operands {
+                o.borrow_mut().normalize();
+            }
+        }
+        match &mut self.expr_type {
+            ExprType::BaseColumn(_)
+            | ExprType::ColumnReference(_)
+            | ExprType::Literal(_)
+            | ExprType::Parameter(_)
+            | ExprType::IsNull
+            | ExprType::Case
+            | ExprType::Tuple
+            | ExprType::Not => {}
+            ExprType::Logical(_) => {
+                if let Some(operands) = &mut self.operands {
+                    operands.sort();
+                    operands.dedup();
+                }
+            }
+            ExprType::InList => {
+                if let Some(operands) = &mut self.operands {
+                    let sorted = operands.drain(1..).sorted().dedup().collect::<Vec<_>>();
+                    operands.extend(sorted);
+                }
+            }
+            ExprType::Cmp(t) => {
+                if let Some(operands) = &mut self.operands {
+                    let r = operands.pop().unwrap();
+                    let l = operands.pop().unwrap();
+                    if l > r {
+                        operands.push(r);
+                        operands.push(l);
+                        *t = t.commutate();
+                    } else {
+                        operands.push(l);
+                        operands.push(r);
+                    }
+                }
+            }
         }
     }
 }
@@ -1432,6 +1490,30 @@ impl rewrite_engine::Rule<BoxRef> for SingleTraversalRule {
             }
             self.current += 1;
         }
+    }
+}
+
+struct NormalizationRule {}
+
+impl NormalizationRule {
+    fn new() -> Self {
+        Self {}
+    }
+}
+
+impl rewrite_engine::Rule<BoxRef> for NormalizationRule {
+    fn name(&self) -> &'static str {
+        "NormalizationRule"
+    }
+    fn apply_top_down(&self) -> bool {
+        false
+    }
+    fn condition(&mut self, _obj: &BoxRef) -> bool {
+        true
+    }
+    fn action(&mut self, obj: &mut BoxRef) {
+        let mut f = |e: &mut ExprRef| e.borrow_mut().normalize();
+        obj.borrow_mut().visit_expressions(&mut f);
     }
 }
 
@@ -2607,6 +2689,7 @@ mod tests {
                 "EmptyBoxes" => Box::new(EmptyBoxesRule::new()),
                 "GroupByRemoval" => Box::new(GroupByRemovalRule::new()),
                 "Merge" => Box::new(MergeRule::new()),
+                "Normalization" => Box::new(NormalizationRule::new()),
                 "OuterToInnerJoin" => Box::new(OuterToInnerJoinRule::new()),
                 "PushDownPredicates" => Box::new(PushDownPredicatesRule::new()),
                 _ => return Err(format!("invalid rule")),
