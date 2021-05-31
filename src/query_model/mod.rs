@@ -1517,6 +1517,62 @@ impl rewrite_engine::Rule<BoxRef> for NormalizationRule {
     }
 }
 
+struct ConstraintPropagationRule {
+    new_predicates: Vec<ExprRef>,
+}
+
+impl ConstraintPropagationRule {
+    fn new() -> Self {
+        Self {
+            new_predicates: Vec::new(),
+        }
+    }
+}
+
+impl rewrite_engine::Rule<BoxRef> for ConstraintPropagationRule {
+    fn name(&self) -> &'static str {
+        "ConstraintPropagationRule"
+    }
+    fn apply_top_down(&self) -> bool {
+        false
+    }
+    fn condition(&mut self, obj: &BoxRef) -> bool {
+        let obj = obj.borrow();
+        if let BoxType::Select(_) = &obj.box_type {
+            if let Some(predicates) = &obj.predicates {
+                for p in predicates.iter() {
+                    let p = p.borrow();
+                    match &p.expr_type {
+                        ExprType::Cmp(_) => {
+                            if let Some(operands) = &p.operands {
+                                for o in operands.iter().filter_map(|e| {
+                                    let x = e.borrow();
+                                    if let ExprType::ColumnReference(_) = &x.expr_type {
+                                        Some(e.clone())
+                                    } else {
+                                        None
+                                    }
+                                }) {
+                                    let is_null = make_ref(Expr::make_is_null(o));
+                                    let not = make_ref(Expr::make_not(is_null));
+                                    self.new_predicates.push(not);
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+        !self.new_predicates.is_empty()
+    }
+    fn action(&mut self, obj: &mut BoxRef) {
+        for p in self.new_predicates.drain(..) {
+            obj.borrow_mut().add_predicate(p);
+        }
+    }
+}
+
 struct SemiJoinRemovalRule {
     to_convert: QuantifierSet,
 }
@@ -2390,7 +2446,9 @@ pub fn rewrite_model(m: &ModelRef) {
         Box::new(SemiJoinRemovalRule::new()),
         Box::new(GroupByRemovalRule::new()),
         Box::new(PushDownPredicatesRule::new()),
+        Box::new(ConstraintPropagationRule::new()),
         Box::new(OuterToInnerJoinRule::new()),
+        Box::new(NormalizationRule::new()),
     ];
     for _ in 0..5 {
         apply_rules(m, &mut rules);
@@ -2686,6 +2744,7 @@ mod tests {
             let rule: RuleBox = match rule {
                 "ColumnRemoval" => Box::new(ColumnRemovalRule::new()),
                 "ConstantLifting" => Box::new(ConstantLiftingRule::new()),
+                "ConstraintPropagation" => Box::new(ConstraintPropagationRule::new()),
                 "EmptyBoxes" => Box::new(EmptyBoxesRule::new()),
                 "GroupByRemoval" => Box::new(GroupByRemovalRule::new()),
                 "Merge" => Box::new(MergeRule::new()),
