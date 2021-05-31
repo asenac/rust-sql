@@ -24,7 +24,7 @@ type ModelWeakRef = Weak<RefCell<Model>>;
 
 type ColumnRefDesc = (i32, usize);
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 struct ColumnReference {
     quantifier: QuantifierRef,
     position: usize,
@@ -50,18 +50,18 @@ impl PartialEq for BaseColumn {
 
 impl Eq for BaseColumn {}
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Eq)]
 enum LogicalExprType {
     And,
     Or,
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Eq)]
 enum Value {
+    Null,
     BigInt(i64),
     Boolean(bool),
     String(String),
-    Null,
 }
 
 impl fmt::Display for Value {
@@ -80,7 +80,7 @@ impl fmt::Display for Value {
 
 impl Value {}
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Eq)]
 enum CmpOpType {
     Eq,
     Neq,
@@ -90,19 +90,36 @@ enum CmpOpType {
     GreaterEq,
 }
 
-#[derive(Clone)]
+trait Commutate {
+    fn commutate(&self) -> Self;
+}
+
+impl Commutate for CmpOpType {
+    fn commutate(&self) -> Self {
+        match self {
+            Self::Eq => Self::Eq {},
+            Self::Neq => Self::Neq {},
+            Self::Less => Self::Greater {},
+            Self::LessEq => Self::GreaterEq {},
+            Self::Greater => Self::Less {},
+            Self::GreaterEq => Self::LessEq {},
+        }
+    }
+}
+
+#[derive(Clone, PartialEq, Eq)]
 enum ExprType {
     BaseColumn(BaseColumn),
-    Cmp(CmpOpType),
     ColumnReference(ColumnReference),
     InList,
-    Literal(Value),
+    Cmp(CmpOpType),
     Logical(LogicalExprType),
-    Parameter(u64),
-    Case,
-    IsNull,
-    Tuple,
     Not,
+    IsNull,
+    Case,
+    Tuple,
+    Literal(Value),
+    Parameter(u64),
 }
 
 type ExprRef = Rc<RefCell<Expr>>;
@@ -110,7 +127,7 @@ type ColumnReferenceMap = HashMap<usize, Vec<ExprRef>>;
 type PerQuantifierColumnReferenceMap = BTreeMap<QuantifierRef, ColumnReferenceMap>;
 type PerBoxColumnReferenceMap = HashMap<i32, ColumnReferenceMap>;
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 struct Expr {
     expr_type: ExprType,
     operands: Option<Vec<ExprRef>>,
