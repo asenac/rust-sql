@@ -1400,7 +1400,7 @@ impl rewrite_engine::Rule<BoxRef> for SingleTraversalRule {
             }
             self.current += 1;
         }
-        true
+        false
     }
     fn action(&mut self, obj: &mut BoxRef) {
         self.rules[self.current].action(obj);
@@ -2569,7 +2569,7 @@ mod tests {
 
         fn get_rule_by_name(rule: &str) -> Result<RuleBox, String> {
             let mut rules = Vec::new();
-            for name in rule.split("+") {
+            for name in rule.split("-") {
                 let rule = Self::get_single_rule_by_name(name)?;
                 rules.push(rule);
             }
