@@ -2182,7 +2182,18 @@ impl rewrite_engine::Rule<BoxRef> for OuterToInnerJoinRule {
     }
     fn action(&mut self, _obj: &mut BoxRef) {
         for q in self.to_convert.iter() {
-            q.borrow().input_box.borrow_mut().box_type = BoxType::Select(Select::new());
+            // Convert the outer join box into a select box.
+            let input_box = q.borrow().input_box.clone();
+            let mut input_box = input_box.borrow_mut();
+            input_box.box_type = BoxType::Select(Select::new());
+
+            // Convert the preserved quantifier into a foreach one.
+            for q in input_box.quantifiers.iter() {
+                let mut q = q.borrow_mut();
+                if let QuantifierType::PreservedForeach = q.quantifier_type {
+                    q.quantifier_type = QuantifierType::Foreach;
+                }
+            }
         }
         self.to_convert.clear();
     }

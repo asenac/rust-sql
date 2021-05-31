@@ -29,7 +29,7 @@ digraph G {
         {
             rank = same
             node [ shape = circle ]
-            Q0 [ label="Q0(P)" ]
+            Q0 [ label="Q0(F)" ]
             Q1 [ label="Q1(F)" ]
             edge [ arrowhead = none, style = solid ]
             Q0 -> Q1 [ label="(Q0.c0) = (Q1.c0)" ]
