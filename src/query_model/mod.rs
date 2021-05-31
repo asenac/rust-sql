@@ -258,6 +258,10 @@ impl Expr {
     fn is_runtime_constant(&self) -> bool {
         match self.expr_type {
             ExprType::Parameter(_) | ExprType::Literal(_) => true,
+            ExprType::Tuple => self
+                .operands
+                .iter()
+                .all(|x| x.iter().all(|x| x.borrow().is_runtime_constant())),
             _ => false,
         }
     }
