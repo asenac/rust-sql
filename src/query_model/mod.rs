@@ -2318,16 +2318,23 @@ impl rewrite_engine::Rule<BoxRef> for OuterToInnerJoinRule {
                     if let Some(expr) = p.borrow().is_not_null() {
                         let expr = expr.borrow();
                         if let ExprType::ColumnReference(c1) = &expr.expr_type {
-                            let input_box = c1.quantifier.borrow().input_box.clone();
-                            let input_box = input_box.borrow();
-                            if let BoxType::OuterJoin = &input_box.box_type {
-                                if let Some(deref) = expr.dereference() {
-                                    if let ExprType::ColumnReference(c2) = &deref.borrow().expr_type
-                                    {
-                                        if let QuantifierType::Foreach =
-                                            c2.quantifier.borrow().quantifier_type
+                            // The predicate could be a correlated one, in which case I'm not
+                            // sure modifying the sibling quantifier is correct. The plan for
+                            // that case is to lift the predicate and then then remove the
+                            // outer join once the predicate is in the right box.
+                            if obj.quantifiers.contains(&c1.quantifier) {
+                                let input_box = c1.quantifier.borrow().input_box.clone();
+                                let input_box = input_box.borrow();
+                                if let BoxType::OuterJoin = &input_box.box_type {
+                                    if let Some(deref) = expr.dereference() {
+                                        if let ExprType::ColumnReference(c2) =
+                                            &deref.borrow().expr_type
                                         {
-                                            self.to_convert.insert(c1.quantifier.clone());
+                                            if let QuantifierType::Foreach =
+                                                c2.quantifier.borrow().quantifier_type
+                                            {
+                                                self.to_convert.insert(c1.quantifier.clone());
+                                            }
                                         }
                                     }
                                 }

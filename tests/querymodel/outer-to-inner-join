@@ -157,3 +157,79 @@ digraph G {
 
 ----
 ----
+
+# @todo try again with predicate lifting
+query apply=OuterToInnerJoin
+select * from a left join b on true where exists(select * from a where a = d);
+----
+----
+digraph G {
+    compound = true
+    labeljust = l
+    label="select * from a left join b on true where exists(select * from a where a = d);
+ + OuterToInnerJoin"
+    node [ shape = box ]
+    subgraph cluster1 {
+        label = "Box1:Select"
+        boxhead1 [ shape = record, label="{ 0: Q2.c0 AS A|1: Q2.c1 AS B|2: Q2.c2 AS C|3: Q2.c3 AS D }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q2 [ label="Q2(F)" ]
+            Q4 [ label="Q4(E)" ]
+            edge [ arrowhead = none, style = solid ]
+            Q4 -> Q4 [ label="(1) = (Q4.c0)" ]
+        }
+    }
+    subgraph cluster6 {
+        label = "Box6:Select"
+        boxhead6 [ shape = record, label="{ 0: 1 }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q3 [ label="Q3(F)" ]
+            edge [ arrowhead = none, style = solid ]
+            Q2 -> Q3 [ label="(Q3.c0) = (Q2.c3)" ]
+        }
+    }
+    subgraph cluster7 {
+        label = "Box7:BaseTable A"
+        boxhead7 [ shape = record, label="{ 0: c0 AS A|1: c1 AS B }" ]
+        {
+            rank = same
+        }
+    }
+    subgraph cluster2 {
+        label = "Box2:OuterJoin"
+        boxhead2 [ shape = record, label="{ 0: Q0.c0 AS A|1: Q0.c1 AS B|2: Q1.c0 AS C|3: Q1.c1 AS D| TRUE }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q0 [ label="Q0(P)" ]
+            Q1 [ label="Q1(F)" ]
+        }
+    }
+    subgraph cluster4 {
+        label = "Box4:BaseTable B"
+        boxhead4 [ shape = record, label="{ 0: c0 AS C|1: c1 AS D }" ]
+        {
+            rank = same
+        }
+    }
+    subgraph cluster3 {
+        label = "Box3:BaseTable A"
+        boxhead3 [ shape = record, label="{ 0: c0 AS A|1: c1 AS B }" ]
+        {
+            rank = same
+        }
+    }
+    edge [ arrowhead = none, style = dashed ]
+    Q2 -> boxhead2 [ lhead = cluster2 ]
+    Q4 -> boxhead6 [ lhead = cluster6 ]
+    Q3 -> boxhead7 [ lhead = cluster7 ]
+    Q0 -> boxhead3 [ lhead = cluster3 ]
+    Q1 -> boxhead4 [ lhead = cluster4 ]
+}
+
+----
+----
