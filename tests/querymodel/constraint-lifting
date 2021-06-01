@@ -51,3 +51,184 @@ digraph G {
 
 ----
 ----
+
+query apply=ConstraintLifting
+select * from (select a, b > 1 from a where ? > 1 and (a > 1 or b > 1));
+----
+----
+digraph G {
+    compound = true
+    labeljust = l
+    label="select * from (select a, b > 1 from a where ? > 1 and (a > 1 or b > 1));
+ + ConstraintLifting"
+    node [ shape = box ]
+    subgraph cluster1 {
+        label = "Box1:Select"
+        boxhead1 [ shape = record, label="{ 0: Q1.c0 AS A|1: Q1.c1| (?:0) \> (1) }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q1 [ label="Q1(F)" ]
+            edge [ arrowhead = none, style = solid ]
+            Q1 -> Q1 [ label="((Q1.c0) > (1)) OR (Q1.c1)" ]
+        }
+    }
+    subgraph cluster3 {
+        label = "Box3:Select"
+        boxhead3 [ shape = record, label="{ 0: Q0.c0 AS A|1: (Q0.c1) \> (1)| (?:0) \> (1) }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q0 [ label="Q0(F)" ]
+            edge [ arrowhead = none, style = solid ]
+            Q0 -> Q0 [ label="((Q0.c0) > (1)) OR ((Q0.c1) > (1))" ]
+        }
+    }
+    subgraph cluster4 {
+        label = "Box4:BaseTable A"
+        boxhead4 [ shape = record, label="{ 0: c0 AS A|1: c1 AS B|2: c2 AS C }" ]
+        {
+            rank = same
+        }
+    }
+    edge [ arrowhead = none, style = dashed ]
+    Q1 -> boxhead3 [ lhead = cluster3 ]
+    Q0 -> boxhead4 [ lhead = cluster4 ]
+}
+
+----
+----
+
+query apply=ConstraintLifting
+select * from (select a from a where a > 1 group by a);
+----
+----
+digraph G {
+    compound = true
+    labeljust = l
+    label="select * from (select a from a where a > 1 group by a);
+ + ConstraintLifting"
+    node [ shape = box ]
+    subgraph cluster1 {
+        label = "Box1:Select"
+        boxhead1 [ shape = record, label="{ DISTINCT TUPLES|0: Q3.c0 AS A| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q3 [ label="Q3(F)" ]
+            edge [ arrowhead = none, style = solid ]
+            Q3 -> Q3 [ label="(Q3.c0) > (1)" ]
+        }
+    }
+    subgraph cluster6 {
+        label = "Box6:Select"
+        boxhead6 [ shape = record, label="{ DISTINCT TUPLES|0: Q2.c0 AS A| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q2 [ label="Q2(F)" ]
+            edge [ arrowhead = none, style = solid ]
+            Q2 -> Q2 [ label="(Q2.c0) > (1)" ]
+        }
+    }
+    subgraph cluster5 {
+        label = "Box5:Grouping"
+        boxhead5 [ shape = record, label="{ DISTINCT TUPLES|0: Q1.c0 AS A| GROUP Q1.c0 Ascending| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q1 [ label="Q1(F)" ]
+        }
+    }
+    subgraph cluster3 {
+        label = "Box3:Select"
+        boxhead3 [ shape = record, label="{ 0: Q0.c0 AS A|1: Q0.c1 AS B|2: Q0.c2 AS C }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q0 [ label="Q0(F)" ]
+            edge [ arrowhead = none, style = solid ]
+            Q0 -> Q0 [ label="(Q0.c0) > (1)" ]
+        }
+    }
+    subgraph cluster4 {
+        label = "Box4:BaseTable A"
+        boxhead4 [ shape = record, label="{ 0: c0 AS A|1: c1 AS B|2: c2 AS C }" ]
+        {
+            rank = same
+        }
+    }
+    edge [ arrowhead = none, style = dashed ]
+    Q3 -> boxhead6 [ lhead = cluster6 ]
+    Q2 -> boxhead5 [ lhead = cluster5 ]
+    Q1 -> boxhead3 [ lhead = cluster3 ]
+    Q0 -> boxhead4 [ lhead = cluster4 ]
+}
+
+----
+----
+
+query apply=(ConstraintLifting,PushDownPredicates)
+select * from (select a from a where a > 1 group by a);
+----
+----
+digraph G {
+    compound = true
+    labeljust = l
+    label="select * from (select a from a where a > 1 group by a);
+ + ConstraintLifting + PushDownPredicates"
+    node [ shape = box ]
+    subgraph cluster1 {
+        label = "Box1:Select"
+        boxhead1 [ shape = record, label="{ DISTINCT TUPLES|0: Q3.c0 AS A| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q3 [ label="Q3(F)" ]
+        }
+    }
+    subgraph cluster6 {
+        label = "Box6:Select"
+        boxhead6 [ shape = record, label="{ DISTINCT TUPLES|0: Q2.c0 AS A| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q2 [ label="Q2(F)" ]
+        }
+    }
+    subgraph cluster5 {
+        label = "Box5:Grouping"
+        boxhead5 [ shape = record, label="{ DISTINCT TUPLES|0: Q1.c0 AS A| GROUP Q1.c0 Ascending| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q1 [ label="Q1(F)" ]
+        }
+    }
+    subgraph cluster3 {
+        label = "Box3:Select"
+        boxhead3 [ shape = record, label="{ 0: Q0.c0 AS A|1: Q0.c1 AS B|2: Q0.c2 AS C }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q0 [ label="Q0(F)" ]
+            edge [ arrowhead = none, style = solid ]
+            Q0 -> Q0 [ label="(Q0.c0) > (1)" ]
+        }
+    }
+    subgraph cluster4 {
+        label = "Box4:BaseTable A"
+        boxhead4 [ shape = record, label="{ 0: c0 AS A|1: c1 AS B|2: c2 AS C }" ]
+        {
+            rank = same
+        }
+    }
+    edge [ arrowhead = none, style = dashed ]
+    Q3 -> boxhead6 [ lhead = cluster6 ]
+    Q2 -> boxhead5 [ lhead = cluster5 ]
+    Q1 -> boxhead3 [ lhead = cluster3 ]
+    Q0 -> boxhead4 [ lhead = cluster4 ]
+}
+
+----
+----
