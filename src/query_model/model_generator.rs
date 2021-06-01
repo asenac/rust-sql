@@ -20,6 +20,8 @@ struct NameResolutionContext<'a> {
     subquery_quantifiers: Option<HashMap<*const ast::QueryBlock, QuantifierRef>>,
     ctes: Option<HashMap<String, BoxRef>>,
     parent_context: Option<&'a NameResolutionContext<'a>>,
+    sibling_context: Option<&'a NameResolutionContext<'a>>,
+    is_lateral: bool,
 }
 
 impl<'a> NameResolutionContext<'a> {
@@ -30,6 +32,24 @@ impl<'a> NameResolutionContext<'a> {
             subquery_quantifiers: None,
             ctes: None,
             parent_context,
+            sibling_context: None,
+            is_lateral: false,
+        }
+    }
+
+    fn for_join(
+        owner_box: BoxRef,
+        parent_context: Option<&'a Self>,
+        sibling_context: &'a Self,
+    ) -> Self {
+        Self {
+            owner_box: Some(owner_box),
+            quantifiers: Vec::new(),
+            subquery_quantifiers: None,
+            ctes: None,
+            parent_context,
+            sibling_context: Some(sibling_context),
+            is_lateral: false,
         }
     }
 
@@ -40,6 +60,8 @@ impl<'a> NameResolutionContext<'a> {
             subquery_quantifiers: None,
             ctes: Some(HashMap::new()),
             parent_context,
+            sibling_context: None,
+            is_lateral: false,
         }
     }
 
@@ -68,8 +90,8 @@ impl<'a> NameResolutionContext<'a> {
     }
 
     /// adds all the quantifier from the given context into the current one
-    fn merge_quantifiers(&mut self, o: Self) {
-        for q in o.quantifiers {
+    fn merge_quantifiers(&mut self, quantifiers: Vec<QuantifierRef>) {
+        for q in quantifiers {
             self.quantifiers.push(q);
         }
     }
@@ -105,6 +127,14 @@ impl<'a> NameResolutionContext<'a> {
             }
             if found.is_some() {
                 return Ok(found);
+            }
+        }
+        if self.is_lateral {
+            if let Some(sibling) = &self.sibling_context {
+                let sibling_column = sibling.resolve_column(table, column)?;
+                if sibling_column.is_some() {
+                    return Ok(sibling_column);
+                }
             }
         }
         if let Some(parent) = &self.parent_context {
@@ -534,7 +564,12 @@ impl<'a> ModelGenerator<'a> {
             // the derived table should not see its siblings
             DerivedTable(s) => self.process_query_block(s, current_context.parent_context),
             // but lateral joins do see its siblings
-            Lateral(s) => self.process_query_block(s, Some(current_context)),
+            Lateral(s) => {
+                current_context.is_lateral = true;
+                let r = self.process_query_block(s, Some(current_context));
+                current_context.is_lateral = false;
+                r
+            }
             TableRef(s) => {
                 if let Some(cte) = current_context.resolve_cte(&s.get_name()) {
                     return Ok(cte);
@@ -563,9 +598,10 @@ impl<'a> ModelGenerator<'a> {
                     JoinType::LeftOuter | JoinType::RightOuter => self.make_outer_join_box(),
                     JoinType::Inner => self.make_select_box(),
                 };
-                let mut child_context = NameResolutionContext::new(
+                let mut child_context = NameResolutionContext::for_join(
                     Rc::clone(&select_box),
                     current_context.parent_context,
+                    current_context,
                 );
 
                 let lq = self.add_join_term_to_select_box(l, &select_box, &mut child_context)?;
@@ -627,7 +663,9 @@ impl<'a> ModelGenerator<'a> {
                 }
 
                 // merge the temporary context into the current one
-                current_context.merge_quantifiers(child_context);
+                // note: move quantifeirs out of child_context to workaround lifetime mismatch
+                let child_quantifiers = child_context.quantifiers;
+                current_context.merge_quantifiers(child_quantifiers);
 
                 self.add_unique_keys(&select_box);
                 Ok(select_box)
