@@ -1292,6 +1292,44 @@ impl Quantifier {
     }
 }
 
+/// Lift an expression through the projection of the given quantifier
+fn lift_expression(q: &QuantifierRef, e: &ExprRef) -> Option<ExprRef> {
+    if e.borrow().is_runtime_constant() {
+        return Some(e.clone());
+    }
+    if let ExprType::ColumnReference(c) = &e.borrow().expr_type {
+        if !q
+            .borrow()
+            .input_box
+            .borrow()
+            .quantifiers
+            .contains(&c.quantifier)
+        {
+            // it's a column reference from a parent context
+            return Some(e.clone());
+        }
+    }
+    for (i, c) in q.borrow().input_box.borrow().columns.iter().enumerate() {
+        if c.expr.borrow().is_equiv(&e.borrow()) {
+            return Some(make_ref(Expr::make_column_ref(q.clone(), i)));
+        }
+    }
+    let be = e.borrow();
+    if let Some(operands) = &be.operands {
+        let new_operands = operands
+            .iter()
+            .filter_map(|x| lift_expression(q, x))
+            .collect::<Vec<_>>();
+        if operands.len() == new_operands.len() {
+            return Some(make_ref(Expr {
+                expr_type: be.expr_type.clone(),
+                operands: Some(new_operands),
+            }));
+        }
+    }
+    None
+}
+
 impl Drop for Quantifier {
     fn drop(&mut self) {
         self.input_box
@@ -1560,6 +1598,58 @@ impl rewrite_engine::Rule<BoxRef> for ConstraintPropagationRule {
                             }
                         }
                         _ => {}
+                    }
+                }
+            }
+        }
+        !self.new_predicates.is_empty()
+    }
+    fn action(&mut self, obj: &mut BoxRef) {
+        for p in self.new_predicates.drain(..) {
+            obj.borrow_mut().add_predicate(p);
+        }
+    }
+}
+
+struct ConstraintLiftingRule {
+    new_predicates: Vec<ExprRef>,
+}
+
+impl ConstraintLiftingRule {
+    fn new() -> Self {
+        Self {
+            new_predicates: Vec::new(),
+        }
+    }
+}
+
+impl rewrite_engine::Rule<BoxRef> for ConstraintLiftingRule {
+    fn name(&self) -> &'static str {
+        "ConstraintLiftingRule"
+    }
+    fn apply_top_down(&self) -> bool {
+        false
+    }
+    fn condition(&mut self, obj: &BoxRef) -> bool {
+        let obj = obj.borrow();
+        if let BoxType::Select(_) = &obj.box_type {
+            for q in obj.quantifiers.iter() {
+                let bq = q.borrow();
+                if !bq.is_subquery() {
+                    let input_box = bq.input_box.clone();
+                    drop(bq);
+                    let input_box = input_box.borrow();
+                    if let Some(predicates) = &input_box.predicates {
+                        match &input_box.box_type {
+                            BoxType::Select(..) => {
+                                for p in predicates.iter() {
+                                    if let Some(lifted_predicate) = lift_expression(q, p) {
+                                        self.new_predicates.push(lifted_predicate);
+                                    }
+                                }
+                            }
+                            _ => {}
+                        }
                     }
                 }
             }
@@ -2751,6 +2841,7 @@ mod tests {
             let rule: RuleBox = match rule {
                 "ColumnRemoval" => Box::new(ColumnRemovalRule::new()),
                 "ConstantLifting" => Box::new(ConstantLiftingRule::new()),
+                "ConstraintLifting" => Box::new(ConstraintLiftingRule::new()),
                 "ConstraintPropagation" => Box::new(ConstraintPropagationRule::new()),
                 "EmptyBoxes" => Box::new(EmptyBoxesRule::new()),
                 "GroupByRemoval" => Box::new(GroupByRemovalRule::new()),
