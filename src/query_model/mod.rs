@@ -1639,32 +1639,33 @@ impl rewrite_engine::Rule<BoxRef> for ConstraintLiftingRule {
                     let input_box = bq.input_box.clone();
                     drop(bq);
                     let input_box = input_box.borrow();
+                    let mut path = Vec::new();
                     match &input_box.box_type {
                         BoxType::Select(..) => {
-                            if let Some(predicates) = &input_box.predicates {
-                                for p in predicates.iter() {
-                                    if let Some(lifted_predicate) = lift_expression(q, p) {
-                                        self.new_predicates.push(lifted_predicate);
-                                    }
-                                }
-                            }
+                            path.push(q.clone());
                         }
                         BoxType::Grouping(..) => {
                             if let Some(iq) = input_box.first_quantifier() {
-                                // @todo assert is select
-                                if let Some(predicates) = &iq.borrow().input_box.borrow().predicates
-                                {
-                                    for p in predicates.iter() {
-                                        if let Some(lifted_predicate) = lift_expression(&iq, p)
-                                            .and_then(|x| lift_expression(q, &x))
-                                        {
-                                            self.new_predicates.push(lifted_predicate);
-                                        }
-                                    }
-                                }
+                                path.push(q.clone());
+                                path.push(iq.clone());
                             }
                         }
                         _ => {}
+                    }
+                    if let Some(last) = path.pop() {
+                        // @todo assert is select
+                        if let Some(predicates) = &last.borrow().input_box.borrow().predicates {
+                            for p in predicates.iter() {
+                                let mut lifted_predicate = lift_expression(&last, &p);
+                                while let Some(q) = path.pop() {
+                                    lifted_predicate =
+                                        lifted_predicate.and_then(|p| lift_expression(&q, &p));
+                                }
+                                if let Some(lifted_predicate) = lifted_predicate {
+                                    self.new_predicates.push(lifted_predicate);
+                                }
+                            }
+                        }
                     }
                 }
             }
