@@ -286,6 +286,17 @@ impl Expr {
         }
     }
 
+    fn is_compilation_constant(&self) -> bool {
+        match self.expr_type {
+            ExprType::Literal(_) => true,
+            ExprType::Tuple => self
+                .operands
+                .iter()
+                .all(|x| x.iter().all(|x| x.borrow().is_compilation_constant())),
+            _ => false,
+        }
+    }
+
     fn is_runtime_constant(&self) -> bool {
         match self.expr_type {
             ExprType::Parameter(_) | ExprType::Literal(_) => true,
