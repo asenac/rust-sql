@@ -12,9 +12,9 @@ digraph G {
     label="select * from a, b where b > a and c >= a and c <= d and d < b;
  + Normalization"
     node [ shape = box ]
-    subgraph cluster1 {
-        label = "Box1:Select"
-        boxhead1 [ shape = record, label="{ 0: Q0.c0 AS A|1: Q0.c1 AS B|2: Q1.c0 AS C|3: Q1.c1 AS D }" ]
+    subgraph cluster0 {
+        label = "Box0:Select"
+        boxhead0 [ shape = record, label="{ 0: Q0.c0 AS A|1: Q0.c1 AS B|2: Q1.c0 AS C|3: Q1.c1 AS D }" ]
         {
             rank = same
             node [ shape = circle ]
@@ -27,23 +27,23 @@ digraph G {
             Q0 -> Q1 [ label="(Q0.c1) > (Q1.c1)" ]
         }
     }
-    subgraph cluster3 {
-        label = "Box3:BaseTable B"
-        boxhead3 [ shape = record, label="{ 0: c0 AS C|1: c1 AS D }" ]
+    subgraph cluster2 {
+        label = "Box2:BaseTable B"
+        boxhead2 [ shape = record, label="{ 0: c0 AS C|1: c1 AS D }" ]
         {
             rank = same
         }
     }
-    subgraph cluster2 {
-        label = "Box2:BaseTable A"
-        boxhead2 [ shape = record, label="{ 0: c0 AS A|1: c1 AS B }" ]
+    subgraph cluster1 {
+        label = "Box1:BaseTable A"
+        boxhead1 [ shape = record, label="{ 0: c0 AS A|1: c1 AS B }" ]
         {
             rank = same
         }
     }
     edge [ arrowhead = none, style = dashed ]
-    Q0 -> boxhead2 [ lhead = cluster2 ]
-    Q1 -> boxhead3 [ lhead = cluster3 ]
+    Q0 -> boxhead1 [ lhead = cluster1 ]
+    Q1 -> boxhead2 [ lhead = cluster2 ]
 }
 
 ----
@@ -59,9 +59,9 @@ digraph G {
     label="select * from a where ? > a;
  + Normalization"
     node [ shape = box ]
-    subgraph cluster1 {
-        label = "Box1:Select"
-        boxhead1 [ shape = record, label="{ 0: Q0.c0 AS A|1: Q0.c1 AS B }" ]
+    subgraph cluster0 {
+        label = "Box0:Select"
+        boxhead0 [ shape = record, label="{ 0: Q0.c0 AS A|1: Q0.c1 AS B }" ]
         {
             rank = same
             node [ shape = circle ]
@@ -70,15 +70,15 @@ digraph G {
             Q0 -> Q0 [ label="(Q0.c0) < (?:0)" ]
         }
     }
-    subgraph cluster2 {
-        label = "Box2:BaseTable A"
-        boxhead2 [ shape = record, label="{ 0: c0 AS A|1: c1 AS B }" ]
+    subgraph cluster1 {
+        label = "Box1:BaseTable A"
+        boxhead1 [ shape = record, label="{ 0: c0 AS A|1: c1 AS B }" ]
         {
             rank = same
         }
     }
     edge [ arrowhead = none, style = dashed ]
-    Q0 -> boxhead2 [ lhead = cluster2 ]
+    Q0 -> boxhead1 [ lhead = cluster1 ]
 }
 
 ----

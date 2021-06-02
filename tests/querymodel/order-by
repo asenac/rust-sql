@@ -1,0 +1,158 @@
+ddl
+create table a(a, b); create table b(a, b);
+----
+
+query
+select a.a from a order by a.a
+----
+----
+digraph G {
+    compound = true
+    labeljust = l
+    label="select a.a from a order by a.a
+"
+    node [ shape = box ]
+    subgraph cluster0 {
+        label = "Box0:Select"
+        boxhead0 [ shape = record, label="{ 0: Q0.c0 AS A| ORDER Q0.c0 Ascending }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q0 [ label="Q0(F)" ]
+        }
+    }
+    subgraph cluster1 {
+        label = "Box1:BaseTable A"
+        boxhead1 [ shape = record, label="{ 0: c0 AS A|1: c1 AS B }" ]
+        {
+            rank = same
+        }
+    }
+    edge [ arrowhead = none, style = dashed ]
+    Q0 -> boxhead1 [ lhead = cluster1 ]
+}
+
+----
+----
+
+query
+select a.a from a inner join b using (a) order by b.a
+----
+----
+digraph G {
+    compound = true
+    labeljust = l
+    label="select a.a from a inner join b using (a) order by b.a
+"
+    node [ shape = box ]
+    subgraph cluster0 {
+        label = "Box0:Select"
+        boxhead0 [ shape = record, label="{ 0: Q2.c0 AS A| ORDER Q2.c3 Ascending }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q2 [ label="Q2(F)" ]
+        }
+    }
+    subgraph cluster1 {
+        label = "Box1:Select"
+        boxhead1 [ shape = record, label="{ 0: Q0.c0 AS A|1: Q0.c1 AS B|2: Q1.c1 AS B|3: Q1.c0 AS A }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q0 [ label="Q0(F)" ]
+            Q1 [ label="Q1(F)" ]
+            edge [ arrowhead = none, style = solid ]
+            Q0 -> Q1 [ label="(Q0.c0) = (Q1.c0)" ]
+        }
+    }
+    subgraph cluster3 {
+        label = "Box3:BaseTable B"
+        boxhead3 [ shape = record, label="{ 0: c0 AS A|1: c1 AS B }" ]
+        {
+            rank = same
+        }
+    }
+    subgraph cluster2 {
+        label = "Box2:BaseTable A"
+        boxhead2 [ shape = record, label="{ 0: c0 AS A|1: c1 AS B }" ]
+        {
+            rank = same
+        }
+    }
+    edge [ arrowhead = none, style = dashed ]
+    Q2 -> boxhead1 [ lhead = cluster1 ]
+    Q0 -> boxhead2 [ lhead = cluster2 ]
+    Q1 -> boxhead3 [ lhead = cluster3 ]
+}
+
+----
+----
+
+# nothing should happen
+query apply=OrderByRemoval
+select a.a from a order by a.a
+----
+----
+digraph G {
+    compound = true
+    labeljust = l
+    label="select a.a from a order by a.a
+ + OrderByRemoval"
+    node [ shape = box ]
+    subgraph cluster0 {
+        label = "Box0:Select"
+        boxhead0 [ shape = record, label="{ 0: Q0.c0 AS A| ORDER Q0.c0 Ascending }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q0 [ label="Q0(F)" ]
+        }
+    }
+    subgraph cluster1 {
+        label = "Box1:BaseTable A"
+        boxhead1 [ shape = record, label="{ 0: c0 AS A|1: c1 AS B }" ]
+        {
+            rank = same
+        }
+    }
+    edge [ arrowhead = none, style = dashed ]
+    Q0 -> boxhead1 [ lhead = cluster1 ]
+}
+
+----
+----
+
+
+query apply=OrderByRemoval
+select 1 from a order by a.a
+----
+----
+digraph G {
+    compound = true
+    labeljust = l
+    label="select 1 from a order by a.a
+ + OrderByRemoval"
+    node [ shape = box ]
+    subgraph cluster0 {
+        label = "Box0:Select"
+        boxhead0 [ shape = record, label="{ 0: 1 }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q0 [ label="Q0(F)" ]
+        }
+    }
+    subgraph cluster1 {
+        label = "Box1:BaseTable A"
+        boxhead1 [ shape = record, label="{ 0: c0 AS A|1: c1 AS B }" ]
+        {
+            rank = same
+        }
+    }
+    edge [ arrowhead = none, style = dashed ]
+    Q0 -> boxhead1 [ lhead = cluster1 ]
+}
+
+----
+----

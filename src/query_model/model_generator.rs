@@ -306,22 +306,37 @@ impl<'a> ModelGenerator<'a> {
         )
     }
 
-    fn process_query_block_source(
+    fn process_query_block_source<'b>(
         &mut self,
         source: &ast::QueryBlockSource,
-        parent_context: &NameResolutionContext,
-    ) -> Result<BoxRef, String> {
+        parent_context: Option<&'b NameResolutionContext>,
+    ) -> Result<(NameResolutionContext<'b>, BoxRef), String> {
         match source {
-            ast::QueryBlockSource::Select(select) => {
-                self.process_select(select, Some(&parent_context))
-            }
-            ast::QueryBlockSource::Union(union) => {
-                let left = self.process_query_block_source(&union.left, &parent_context)?;
-                let right = self.process_query_block_source(&union.right, &parent_context)?;
-                Ok(self.make_union_box(union.distinct, vec![left, right]))
-            }
+            ast::QueryBlockSource::Select(select) => self.process_select(select, parent_context),
+            ast::QueryBlockSource::Union(union) => self.process_union(union, parent_context),
             _ => Err(format!("unsupported source")),
         }
+    }
+
+    fn process_union<'b>(
+        &mut self,
+        union: &ast::Union,
+        parent_context: Option<&'b NameResolutionContext>,
+    ) -> Result<(NameResolutionContext<'b>, BoxRef), String> {
+        let current_box = self.make_select_box();
+        let mut current_context =
+            NameResolutionContext::new(Rc::clone(&current_box), parent_context);
+        let (_, left) = self.process_query_block_source(&union.left, parent_context)?;
+        let (_, right) = self.process_query_block_source(&union.right, parent_context)?;
+        let union_box = self.make_union_box(union.distinct, vec![left, right]);
+
+        let q = self.make_quantifier(union_box, &current_box);
+        current_box.borrow_mut().add_quantifier(Rc::clone(&q));
+        current_context.add_quantifier(&q);
+
+        self.add_all_columns(&current_box);
+
+        Ok((current_context, current_box))
     }
 
     fn process_query_block(
@@ -363,26 +378,8 @@ impl<'a> ModelGenerator<'a> {
         query_block: &ast::QueryBlock,
         parent_context: Option<&NameResolutionContext>,
     ) -> Result<BoxRef, String> {
-        let mut current_box = self.make_select_box();
-        let mut current_context =
-            NameResolutionContext::new(Rc::clone(&current_box), parent_context);
-
-        let input_box = self.process_query_block_source(&query_block.source, &current_context)?;
-        let is_select = if let BoxType::Select(_) = &input_box.borrow().box_type {
-            true
-        } else {
-            false
-        };
-        if is_select {
-            current_box = input_box;
-            current_context = NameResolutionContext::new(Rc::clone(&current_box), parent_context);
-        } else {
-            let q = self.make_quantifier(input_box, &current_box);
-            current_box.borrow_mut().add_quantifier(Rc::clone(&q));
-            current_context.add_quantifier(&q);
-
-            self.add_all_columns(&current_box);
-        }
+        let (current_context, current_box) =
+            self.process_query_block_source(&query_block.source, parent_context)?;
 
         if let Some(order_by_clause) = &query_block.order_by_clause {
             let mut keys = Vec::new();
@@ -403,11 +400,11 @@ impl<'a> ModelGenerator<'a> {
         Ok(current_box)
     }
 
-    fn process_select(
+    fn process_select<'b>(
         &mut self,
         select: &ast::Select,
-        parent_context: Option<&NameResolutionContext>,
-    ) -> Result<BoxRef, String> {
+        parent_context: Option<&'b NameResolutionContext>,
+    ) -> Result<(NameResolutionContext<'b>, BoxRef), String> {
         let mut current_box = self.make_select_box();
 
         let mut current_context =
@@ -499,7 +496,7 @@ impl<'a> ModelGenerator<'a> {
 
         self.add_unique_keys(&current_box);
 
-        Ok(current_box)
+        Ok((current_context, current_box))
     }
 
     fn add_all_columns(&mut self, select_box: &BoxRef) {

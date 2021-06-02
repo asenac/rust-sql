@@ -12,34 +12,34 @@ digraph G {
     label="select * from a left join a b on false;
  + EmptyBoxes"
     node [ shape = box ]
-    subgraph cluster1 {
-        label = "Box1:Select"
-        boxhead1 [ shape = record, label="{ 0: Q2.c0 AS A|1: Q2.c1 AS B|2: Q2.c2 AS A|3: Q2.c3 AS B }" ]
+    subgraph cluster0 {
+        label = "Box0:Select"
+        boxhead0 [ shape = record, label="{ 0: Q2.c0 AS A|1: Q2.c1 AS B|2: Q2.c2 AS A|3: Q2.c3 AS B }" ]
         {
             rank = same
             node [ shape = circle ]
             Q2 [ label="Q2(F)" ]
         }
     }
-    subgraph cluster2 {
-        label = "Box2:Select"
-        boxhead2 [ shape = record, label="{ 0: Q0.c0 AS A|1: Q0.c1 AS B|2: NULL AS A|3: NULL AS B }" ]
+    subgraph cluster1 {
+        label = "Box1:Select"
+        boxhead1 [ shape = record, label="{ 0: Q0.c0 AS A|1: Q0.c1 AS B|2: NULL AS A|3: NULL AS B }" ]
         {
             rank = same
             node [ shape = circle ]
             Q0 [ label="Q0(F)" ]
         }
     }
-    subgraph cluster3 {
-        label = "Box3:BaseTable A"
-        boxhead3 [ shape = record, label="{ 0: c0 AS A|1: c1 AS B }" ]
+    subgraph cluster2 {
+        label = "Box2:BaseTable A"
+        boxhead2 [ shape = record, label="{ 0: c0 AS A|1: c1 AS B }" ]
         {
             rank = same
         }
     }
     edge [ arrowhead = none, style = dashed ]
-    Q2 -> boxhead2 [ lhead = cluster2 ]
-    Q0 -> boxhead3 [ lhead = cluster3 ]
+    Q2 -> boxhead1 [ lhead = cluster1 ]
+    Q0 -> boxhead2 [ lhead = cluster2 ]
 }
 
 ----
@@ -55,24 +55,24 @@ digraph G {
     label="select * from a left join a b on false;
  + EmptyBoxes + Merge"
     node [ shape = box ]
-    subgraph cluster1 {
-        label = "Box1:Select"
-        boxhead1 [ shape = record, label="{ 0: Q0.c0 AS A|1: Q0.c1 AS B|2: NULL AS A|3: NULL AS B }" ]
+    subgraph cluster0 {
+        label = "Box0:Select"
+        boxhead0 [ shape = record, label="{ 0: Q0.c0 AS A|1: Q0.c1 AS B|2: NULL AS A|3: NULL AS B }" ]
         {
             rank = same
             node [ shape = circle ]
             Q0 [ label="Q0(F)" ]
         }
     }
-    subgraph cluster3 {
-        label = "Box3:BaseTable A"
-        boxhead3 [ shape = record, label="{ 0: c0 AS A|1: c1 AS B }" ]
+    subgraph cluster2 {
+        label = "Box2:BaseTable A"
+        boxhead2 [ shape = record, label="{ 0: c0 AS A|1: c1 AS B }" ]
         {
             rank = same
         }
     }
     edge [ arrowhead = none, style = dashed ]
-    Q0 -> boxhead3 [ lhead = cluster3 ]
+    Q0 -> boxhead2 [ lhead = cluster2 ]
 }
 
 ----
