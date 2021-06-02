@@ -1,5 +1,5 @@
 ddl
-create table a(a, b, c);
+create table a(a, b, c); create table b(d, e, f);
 ----
 
 query apply=ConstraintLifting
@@ -228,6 +228,182 @@ digraph G {
     Q2 -> boxhead5 [ lhead = cluster5 ]
     Q1 -> boxhead3 [ lhead = cluster3 ]
     Q0 -> boxhead4 [ lhead = cluster4 ]
+}
+
+----
+----
+
+query apply=ConstraintLifting
+select * from (select * from a where a > 10) a left join b on a.a = b.d left join b c on a.a = c.d;
+----
+----
+digraph G {
+    compound = true
+    labeljust = l
+    label="select * from (select * from a where a > 10) a left join b on a.a = b.d left join b c on a.a = c.d;
+ + ConstraintLifting"
+    node [ shape = box ]
+    subgraph cluster1 {
+        label = "Box1:Select"
+        boxhead1 [ shape = record, label="{ 0: Q5.c0 AS A|1: Q5.c1 AS B|2: Q5.c2 AS C|3: Q5.c3 AS D|4: Q5.c4 AS E|5: Q5.c5 AS F|6: Q5.c6 AS D|7: Q5.c7 AS E|8: Q5.c8 AS F }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q5 [ label="Q5(F)" ]
+            edge [ arrowhead = none, style = solid ]
+            Q5 -> Q5 [ label="(Q5.c0) > (10)" ]
+        }
+    }
+    subgraph cluster2 {
+        label = "Box2:OuterJoin"
+        boxhead2 [ shape = record, label="{ 0: Q3.c0 AS A|1: Q3.c1 AS B|2: Q3.c2 AS C|3: Q3.c3 AS D|4: Q3.c4 AS E|5: Q3.c5 AS F|6: Q4.c0 AS D|7: Q4.c1 AS E|8: Q4.c2 AS F }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q3 [ label="Q3(P)" ]
+            Q4 [ label="Q4(F)" ]
+            edge [ arrowhead = none, style = solid ]
+            Q3 -> Q4 [ label="(Q3.c0) = (Q4.c0)" ]
+        }
+    }
+    subgraph cluster8 {
+        label = "Box8:BaseTable B"
+        boxhead8 [ shape = record, label="{ 0: c0 AS D|1: c1 AS E|2: c2 AS F }" ]
+        {
+            rank = same
+        }
+    }
+    subgraph cluster3 {
+        label = "Box3:OuterJoin"
+        boxhead3 [ shape = record, label="{ 0: Q1.c0 AS A|1: Q1.c1 AS B|2: Q1.c2 AS C|3: Q2.c0 AS D|4: Q2.c1 AS E|5: Q2.c2 AS F }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q1 [ label="Q1(P)" ]
+            Q2 [ label="Q2(F)" ]
+            edge [ arrowhead = none, style = solid ]
+            Q1 -> Q2 [ label="(Q1.c0) = (Q2.c0)" ]
+        }
+    }
+    subgraph cluster7 {
+        label = "Box7:BaseTable B"
+        boxhead7 [ shape = record, label="{ 0: c0 AS D|1: c1 AS E|2: c2 AS F }" ]
+        {
+            rank = same
+        }
+    }
+    subgraph cluster5 {
+        label = "Box5:Select"
+        boxhead5 [ shape = record, label="{ 0: Q0.c0 AS A|1: Q0.c1 AS B|2: Q0.c2 AS C }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q0 [ label="Q0(F)" ]
+            edge [ arrowhead = none, style = solid ]
+            Q0 -> Q0 [ label="(Q0.c0) > (10)" ]
+        }
+    }
+    subgraph cluster6 {
+        label = "Box6:BaseTable A"
+        boxhead6 [ shape = record, label="{ 0: c0 AS A|1: c1 AS B|2: c2 AS C }" ]
+        {
+            rank = same
+        }
+    }
+    edge [ arrowhead = none, style = dashed ]
+    Q5 -> boxhead2 [ lhead = cluster2 ]
+    Q3 -> boxhead3 [ lhead = cluster3 ]
+    Q4 -> boxhead8 [ lhead = cluster8 ]
+    Q1 -> boxhead5 [ lhead = cluster5 ]
+    Q2 -> boxhead7 [ lhead = cluster7 ]
+    Q0 -> boxhead6 [ lhead = cluster6 ]
+}
+
+----
+----
+
+query apply=(ConstraintLifting,PushDownPredicates)
+select * from (select * from a where a > 10) a left join b on a.a = b.d left join b c on a.a = c.d;
+----
+----
+digraph G {
+    compound = true
+    labeljust = l
+    label="select * from (select * from a where a > 10) a left join b on a.a = b.d left join b c on a.a = c.d;
+ + ConstraintLifting + PushDownPredicates"
+    node [ shape = box ]
+    subgraph cluster1 {
+        label = "Box1:Select"
+        boxhead1 [ shape = record, label="{ 0: Q5.c0 AS A|1: Q5.c1 AS B|2: Q5.c2 AS C|3: Q5.c3 AS D|4: Q5.c4 AS E|5: Q5.c5 AS F|6: Q5.c6 AS D|7: Q5.c7 AS E|8: Q5.c8 AS F }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q5 [ label="Q5(F)" ]
+        }
+    }
+    subgraph cluster2 {
+        label = "Box2:OuterJoin"
+        boxhead2 [ shape = record, label="{ 0: Q3.c0 AS A|1: Q3.c1 AS B|2: Q3.c2 AS C|3: Q3.c3 AS D|4: Q3.c4 AS E|5: Q3.c5 AS F|6: Q4.c0 AS D|7: Q4.c1 AS E|8: Q4.c2 AS F }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q3 [ label="Q3(P)" ]
+            Q4 [ label="Q4(F)" ]
+            edge [ arrowhead = none, style = solid ]
+            Q3 -> Q4 [ label="(Q3.c0) = (Q4.c0)" ]
+        }
+    }
+    subgraph cluster8 {
+        label = "Box8:BaseTable B"
+        boxhead8 [ shape = record, label="{ 0: c0 AS D|1: c1 AS E|2: c2 AS F }" ]
+        {
+            rank = same
+        }
+    }
+    subgraph cluster3 {
+        label = "Box3:OuterJoin"
+        boxhead3 [ shape = record, label="{ 0: Q1.c0 AS A|1: Q1.c1 AS B|2: Q1.c2 AS C|3: Q2.c0 AS D|4: Q2.c1 AS E|5: Q2.c2 AS F }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q1 [ label="Q1(P)" ]
+            Q2 [ label="Q2(F)" ]
+            edge [ arrowhead = none, style = solid ]
+            Q1 -> Q2 [ label="(Q1.c0) = (Q2.c0)" ]
+        }
+    }
+    subgraph cluster7 {
+        label = "Box7:BaseTable B"
+        boxhead7 [ shape = record, label="{ 0: c0 AS D|1: c1 AS E|2: c2 AS F }" ]
+        {
+            rank = same
+        }
+    }
+    subgraph cluster5 {
+        label = "Box5:Select"
+        boxhead5 [ shape = record, label="{ 0: Q0.c0 AS A|1: Q0.c1 AS B|2: Q0.c2 AS C }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q0 [ label="Q0(F)" ]
+            edge [ arrowhead = none, style = solid ]
+            Q0 -> Q0 [ label="(Q0.c0) > (10)" ]
+        }
+    }
+    subgraph cluster6 {
+        label = "Box6:BaseTable A"
+        boxhead6 [ shape = record, label="{ 0: c0 AS A|1: c1 AS B|2: c2 AS C }" ]
+        {
+            rank = same
+        }
+    }
+    edge [ arrowhead = none, style = dashed ]
+    Q5 -> boxhead2 [ lhead = cluster2 ]
+    Q3 -> boxhead3 [ lhead = cluster3 ]
+    Q4 -> boxhead8 [ lhead = cluster8 ]
+    Q1 -> boxhead5 [ lhead = cluster5 ]
+    Q2 -> boxhead7 [ lhead = cluster7 ]
+    Q0 -> boxhead6 [ lhead = cluster6 ]
 }
 
 ----

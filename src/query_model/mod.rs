@@ -1650,7 +1650,27 @@ impl rewrite_engine::Rule<BoxRef> for ConstraintLiftingRule {
                                 path.push(iq.clone());
                             }
                         }
-                        _ => {}
+                        _ => {
+                            path.push(q.clone());
+                            while let Some(iq) = path.last().cloned() {
+                                let biq = iq.borrow();
+                                let input_box = biq.input_box.borrow();
+                                if let BoxType::OuterJoin = &input_box.box_type {
+                                    path.extend(
+                                        input_box
+                                            .quantifiers
+                                            .iter()
+                                            .filter(|q| {
+                                                q.borrow().quantifier_type
+                                                    == QuantifierType::PreservedForeach
+                                            })
+                                            .cloned(),
+                                    );
+                                } else {
+                                    break;
+                                }
+                            }
+                        }
                     }
                     if let Some(last) = path.pop() {
                         // @todo assert is select
