@@ -2548,6 +2548,45 @@ impl rewrite_engine::Rule<BoxRef> for OuterToInnerJoinRule {
     }
 }
 
+struct OrderByRemovalRule {}
+
+impl OrderByRemovalRule {
+    fn new() -> Self {
+        Self {}
+    }
+}
+
+impl rewrite_engine::Rule<BoxRef> for OrderByRemovalRule {
+    fn name(&self) -> &'static str {
+        "OrderByRemovalRule"
+    }
+    fn apply_top_down(&self) -> bool {
+        false
+    }
+    fn condition(&mut self, obj: &BoxRef) -> bool {
+        let obj = obj.borrow();
+        if let BoxType::Select(s) = &obj.box_type {
+            if s.order_by.is_some()
+                && !obj.columns.iter().any(|c| {
+                    get_quantifiers(&c.expr)
+                        .intersection(&obj.quantifiers)
+                        .next()
+                        .is_some()
+                })
+            {
+                return true;
+            }
+        }
+        false
+    }
+    fn action(&mut self, obj: &mut BoxRef) {
+        let mut obj = obj.borrow_mut();
+        if let BoxType::Select(s) = &mut obj.box_type {
+            s.order_by = None;
+        }
+    }
+}
+
 type BoxRule = dyn rewrite_engine::Rule<BoxRef>;
 type RuleBox = Box<BoxRule>;
 
@@ -2637,6 +2676,7 @@ pub fn rewrite_model(m: &ModelRef) {
         Box::new(GroupByRemovalRule::new()),
         Box::new(PushDownPredicatesRule::new()),
         Box::new(ConstraintPropagationRule::new()),
+        Box::new(OrderByRemovalRule::new()),
         Box::new(OuterToInnerJoinRule::new()),
         Box::new(NormalizationRule::new()),
     ];
@@ -2940,6 +2980,7 @@ mod tests {
                 "GroupByRemoval" => Box::new(GroupByRemovalRule::new()),
                 "Merge" => Box::new(MergeRule::new()),
                 "Normalization" => Box::new(NormalizationRule::new()),
+                "OrderByRemoval" => Box::new(OrderByRemovalRule::new()),
                 "OuterToInnerJoin" => Box::new(OuterToInnerJoinRule::new()),
                 "PushDownPredicates" => Box::new(PushDownPredicatesRule::new()),
                 _ => return Err(format!("invalid rule")),
