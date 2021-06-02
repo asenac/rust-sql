@@ -156,3 +156,69 @@ digraph G {
 
 ----
 ----
+
+query apply=OrderByRemoval
+select * from a order by 1
+----
+----
+digraph G {
+    compound = true
+    labeljust = l
+    label="select * from a order by 1
+ + OrderByRemoval"
+    node [ shape = box ]
+    subgraph cluster0 {
+        label = "Box0:Select"
+        boxhead0 [ shape = record, label="{ 0: Q0.c0 AS A|1: Q0.c1 AS B }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q0 [ label="Q0(F)" ]
+        }
+    }
+    subgraph cluster1 {
+        label = "Box1:BaseTable A"
+        boxhead1 [ shape = record, label="{ 0: c0 AS A|1: c1 AS B }" ]
+        {
+            rank = same
+        }
+    }
+    edge [ arrowhead = none, style = dashed ]
+    Q0 -> boxhead1 [ lhead = cluster1 ]
+}
+
+----
+----
+
+query apply=OrderByRemoval
+select * from a order by 1, a, 2
+----
+----
+digraph G {
+    compound = true
+    labeljust = l
+    label="select * from a order by 1, a, 2
+ + OrderByRemoval"
+    node [ shape = box ]
+    subgraph cluster0 {
+        label = "Box0:Select"
+        boxhead0 [ shape = record, label="{ 0: Q0.c0 AS A|1: Q0.c1 AS B| ORDER Q0.c0 Ascending }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q0 [ label="Q0(F)" ]
+        }
+    }
+    subgraph cluster1 {
+        label = "Box1:BaseTable A"
+        boxhead1 [ shape = record, label="{ 0: c0 AS A|1: c1 AS B }" ]
+        {
+            rank = same
+        }
+    }
+    edge [ arrowhead = none, style = dashed ]
+    Q0 -> boxhead1 [ lhead = cluster1 ]
+}
+
+----
+----

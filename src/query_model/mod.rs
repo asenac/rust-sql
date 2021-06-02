@@ -2548,11 +2548,13 @@ impl rewrite_engine::Rule<BoxRef> for OuterToInnerJoinRule {
     }
 }
 
-struct OrderByRemovalRule {}
+struct OrderByRemovalRule {
+    new_order_by: Option<Vec<KeyItem>>,
+}
 
 impl OrderByRemovalRule {
     fn new() -> Self {
-        Self {}
+        Self { new_order_by: None }
     }
 }
 
@@ -2564,17 +2566,34 @@ impl rewrite_engine::Rule<BoxRef> for OrderByRemovalRule {
         false
     }
     fn condition(&mut self, obj: &BoxRef) -> bool {
+        self.new_order_by = None;
         let obj = obj.borrow();
         if let BoxType::Select(s) = &obj.box_type {
-            if s.order_by.is_some()
-                && !obj.columns.iter().any(|c| {
+            if let Some(order_by) = &s.order_by {
+                if !obj.columns.iter().any(|c| {
                     get_quantifiers(&c.expr)
                         .intersection(&obj.quantifiers)
                         .next()
                         .is_some()
-                })
-            {
-                return true;
+                }) {
+                    return true;
+                }
+                let new_order_by = order_by
+                    .iter()
+                    .filter(|k| {
+                        get_quantifiers(&k.expr)
+                            .intersection(&obj.quantifiers)
+                            .next()
+                            .is_some()
+                    })
+                    .cloned()
+                    .collect::<Vec<_>>();
+                if new_order_by.len() != order_by.len() {
+                    if !new_order_by.is_empty() {
+                        self.new_order_by = Some(new_order_by);
+                    }
+                    return true;
+                }
             }
         }
         false
@@ -2582,7 +2601,8 @@ impl rewrite_engine::Rule<BoxRef> for OrderByRemovalRule {
     fn action(&mut self, obj: &mut BoxRef) {
         let mut obj = obj.borrow_mut();
         if let BoxType::Select(s) = &mut obj.box_type {
-            s.order_by = None;
+            std::mem::swap(&mut s.order_by, &mut self.new_order_by);
+            self.new_order_by = None;
         }
     }
 }
