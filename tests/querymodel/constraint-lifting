@@ -408,3 +408,165 @@ digraph G {
 
 ----
 ----
+
+query apply=ConstraintLifting
+select a, b from a where a > 10 and b < 10 and c = 10 union select a, b from a where a > 10 and b < 20 and c = 10;
+----
+----
+digraph G {
+    compound = true
+    labeljust = l
+    label="select a, b from a where a > 10 and b < 10 and c = 10 union select a, b from a where a > 10 and b < 20 and c = 10;
+ + ConstraintLifting"
+    node [ shape = box ]
+    subgraph cluster0 {
+        label = "Box0:Select"
+        boxhead0 [ shape = record, label="{ 0: Q4.c0 AS A|1: Q4.c1 AS B }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q4 [ label="Q4(F)" ]
+            edge [ arrowhead = none, style = solid ]
+            Q4 -> Q4 [ label="(Q4.c0) > (10)" ]
+        }
+    }
+    subgraph cluster5 {
+        label = "Box5:Union"
+        boxhead5 [ shape = record, label="{ DISTINCT TUPLES|0: Q2.c0 AS A|1: Q2.c1 AS B }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q2 [ label="Q2(F)" ]
+            Q3 [ label="Q3(F)" ]
+        }
+    }
+    subgraph cluster3 {
+        label = "Box3:Select"
+        boxhead3 [ shape = record, label="{ 0: Q1.c0 AS A|1: Q1.c1 AS B }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q1 [ label="Q1(F)" ]
+            edge [ arrowhead = none, style = solid ]
+            Q1 -> Q1 [ label="(Q1.c0) > (10)" ]
+            Q1 -> Q1 [ label="(Q1.c1) < (20)" ]
+            Q1 -> Q1 [ label="(Q1.c2) = (10)" ]
+        }
+    }
+    subgraph cluster4 {
+        label = "Box4:BaseTable A"
+        boxhead4 [ shape = record, label="{ 0: c0 AS A|1: c1 AS B|2: c2 AS C }" ]
+        {
+            rank = same
+        }
+    }
+    subgraph cluster1 {
+        label = "Box1:Select"
+        boxhead1 [ shape = record, label="{ 0: Q0.c0 AS A|1: Q0.c1 AS B }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q0 [ label="Q0(F)" ]
+            edge [ arrowhead = none, style = solid ]
+            Q0 -> Q0 [ label="(Q0.c0) > (10)" ]
+            Q0 -> Q0 [ label="(Q0.c1) < (10)" ]
+            Q0 -> Q0 [ label="(Q0.c2) = (10)" ]
+        }
+    }
+    subgraph cluster2 {
+        label = "Box2:BaseTable A"
+        boxhead2 [ shape = record, label="{ 0: c0 AS A|1: c1 AS B|2: c2 AS C }" ]
+        {
+            rank = same
+        }
+    }
+    edge [ arrowhead = none, style = dashed ]
+    Q4 -> boxhead5 [ lhead = cluster5 ]
+    Q2 -> boxhead1 [ lhead = cluster1 ]
+    Q3 -> boxhead3 [ lhead = cluster3 ]
+    Q1 -> boxhead4 [ lhead = cluster4 ]
+    Q0 -> boxhead2 [ lhead = cluster2 ]
+}
+
+----
+----
+
+query apply=(ConstraintLifting,PushDownPredicates)
+select a, b from a where a > 10 and b < 10 and c = 10 union select a, b from a where a > 10 and b < 20 and c = 10;
+----
+----
+digraph G {
+    compound = true
+    labeljust = l
+    label="select a, b from a where a > 10 and b < 10 and c = 10 union select a, b from a where a > 10 and b < 20 and c = 10;
+ + ConstraintLifting + PushDownPredicates"
+    node [ shape = box ]
+    subgraph cluster0 {
+        label = "Box0:Select"
+        boxhead0 [ shape = record, label="{ 0: Q4.c0 AS A|1: Q4.c1 AS B }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q4 [ label="Q4(F)" ]
+        }
+    }
+    subgraph cluster5 {
+        label = "Box5:Union"
+        boxhead5 [ shape = record, label="{ DISTINCT TUPLES|0: Q2.c0 AS A|1: Q2.c1 AS B }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q2 [ label="Q2(F)" ]
+            Q3 [ label="Q3(F)" ]
+        }
+    }
+    subgraph cluster3 {
+        label = "Box3:Select"
+        boxhead3 [ shape = record, label="{ 0: Q1.c0 AS A|1: Q1.c1 AS B }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q1 [ label="Q1(F)" ]
+            edge [ arrowhead = none, style = solid ]
+            Q1 -> Q1 [ label="(Q1.c0) > (10)" ]
+            Q1 -> Q1 [ label="(Q1.c1) < (20)" ]
+            Q1 -> Q1 [ label="(Q1.c2) = (10)" ]
+        }
+    }
+    subgraph cluster4 {
+        label = "Box4:BaseTable A"
+        boxhead4 [ shape = record, label="{ 0: c0 AS A|1: c1 AS B|2: c2 AS C }" ]
+        {
+            rank = same
+        }
+    }
+    subgraph cluster1 {
+        label = "Box1:Select"
+        boxhead1 [ shape = record, label="{ 0: Q0.c0 AS A|1: Q0.c1 AS B }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q0 [ label="Q0(F)" ]
+            edge [ arrowhead = none, style = solid ]
+            Q0 -> Q0 [ label="(Q0.c0) > (10)" ]
+            Q0 -> Q0 [ label="(Q0.c1) < (10)" ]
+            Q0 -> Q0 [ label="(Q0.c2) = (10)" ]
+        }
+    }
+    subgraph cluster2 {
+        label = "Box2:BaseTable A"
+        boxhead2 [ shape = record, label="{ 0: c0 AS A|1: c1 AS B|2: c2 AS C }" ]
+        {
+            rank = same
+        }
+    }
+    edge [ arrowhead = none, style = dashed ]
+    Q4 -> boxhead5 [ lhead = cluster5 ]
+    Q2 -> boxhead1 [ lhead = cluster1 ]
+    Q3 -> boxhead3 [ lhead = cluster3 ]
+    Q1 -> boxhead4 [ lhead = cluster4 ]
+    Q0 -> boxhead2 [ lhead = cluster2 ]
+}
+
+----
+----

@@ -1659,6 +1659,47 @@ impl ConstraintLiftingRule {
                     }
                 }
             }
+            BoxType::Union => {
+                if let Some(fq) = input_box.first_quantifier() {
+                    let predicates = input_box
+                        .quantifiers
+                        .iter()
+                        // collect the predicates that are liftable from each quantifier
+                        .map(|q| {
+                            let mut v = Vec::new();
+                            Self::collect_liftable_predicates(q, &mut v);
+                            // put them all in terms of the first quantifier
+                            if q.as_ptr() != fq.as_ptr() {
+                                let mut to_replace = BTreeMap::new();
+                                to_replace.insert(q.clone(), fq.clone());
+                                let mut rule = ReplaceQuantifierRule {
+                                    to_replace: &to_replace,
+                                };
+                                v = v
+                                    .into_iter()
+                                    .map(|mut e| {
+                                        rewrite_engine::deep_apply_rule(&mut rule, &mut e);
+                                        e
+                                    })
+                                    .collect();
+                            }
+                            v
+                        })
+                        // find the common predicates
+                        .reduce(|mut a, b| {
+                            a.retain(|x| b.iter().any(|y| x.borrow().is_equiv(&y.borrow())));
+                            a
+                        });
+                    if let Some(predicates) = predicates {
+                        // final lift through the ranging quantifier of the union
+                        liftable_predicates.extend(
+                            predicates
+                                .into_iter()
+                                .filter_map(|x| lift_expression(q, &x)),
+                        );
+                    }
+                }
+            }
             _ => {}
         }
         if let Some(last) = path.pop() {
