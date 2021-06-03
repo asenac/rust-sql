@@ -170,6 +170,17 @@ impl DotGenerator {
                     r.push_str(&format!(" {} {:?}", p.expr.borrow(), p.dir));
                 }
             }
+            BoxType::Values(values) => {
+                for row in values {
+                    r.push_str("| ");
+                    for (i, value) in row.iter().enumerate() {
+                        if i > 0 {
+                            r.push_str(", ");
+                        }
+                        r.push_str(&format!("{}", value.borrow()));
+                    }
+                }
+            }
             _ => {}
         }
         for key in b.unique_keys.iter() {

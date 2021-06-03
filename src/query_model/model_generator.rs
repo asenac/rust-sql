@@ -688,6 +688,28 @@ impl<'a> ModelGenerator<'a> {
 
                 self.add_unique_keys(&select_box);
                 Ok(select_box)
+            }
+            Values(values) => {
+                let mut rows = Vec::with_capacity(values.len());
+                let mut columns = 0;
+                for row in values {
+                    let mut current_row = Vec::with_capacity(row.len());
+                    // @todo valid num columns match
+                    columns = row.len();
+                    for v in row {
+                        current_row.push(self.process_expr(v, current_context)?);
+                    }
+                    rows.push(current_row);
+                }
+                let b = self.make_box(BoxType::Values(rows));
+                for i in 0..columns {
+                    b.borrow_mut().add_column(
+                        Some(format!("column{}", i + 1)),
+                        make_ref(Expr::make_base_column(&b, i)),
+                    );
+                }
+
+                Ok(b)
             } // _ => Err(String::from("not implemented")),
         }
     }

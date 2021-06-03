@@ -60,6 +60,7 @@ pub enum JoinItem {
     Join(JoinType, Box<JoinTerm>, Box<JoinTerm>, Option<JoinCond>),
     DerivedTable(QueryBlock),
     Lateral(QueryBlock),
+    Values(Vec<Vec<Expr>>),
 }
 
 #[derive(Debug, Clone)]
@@ -818,6 +819,9 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
             if let Some(select) = self.parse_select()? {
                 self.expect_substr_and_advance(")")?;
                 Ok(JoinItem::DerivedTable(select))
+            } else if let Some(values) = self.parse_values()? {
+                self.expect_substr_and_advance(")")?;
+                Ok(JoinItem::Values(values))
             } else {
                 let join_term: JoinTerm = self.parse_join_tree()?;
                 self.expect_substr_and_advance(")")?;
@@ -1078,8 +1082,19 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
                 columns,
                 source: InsertSource::Select(select),
             })
+        } else if let Some(rows) = self.parse_values()? {
+            Ok(Insert {
+                target: identifier,
+                columns,
+                source: InsertSource::Values(rows),
+            })
         } else {
-            expect_keyword!(self, Values)?;
+            Err(format!("invalid input source"))
+        }
+    }
+
+    fn parse_values(&mut self) -> Result<Option<Vec<Vec<Expr>>>, String> {
+        if complete_keyword!(self, Values) {
             let mut rows = Vec::new();
             parse_list!(self {
                 self.expect_substr_and_advance("(")?;
@@ -1091,11 +1106,9 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
                 self.expect_substr_and_advance(")")?;
                 rows.push(values);
             });
-            Ok(Insert {
-                target: identifier,
-                columns,
-                source: InsertSource::Values(rows),
-            })
+            Ok(Some(rows))
+        } else {
+            Ok(None)
         }
     }
 

@@ -748,6 +748,7 @@ enum BoxType {
     Grouping(Grouping),
     OuterJoin,
     Union,
+    Values(Vec<Vec<ExprRef>>),
 }
 
 /// Conventions used so far:
@@ -934,6 +935,7 @@ impl QGBox {
             BoxType::BaseTable(_) => "BaseTable",
             BoxType::Grouping(_) => "Grouping",
             BoxType::Union => "Union",
+            BoxType::Values(..) => "Values",
         }
     }
 
