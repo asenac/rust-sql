@@ -750,15 +750,42 @@ enum BoxType {
     Union,
 }
 
+/// Conventions used so far:
+///
+///  * Grouping:
+///    - A Grouping box is always owned by a Select box
+///    - A Grouping box always have a Select box as its only input
+///    - The projection of a Grouping box only contains columns, either appear in the
+///      grouping key or functionally depend on columns in the grouping key and
+///      aggregate functions which parameter must be column references from the input
+///      box.
+///  * Union
+///    - A Union box is either owned by another Union box or a Select box
+///    - A Grouping box always have Select boxes as its inputs
+///    - The projection of a Union box does never re-order columns and cannot contain
+///      computed expressions.
+///  * OuterJoin
+///    - A OuterJoin box is either owned by another OuterJoin box or a Select box
+///    - The projection of an OuterJoin box cannot contain computed expressions.
+///
+///  However, there is no reason we could not relax them a bit.
 struct QGBox {
+    /// Weak pointer to the model that ultimately owns the box.
     model: ModelWeakRef,
+    /// Uniquely identifies the box within the model.
     id: i32,
     box_type: BoxType,
+    /// The projection of the box.
     columns: Vec<Column>,
+    /// Set of input quantifiers.
     quantifiers: QuantifierSet,
+    /// Quantifiers owning this box.
     ranging_quantifiers: Vec<QuantifierWeakRef>,
+    /// Optional predicates. Only allowed in Select and OuterJoin boxes.
     predicates: Option<Vec<ExprRef>>,
+    /// Distinct Operation. Only allowed in Select and Union Boxes.
     distinct_operation: DistinctOperation,
+    /// Each key is a group of column positions within the projection of this box.
     unique_keys: Vec<Vec<usize>>,
 }
 
@@ -1212,10 +1239,12 @@ impl QGBox {
         self.quantifiers.iter().cloned().next()
     }
 
+    /// True if this box always returns unique tuples.
     fn distinct_tuples(&self) -> bool {
         self.distinct_operation == DistinctOperation::Enforce || !self.unique_keys.is_empty()
     }
 
+    /// Adds the columns from all non subquery quantifiers to the projection of this box.
     fn add_all_columns(&mut self) {
         let quantifiers = self.quantifiers.clone();
         for q in quantifiers {
