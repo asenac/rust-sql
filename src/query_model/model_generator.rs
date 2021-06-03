@@ -326,9 +326,10 @@ impl<'a> ModelGenerator<'a> {
         let current_box = self.make_select_box();
         let mut current_context =
             NameResolutionContext::new(Rc::clone(&current_box), parent_context);
-        let (_, left) = self.process_query_block_source(&union.left, parent_context)?;
-        let (_, right) = self.process_query_block_source(&union.right, parent_context)?;
-        let union_box = self.make_union_box(union.distinct, vec![left, right]);
+        let mut inputs = Vec::new();
+        self.add_union_branch(union.distinct, &union.left, parent_context, &mut inputs)?;
+        self.add_union_branch(union.distinct, &union.right, parent_context, &mut inputs)?;
+        let union_box = self.make_union_box(union.distinct, inputs);
 
         let q = self.make_quantifier(union_box, &current_box);
         current_box.borrow_mut().add_quantifier(Rc::clone(&q));
@@ -337,6 +338,30 @@ impl<'a> ModelGenerator<'a> {
         self.add_all_columns(&current_box);
 
         Ok((current_context, current_box))
+    }
+
+    fn add_union_branch(
+        &mut self,
+        distinct: bool,
+        source: &ast::QueryBlockSource,
+        parent_context: Option<&NameResolutionContext>,
+        inputs: &mut Vec<BoxRef>,
+    ) -> Result<(), String> {
+        match source {
+            ast::QueryBlockSource::Select(select) => {
+                inputs.push(self.process_select(select, parent_context)?.1);
+            }
+            ast::QueryBlockSource::Union(union) if distinct || union.distinct == distinct => {
+                self.add_union_branch(distinct, &union.left, parent_context, inputs)?;
+                self.add_union_branch(distinct, &union.right, parent_context, inputs)?;
+            }
+            ast::QueryBlockSource::Union(union) => {
+                inputs.push(self.process_union(union, parent_context)?.1);
+            }
+            _ => return Err(format!("unsupported source")),
+        }
+
+        Ok(())
     }
 
     fn process_query_block(
