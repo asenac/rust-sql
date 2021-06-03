@@ -862,6 +862,40 @@ impl QGBox {
         }
     }
 
+    /// Return the underlying input box if this is a select box that doesn't perform
+    /// any operation.
+    fn is_dummy_select(&self) -> Option<QuantifierRef> {
+        if let BoxType::Select(select) = &self.box_type {
+            if self.quantifiers.len() == 1
+                && select.order_by.is_none()
+                && select.limit.is_none()
+                && !self.has_predicates()
+                && self.distinct_operation != DistinctOperation::Enforce
+            {
+                let input_cols = self
+                    .first_quantifier()
+                    .unwrap()
+                    .borrow()
+                    .input_box
+                    .borrow()
+                    .columns
+                    .len();
+                if self.columns.len() == input_cols
+                    && self.columns.iter().enumerate().all(|(i, c)| {
+                        if let ExprType::ColumnReference(c) = &c.expr.borrow().expr_type {
+                            c.position == i
+                        } else {
+                            false
+                        }
+                    })
+                {
+                    return self.first_quantifier();
+                }
+            }
+        }
+        None
+    }
+
     fn is_empty_box(&self) -> bool {
         self.is_select() && self.quantifiers.is_empty()
     }
@@ -1949,6 +1983,21 @@ impl rewrite_engine::Rule<BoxRef> for MergeRule {
                     }
                 }
             }
+            // @todo this is best handled with a separate rule
+            // BoxType::Union => {
+            //     let to_replace = borrowed_obj.quantifiers.iter().filter_map(|q| {
+            //         if let Some(iq) = q.borrow().input_box.borrow().is_dummy_select() {
+            //             let biq = iq.borrow();
+            //             let ib = biq.input_box.borrow();
+            //             if let BoxType::Union = &ib.box_type {
+            //                 if ib.distinct_operation == borrowed_obj.distinct_operation {
+            //                     return Some((q, iq.clone()));
+            //                 }
+            //             }
+            //         }
+            //         None
+            //     });
+            // }
             _ => {}
         }
         !self.to_merge.is_empty()
