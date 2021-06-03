@@ -2170,8 +2170,23 @@ impl rewrite_engine::Rule<BoxRef> for EmptyBoxesRule {
     }
     fn condition(&mut self, obj: &BoxRef) -> bool {
         let obj = obj.borrow();
-        match obj.box_type {
-            BoxType::Select(..) | BoxType::OuterJoin => obj
+        match &obj.box_type {
+            BoxType::Select(s) => {
+                if let Some(limit) = &s.limit {
+                    let limit = limit.borrow();
+                    if let ExprType::Literal(l) = &limit.expr_type {
+                        match l {
+                            Value::BigInt(0) => return true,
+                            _ => {}
+                        }
+                    }
+                }
+
+                obj.predicates
+                    .iter()
+                    .any(|x| x.iter().any(|x| x.borrow().is_false_predicate()))
+            }
+            BoxType::OuterJoin => obj
                 .predicates
                 .iter()
                 .any(|x| x.iter().any(|x| x.borrow().is_false_predicate())),
