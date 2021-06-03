@@ -862,6 +862,10 @@ impl QGBox {
         }
     }
 
+    fn is_empty_box(&self) -> bool {
+        self.is_select() && self.quantifiers.is_empty()
+    }
+
     fn get_box_type_str(&self) -> &'static str {
         match self.box_type {
             BoxType::Select(_) => "Select",
@@ -2186,6 +2190,10 @@ impl rewrite_engine::Rule<BoxRef> for EmptyBoxesRule {
                     .iter()
                     .any(|x| x.iter().any(|x| x.borrow().is_false_predicate()))
             }
+            BoxType::Union => obj
+                .quantifiers
+                .iter()
+                .any(|q| q.borrow().input_box.borrow().is_empty_box()),
             BoxType::OuterJoin => obj
                 .predicates
                 .iter()
@@ -2193,8 +2201,8 @@ impl rewrite_engine::Rule<BoxRef> for EmptyBoxesRule {
             _ => false,
         }
     }
-    fn action(&mut self, obj: &mut BoxRef) {
-        let mut obj = obj.borrow_mut();
+    fn action(&mut self, obj_ref: &mut BoxRef) {
+        let mut obj = obj_ref.borrow_mut();
         match &obj.box_type {
             BoxType::Select(..) => {
                 obj.quantifiers.clear();
@@ -2234,6 +2242,47 @@ impl rewrite_engine::Rule<BoxRef> for EmptyBoxesRule {
                     }
                 };
                 obj.visit_expressions(&mut f);
+            }
+            BoxType::Union => {
+                let mut to_preserve: QuantifierSet = obj
+                    .quantifiers
+                    .iter()
+                    .filter(|q| !q.borrow().input_box.borrow().is_empty_box())
+                    .cloned()
+                    .collect();
+                match to_preserve.len() {
+                    0 => {
+                        obj.quantifiers.clear();
+                        obj.box_type = BoxType::Select(Select::new());
+                        obj.predicates = None;
+                        for c in obj.columns.iter_mut() {
+                            c.expr = make_ref(Expr::make_null());
+                        }
+                    }
+                    _ => {
+                        let old_first = obj.first_quantifier().expect("invalid union");
+
+                        if !to_preserve.contains(&old_first) {
+                            let new_first = to_preserve.iter().next().unwrap().clone();
+                            let to_replace = {
+                                let mut t = BTreeMap::new();
+                                t.insert(old_first.clone(), new_first.clone());
+                                t
+                            };
+                            let mut rule = ReplaceQuantifierRule {
+                                to_replace: &to_replace,
+                            };
+                            let mut f = |e: &mut ExprRef| {
+                                rewrite_engine::deep_apply_rule(&mut rule, e);
+                            };
+                            obj.visit_expressions(&mut f);
+                        }
+                        if to_preserve.len() == 1 {
+                            obj.box_type = BoxType::Select(Select::new());
+                        }
+                        std::mem::swap(&mut obj.quantifiers, &mut to_preserve);
+                    }
+                }
             }
             _ => {}
         }
