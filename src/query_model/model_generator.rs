@@ -348,17 +348,14 @@ impl<'a> ModelGenerator<'a> {
         inputs: &mut Vec<BoxRef>,
     ) -> Result<(), String> {
         match source {
-            ast::QueryBlockSource::Select(select) => {
-                inputs.push(self.process_select(select, parent_context)?.1);
-            }
             ast::QueryBlockSource::Union(union) if distinct || union.distinct == distinct => {
                 self.add_union_branch(distinct, &union.left, parent_context, inputs)?;
                 self.add_union_branch(distinct, &union.right, parent_context, inputs)?;
             }
-            ast::QueryBlockSource::Union(union) => {
-                inputs.push(self.process_union(union, parent_context)?.1);
+            _ => {
+                let (_, branch) = self.process_query_block_source(source, parent_context)?;
+                inputs.push(branch);
             }
-            _ => return Err(format!("unsupported source")),
         }
 
         Ok(())
