@@ -875,8 +875,13 @@ impl QGBox {
         }
     }
 
-    fn add_unique_key(&mut self, key: Vec<usize>) {
+    fn add_unique_key(&mut self, mut key: Vec<usize>) {
+        // @todo consider using sets
+        key.sort();
+        key.dedup();
         self.unique_keys.push(key);
+        self.unique_keys.sort();
+        self.unique_keys.dedup();
     }
 
     fn has_predicates(&self) -> bool {
