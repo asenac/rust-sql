@@ -1663,10 +1663,11 @@ impl rewrite_engine::Rule<BoxRef> for ConstraintPropagationRule {
         let obj = obj.borrow();
         if let BoxType::Select(_) = &obj.box_type {
             if let Some(predicates) = &obj.predicates {
-                for p in predicates.iter() {
-                    let p = p.borrow();
+                let mut pred_to_process = Vec::new();
+                for pred in predicates.iter() {
+                    let p = pred.borrow();
                     match &p.expr_type {
-                        ExprType::Cmp(_) => {
+                        ExprType::Cmp(c) => {
                             if let Some(operands) = &p.operands {
                                 for o in operands.iter().filter_map(|e| {
                                     let x = e.borrow();
@@ -1680,9 +1681,91 @@ impl rewrite_engine::Rule<BoxRef> for ConstraintPropagationRule {
                                     let not = make_ref(Expr::make_not(is_null));
                                     self.new_predicates.push(not);
                                 }
+                                if *c != CmpOpType::Eq
+                                    || !operands.iter().all(|x| x.borrow().is_column_ref())
+                                {
+                                    pred_to_process.push(pred.clone());
+                                }
                             }
                         }
-                        _ => {}
+                        _ => {
+                            pred_to_process.push(pred.clone());
+                        }
+                    }
+                }
+
+                if !pred_to_process.is_empty() {
+                    let equivalences = compute_class_equivalence(predicates);
+                    let quantifier_classes = equivalences
+                        .iter()
+                        .map(|((q, p), c)| ((*q, *c), *p))
+                        .collect::<HashMap<(i32, usize), usize>>();
+                    for p in pred_to_process.iter() {
+                        let mut column_references = BTreeMap::new();
+                        collect_column_references(p, &mut column_references);
+                        // collect all the classes in the predicate
+                        let predicate_classes = column_references
+                            .iter()
+                            .map(|(q, m)| {
+                                let qid: i32 = q.borrow().id;
+                                m.keys().map(move |k| (qid, *k))
+                            })
+                            .flatten()
+                            .map(|(q, p)| {
+                                let cr: (i32, usize) = (q, p);
+                                quantifier_classes.get(&cr)
+                            })
+                            .collect::<Vec<_>>();
+                        // all column references must have a class
+                        if !predicate_classes.iter().all(|x| x.is_some()) {
+                            continue;
+                        }
+                        let predicate_classes = predicate_classes
+                            .into_iter()
+                            .map(|x| x.unwrap())
+                            .collect::<Vec<_>>();
+                        // quantifiers with all the classes in the predicate
+                        let quantifiers = obj
+                            .quantifiers
+                            .iter()
+                            .filter(|q| {
+                                let qid = q.borrow().id;
+                                predicate_classes
+                                    .iter()
+                                    .all(|c| quantifier_classes.get(&(qid, **c)).is_some())
+                            })
+                            .collect::<Vec<_>>();
+                        if quantifiers.len() > 1 {
+                            for q in quantifiers {
+                                let qid = q.borrow().id;
+                                let p = deep_clone(p);
+                                let mut column_references = BTreeMap::new();
+                                collect_column_references(&p, &mut column_references);
+                                column_references
+                                    .into_iter()
+                                    .map(|(q, m)| {
+                                        m.into_iter()
+                                            .map(|(p, v)| (q.borrow().id, p, v))
+                                            .collect::<Vec<_>>()
+                                    })
+                                    .flatten()
+                                    .map(|(q, p, v)| (equivalences.get(&(q, p)).unwrap(), v))
+                                    .for_each(|(c, v)| {
+                                        for e in v {
+                                            if let ExprType::ColumnReference(cr) =
+                                                &mut e.borrow_mut().expr_type
+                                            {
+                                                cr.quantifier = q.clone();
+                                                cr.position =
+                                                    *quantifier_classes.get(&(qid, *c)).unwrap();
+                                            } else {
+                                                panic!();
+                                            }
+                                        }
+                                    });
+                                self.new_predicates.push(p);
+                            }
+                        }
                     }
                 }
             }
