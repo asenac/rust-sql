@@ -2156,3 +2156,9 @@ digraph G {
 
 ----
 ----
+
+# regression test
+query
+with b(b) as (select a from a) select a from (values(1, 2));
+----
+Err: column A not found

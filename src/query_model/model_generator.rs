@@ -378,7 +378,6 @@ impl<'a> ModelGenerator<'a> {
                     let other_box = self.make_select_box();
                     let q = self.make_quantifier(select_box, &other_box);
                     other_box.borrow_mut().add_quantifier(Rc::clone(&q));
-                    current_context.add_quantifier(&q);
                     for (i, c) in columns.iter().enumerate() {
                         let expr = Expr::make_column_ref(Rc::clone(&q), i);
                         other_box
