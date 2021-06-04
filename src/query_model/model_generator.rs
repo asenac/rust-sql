@@ -539,6 +539,8 @@ impl<'a> ModelGenerator<'a> {
         let alias = if let Some(table_alias) = &join_term.alias {
             Some(table_alias.alias.clone())
         } else if let TableRef(s) = &join_term.join_item {
+            // needed for CTEs, otherwise we'd need to add another select box on top
+            // the CTEs with a single quantifier with the name of the CTE
             Some(s.get_name().to_string())
         } else {
             None
