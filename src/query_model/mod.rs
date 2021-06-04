@@ -2234,6 +2234,78 @@ impl rewrite_engine::Rule<BoxRef> for ColumnRemovalRule {
 }
 
 //
+// EquivalentColumns
+//
+
+struct EquivalentColumnsRule {
+    equivalent_columns: BTreeMap<QuantifierRef, HashMap<usize, usize>>,
+}
+
+impl EquivalentColumnsRule {
+    fn new() -> Self {
+        Self {
+            equivalent_columns: BTreeMap::new(),
+        }
+    }
+}
+
+impl rewrite_engine::Rule<BoxRef> for EquivalentColumnsRule {
+    fn name(&self) -> &'static str {
+        "EquivalentColumnsRule"
+    }
+    fn apply_top_down(&self) -> bool {
+        false
+    }
+    fn condition(&mut self, obj: &BoxRef) -> bool {
+        self.equivalent_columns.clear();
+        let bo = obj.borrow();
+        for q in bo.quantifiers.iter() {
+            let bq = q.borrow();
+            let ib = bq.input_box.borrow();
+            let mut eq_cols = HashMap::new();
+            for i in 0..ib.columns.len() {
+                if !eq_cols.contains_key(&i) {
+                    let ie = ib.columns[i].expr.borrow();
+                    for j in i + 1..ib.columns.len() {
+                        let je = ib.columns[j].expr.borrow();
+                        if ie.is_equiv(&je) {
+                            eq_cols.insert(j, i);
+                        }
+                    }
+                }
+            }
+            // @todo for select boxes use also equivalence classes
+            if !eq_cols.is_empty() {
+                self.equivalent_columns.insert(q.clone(), eq_cols);
+            }
+        }
+        !self.equivalent_columns.is_empty()
+    }
+    fn action(&mut self, obj: &mut BoxRef) {
+        // collect all column references under `obj` to be able to replace the
+        // column references to the quantifiers being removed from within correlated
+        // siblings.
+        let mut column_references = BTreeMap::new();
+        collect_column_references_recursively(obj.clone(), &mut column_references);
+        for (q, eq_cols) in self.equivalent_columns.iter_mut() {
+            if let Some(col_refs) = column_references.get(q) {
+                for (old, new) in eq_cols {
+                    if let Some(col_refs) = col_refs.get(old) {
+                        for col_ref in col_refs {
+                            let mut bc = col_ref.borrow_mut();
+                            if let ExprType::ColumnReference(c) = &mut bc.expr_type {
+                                c.position = *new;
+                            } // panic?
+                        }
+                    }
+                }
+            }
+        }
+        self.equivalent_columns.clear();
+    }
+}
+
+//
 // EmptyBoxes
 //
 
@@ -2833,6 +2905,7 @@ fn apply_rules(m: &ModelRef, rules: &mut Vec<RuleBox>) {
 pub fn rewrite_model(m: &ModelRef) {
     let mut rules: Vec<RuleBox> = vec![
         Box::new(MergeRule::new()),
+        Box::new(EquivalentColumnsRule::new()),
         Box::new(ColumnRemovalRule::new()),
         Box::new(EmptyBoxesRule::new()),
         Box::new(ConstantLiftingRule::new()),
