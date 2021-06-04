@@ -537,8 +537,8 @@ impl<'a> ModelGenerator<'a> {
         current_context: &mut NameResolutionContext,
     ) -> Result<QuantifierRef, String> {
         use ast::JoinItem::*;
-        let alias = if join_term.alias.is_some() {
-            join_term.alias.clone()
+        let alias = if let Some(table_alias) = &join_term.alias {
+            Some(table_alias.alias.clone())
         } else if let TableRef(s) = &join_term.join_item {
             Some(s.get_name().to_string())
         } else {
@@ -548,7 +548,7 @@ impl<'a> ModelGenerator<'a> {
         // note: if the quantifier has an alias, the quantifiers within the join
         // are hidden for name resolution purposes... more or less.
         // @todo USING-clause may be problematic
-        if let Some(alias) = alias {
+        let q = if let Some(alias) = alias {
             let quantifiers = current_context.save_quantifiers();
             let b = self.process_join_item(&join_term.join_item, current_context)?;
             let q = self.make_quantifier(b, &select_box);
@@ -556,7 +556,7 @@ impl<'a> ModelGenerator<'a> {
             current_context.restore_quantifiers(quantifiers);
             current_context.add_quantifier(&q);
             select_box.borrow_mut().add_quantifier(Rc::clone(&q));
-            Ok(q)
+            q
         } else {
             let b = self.process_join_item(&join_term.join_item, current_context)?;
             let q = self.make_quantifier(b, &select_box);
@@ -569,8 +569,9 @@ impl<'a> ModelGenerator<'a> {
                 _ => {}
             }
             select_box.borrow_mut().add_quantifier(Rc::clone(&q));
-            Ok(q)
-        }
+            q
+        };
+        Ok(q)
     }
 
     fn process_join_item(
@@ -704,7 +705,7 @@ impl<'a> ModelGenerator<'a> {
                 let b = self.make_box(BoxType::Values(rows));
                 for i in 0..columns {
                     b.borrow_mut().add_column(
-                        Some(format!("column{}", i + 1)),
+                        Some(format!("COLUMN{}", i + 1)),
                         make_ref(Expr::make_base_column(&b, i)),
                     );
                 }

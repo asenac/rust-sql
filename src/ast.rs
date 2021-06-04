@@ -64,9 +64,15 @@ pub enum JoinItem {
 }
 
 #[derive(Debug, Clone)]
+pub struct TableAlias {
+    pub alias: String,
+    pub columns: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone)]
 pub struct JoinTerm {
     pub join_item: JoinItem,
-    pub alias: Option<String>,
+    pub alias: Option<TableAlias>,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -835,15 +841,32 @@ impl<'a, T: Iterator<Item = &'a lexer::Lexeme<'a>>> ParserImpl<'a, T> {
     fn parse_join_term(&mut self) -> Result<JoinTerm, String> {
         let join_item: JoinItem = self.parse_join_item()?;
         let alias: Option<String>;
-        if complete_keyword!(self, As) {
-            alias = self.parse_name();
-            if !alias.is_some() {
-                return Err(String::from("expected table alias"));
+        let required = complete_keyword!(self, As);
+        alias = self.parse_name();
+        if required && !alias.is_some() {
+            return Err(String::from("expected table alias"));
+        }
+        let alias = if let Some(alias) = alias {
+            if self.complete_substr_and_advance("(") {
+                let mut columns = Vec::new();
+                parse_list!(self {
+                    let name = self.expect_name()?;
+                    columns.push(name);
+                });
+                self.expect_substr_and_advance(")")?;
+                Some(TableAlias {
+                    alias,
+                    columns: Some(columns),
+                })
+            } else {
+                Some(TableAlias {
+                    alias,
+                    columns: None,
+                })
             }
         } else {
-            // optional alias
-            alias = self.parse_name();
-        }
+            None
+        };
         Ok(JoinTerm { join_item, alias })
     }
 
