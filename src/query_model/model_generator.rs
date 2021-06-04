@@ -549,29 +549,55 @@ impl<'a> ModelGenerator<'a> {
         // note: if the quantifier has an alias, the quantifiers within the join
         // are hidden for name resolution purposes... more or less.
         // @todo USING-clause may be problematic
-        let q = if let Some(alias) = alias {
+        let mut add_to_context = false;
+        let mut input_box = if alias.is_some() {
             let quantifiers = current_context.save_quantifiers();
             let b = self.process_join_item(&join_term.join_item, current_context)?;
-            let q = self.make_quantifier(b, &select_box);
-            q.borrow_mut().set_alias(alias);
             current_context.restore_quantifiers(quantifiers);
-            current_context.add_quantifier(&q);
-            select_box.borrow_mut().add_quantifier(Rc::clone(&q));
-            q
+            add_to_context = true;
+            b
         } else {
-            let b = self.process_join_item(&join_term.join_item, current_context)?;
-            let q = self.make_quantifier(b, &select_box);
             match &join_term.join_item {
                 DerivedTable(_) | Lateral(_) => {
-                    // we need to add the quantifier anyway, since derived relations
-                    // use a child context that is discarded
-                    current_context.add_quantifier(&q);
+                    add_to_context = true;
                 }
                 _ => {}
             }
-            select_box.borrow_mut().add_quantifier(Rc::clone(&q));
-            q
+            self.process_join_item(&join_term.join_item, current_context)?
         };
+
+        // column aliases
+        if let Some(alias) = &join_term.alias {
+            if let Some(columns) = &alias.columns {
+                let new_box = self.make_select_box();
+                let q = self.make_quantifier(input_box.clone(), &new_box);
+
+                if columns.len() != input_box.borrow().columns.len() {
+                    return Err(format!("unexpected number of columns"));
+                }
+                // borrow scope
+                {
+                    let mut bn = new_box.borrow_mut();
+                    for (i, name) in columns.iter().enumerate() {
+                        let c = make_ref(Expr::make_column_ref(q.clone(), i));
+                        bn.add_column(Some(name.clone()), c);
+                    }
+                    bn.add_quantifier(q);
+                }
+
+                input_box = new_box;
+            }
+        }
+
+        let q = self.make_quantifier(input_box, &select_box);
+        if let Some(alias) = alias {
+            q.borrow_mut().set_alias(alias);
+        }
+
+        if add_to_context {
+            current_context.add_quantifier(&q);
+        }
+        select_box.borrow_mut().add_quantifier(Rc::clone(&q));
         Ok(q)
     }
 
