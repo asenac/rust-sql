@@ -419,6 +419,19 @@ impl Expr {
             }
         }
     }
+
+    pub fn visit_mut<F, E>(&mut self, f: &mut F) -> Result<(), E>
+    where
+        F: FnMut(&mut Expr) -> Result<(), E>,
+    {
+        f(self)?;
+        if let Some(operands) = &mut self.operands {
+            for o in operands {
+                o.borrow_mut().visit_mut(f)?;
+            }
+        }
+        Ok(())
+    }
 }
 
 impl fmt::Display for Expr {
