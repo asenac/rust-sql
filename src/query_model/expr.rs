@@ -121,6 +121,7 @@ impl Commutate for CmpOpType {
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ExprType {
+    Column(usize),
     BaseColumn(BaseColumn),
     ColumnReference(ColumnReference),
     InList,
@@ -242,6 +243,7 @@ impl Expr {
 
     pub fn is_equiv(&self, o: &Self) -> bool {
         match (&self.expr_type, &o.expr_type) {
+            (ExprType::Column(l), ExprType::Column(r)) => l == r,
             (ExprType::BaseColumn(l), ExprType::BaseColumn(r)) => l == r,
             (ExprType::Literal(l), ExprType::Literal(r)) => l == r,
             (ExprType::ColumnReference(l), ExprType::ColumnReference(r)) => {
@@ -380,7 +382,8 @@ impl Expr {
             }
         }
         match &mut self.expr_type {
-            ExprType::BaseColumn(_)
+            ExprType::Column(_)
+            | ExprType::BaseColumn(_)
             | ExprType::ColumnReference(_)
             | ExprType::Literal(_)
             | ExprType::Parameter(_)
@@ -434,6 +437,7 @@ impl fmt::Display for Expr {
             }
             ColumnReference(c) => write!(f, "Q{}.c{}", c.quantifier.borrow().id, c.position),
             Parameter(c) => write!(f, "?:{}", c),
+            Column(c) => write!(f, "c{}", c),
             // @todo print the column name
             BaseColumn(c) => write!(f, "c{}", c.position),
             Literal(c) => write!(f, "{}", c),
