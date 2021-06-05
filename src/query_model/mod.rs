@@ -459,7 +459,8 @@ impl rewrite_engine::Rule<BoxRef> for ConstraintPropagationRule {
                 // note: insert the predicates in reliable order
                 self.new_predicates.sort();
                 self.new_predicates.dedup();
-                self.new_predicates.retain(|p| !predicates.contains(p));
+                self.new_predicates
+                    .retain(|p| !p.borrow().is_true_predicate() && !predicates.contains(p));
             }
         }
         !self.new_predicates.is_empty()

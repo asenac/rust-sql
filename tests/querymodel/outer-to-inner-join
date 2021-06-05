@@ -253,8 +253,6 @@ digraph G {
             Q2 [ label="Q2(F)" ]
             edge [ arrowhead = none, style = solid ]
             Q2 -> Q2 [ label="(Q2.c3) = (Q2.c0)" ]
-            Q2 -> Q2 [ label="(Q2.c0) = (Q2.c0)" ]
-            Q2 -> Q2 [ label="(Q2.c3) = (Q2.c3)" ]
             Q2 -> Q2 [ label="NOT ((Q2.c0) IS NULL)" ]
             Q2 -> Q2 [ label="NOT ((Q2.c3) IS NULL)" ]
         }
@@ -312,8 +310,6 @@ digraph G {
             Q1 [ label="Q1(F)" ]
             edge [ arrowhead = none, style = solid ]
             Q0 -> Q1 [ label="(Q1.c1) = (Q0.c0)" ]
-            Q0 -> Q0 [ label="(Q0.c0) = (Q0.c0)" ]
-            Q1 -> Q1 [ label="(Q1.c1) = (Q1.c1)" ]
             Q0 -> Q0 [ label="NOT ((Q0.c0) IS NULL)" ]
             Q1 -> Q1 [ label="NOT ((Q1.c1) IS NULL)" ]
         }

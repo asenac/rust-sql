@@ -322,6 +322,27 @@ impl Expr {
         }
     }
 
+    pub fn is_true_predicate(&self) -> bool {
+        match &self.expr_type {
+            ExprType::Literal(c) => {
+                if let Value::Boolean(true) = c {
+                    true
+                } else {
+                    false
+                }
+            }
+            ExprType::Cmp(c) if *c == CmpOpType::Eq => {
+                if let Some(operands) = &self.operands {
+                    operands.iter().dedup().count() == 1
+                } else {
+                    // panic!
+                    false
+                }
+            }
+            _ => false,
+        }
+    }
+
     pub fn is_false_predicate(&self) -> bool {
         match &self.expr_type {
             ExprType::Literal(c) => {
