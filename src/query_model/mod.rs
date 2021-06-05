@@ -1696,7 +1696,9 @@ pub fn rewrite_model(m: &ModelRef) {
         Box::new(ConstraintPropagationRule::new()),
         Box::new(OrderByRemovalRule::new()),
         Box::new(OuterToInnerJoinRule::new()),
+        // cleanup
         Box::new(NormalizationRule::new()),
+        Box::new(PushDownPredicatesRule::new()),
     ];
     for _ in 0..5 {
         apply_rules(m, &mut rules);
