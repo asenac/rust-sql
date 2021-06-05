@@ -1,9 +1,10 @@
 use crate::ast;
+use crate::ast::JoinType;
 use crate::metadata::*;
 use crate::query_model::{
     make_ref, BoxRef, BoxType, CmpOpType, Column, DistinctOperation, Expr, ExprRef, ExprType,
-    Grouping, JoinType, KeyItem, LogicalExprType, Model, ModelRef, QGBox, Quantifier,
-    QuantifierRef, QuantifierType, Select, Value,
+    Grouping, KeyItem, LogicalExprType, Model, ModelRef, QGBox, Quantifier, QuantifierRef,
+    QuantifierType, Select, Value,
 };
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
