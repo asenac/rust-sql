@@ -473,6 +473,8 @@ impl rewrite_engine::Rule<BoxRef> for ConstraintPropagationRule {
 }
 
 /// Note: this rule is meant to be used within the same traversal as ConstraintPropagation.
+/// A pass of PushDownPredicatesRules is needed afterwards for cleaning up redudant
+/// predicates.
 struct ConstraintLiftingRule {
     new_predicates: Vec<ExprRef>,
 }
@@ -484,6 +486,8 @@ impl ConstraintLiftingRule {
         }
     }
 
+    /// Collect the predicates that can be lifted from boxes under `q` without
+    /// extending projections.
     fn collect_liftable_predicates(q: &QuantifierRef, liftable_predicates: &mut Vec<ExprRef>) {
         let bq = q.borrow();
         let input_box = bq.input_box.clone();
@@ -606,6 +610,7 @@ impl rewrite_engine::Rule<BoxRef> for ConstraintLiftingRule {
     }
 }
 
+/// This is a version of the E-to-F rule in the paper.
 struct SemiJoinRemovalRule {
     to_convert: QuantifierSet,
 }
@@ -666,6 +671,8 @@ impl rewrite_engine::Rule<BoxRef> for SemiJoinRemovalRule {
 // GroupByRemoval
 //
 
+/// Remove a GROUP BY operator with a key that forms a unique key in the
+/// input quantifier.
 struct GroupByRemovalRule {}
 
 impl GroupByRemovalRule {
@@ -686,7 +693,7 @@ impl rewrite_engine::Rule<BoxRef> for GroupByRemovalRule {
         // note: this should be an assert
         if obj.quantifiers.len() == 1 {
             if let BoxType::Grouping(grouping) = &obj.box_type {
-                // no aggregate function is used. note: could this be relazed?
+                // no aggregate function is used. note: could this be relaxed?
                 // sum(a) = a if a is unique, for example.
                 if !obj
                     .columns
