@@ -1612,6 +1612,94 @@ impl rewrite_engine::Rule<BoxRef> for OrderByRemovalRule {
     }
 }
 
+/// Remove quantifiers pointing to the same box joined via a unqiue key.
+struct RedundantJoinRule {
+    to_replace: BTreeMap<QuantifierRef, QuantifierRef>,
+}
+
+impl RedundantJoinRule {
+    fn new() -> Self {
+        Self {
+            to_replace: BTreeMap::new(),
+        }
+    }
+
+    fn are_joined_via_unique_key(bo: &QGBox, q1: &QuantifierRef, q2: &QuantifierRef) -> bool {
+        let bq1 = q1.borrow();
+        let ib = bq1.input_box.borrow();
+        for k in ib.unique_keys.iter() {
+            if k.iter()
+                .map(|i| {
+                    let c1 = make_ref(Expr::make_column_ref(q1.clone(), *i));
+                    let c2 = make_ref(Expr::make_column_ref(q2.clone(), *i));
+                    let eq = make_ref(Expr::make_cmp(CmpOpType::Eq, c1, c2));
+                    eq.borrow_mut().normalize();
+                    eq
+                })
+                .all(|p| {
+                    bo.predicates
+                        .iter()
+                        .any(|predicates| predicates.iter().any(|x| *x == p))
+                })
+            {
+                return true;
+            }
+        }
+        false
+    }
+}
+
+impl rewrite_engine::Rule<BoxRef> for RedundantJoinRule {
+    fn name(&self) -> &'static str {
+        "RedundantJoinRule"
+    }
+    fn apply_top_down(&self) -> bool {
+        false
+    }
+    fn condition(&mut self, obj: &BoxRef) -> bool {
+        self.to_replace.clear();
+
+        let bo = obj.borrow();
+        if let BoxType::Select(_) = &bo.box_type {
+            let same_box = bo
+                .quantifiers
+                .iter()
+                .filter(|q| q.borrow().quantifier_type == QuantifierType::Foreach)
+                .filter(|q| q.borrow().input_box.borrow().unique_keys.len() > 0)
+                .map(|q| (q.borrow().input_box.as_ptr(), q))
+                .into_group_map();
+            for (_, mut v) in same_box.into_iter().filter(|(_, v)| v.len() > 1) {
+                v.sort();
+                for i in 0..v.len() {
+                    for j in i + 1..v.len() {
+                        if !self.to_replace.contains_key(v[j]) {
+                            if Self::are_joined_via_unique_key(&bo, v[i], v[j]) {
+                                self.to_replace.insert(v[j].clone(), v[i].clone());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        !self.to_replace.is_empty()
+    }
+    fn action(&mut self, obj: &mut BoxRef) {
+        let mut bo = obj.borrow_mut();
+        let mut rule = ReplaceQuantifierRule {
+            to_replace: &self.to_replace,
+        };
+        let mut f = |e: &mut ExprRef| {
+            rewrite_engine::deep_apply_rule(&mut rule, e);
+        };
+        bo.visit_expressions(&mut f);
+        for q in self.to_replace.keys() {
+            bo.quantifiers.remove(q);
+        }
+        self.to_replace.clear();
+    }
+}
+
 type BoxRule = dyn rewrite_engine::Rule<BoxRef>;
 type RuleBox = Box<BoxRule>;
 
@@ -1704,6 +1792,7 @@ pub fn rewrite_model(m: &ModelRef) {
         Box::new(ConstraintPropagationRule::new()),
         Box::new(OrderByRemovalRule::new()),
         Box::new(OuterToInnerJoinRule::new()),
+        Box::new(RedundantJoinRule::new()),
         // cleanup
         Box::new(NormalizationRule::new()),
         Box::new(PushDownPredicatesRule::new()),
