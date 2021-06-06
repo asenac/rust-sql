@@ -192,9 +192,9 @@ digraph G {
             Q2 -> Q3 [ label="(Q3.c0) = (Q2.c3)" ]
         }
     }
-    subgraph cluster5 {
-        label = "Box5:BaseTable A"
-        boxhead5 [ shape = record, label="{ 0: c0 AS A|1: c1 AS B }" ]
+    subgraph cluster2 {
+        label = "Box2:BaseTable A"
+        boxhead2 [ shape = record, label="{ 0: c0 AS A|1: c1 AS B }" ]
         {
             rank = same
         }
@@ -216,17 +216,10 @@ digraph G {
             rank = same
         }
     }
-    subgraph cluster2 {
-        label = "Box2:BaseTable A"
-        boxhead2 [ shape = record, label="{ 0: c0 AS A|1: c1 AS B }" ]
-        {
-            rank = same
-        }
-    }
     edge [ arrowhead = none, style = dashed ]
     Q2 -> boxhead1 [ lhead = cluster1 ]
     Q4 -> boxhead4 [ lhead = cluster4 ]
-    Q3 -> boxhead5 [ lhead = cluster5 ]
+    Q3 -> boxhead2 [ lhead = cluster2 ]
     Q0 -> boxhead2 [ lhead = cluster2 ]
     Q1 -> boxhead3 [ lhead = cluster3 ]
 }

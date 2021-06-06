@@ -13,6 +13,7 @@ use std::rc::Rc;
 pub struct ModelGenerator<'a> {
     catalog: &'a dyn MetadataCatalog,
     model: ModelRef,
+    base_tables: HashMap<String, BoxRef>,
 }
 
 struct NameResolutionContext<'a> {
@@ -253,6 +254,7 @@ impl<'a> ModelGenerator<'a> {
         Self {
             catalog,
             model: Model::new(),
+            base_tables: HashMap::new(),
         }
     }
 
@@ -622,6 +624,9 @@ impl<'a> ModelGenerator<'a> {
                 if let Some(cte) = current_context.resolve_cte(&s.get_name()) {
                     return Ok(cte);
                 }
+                if let Some(table_box) = self.base_tables.get(s.get_name()) {
+                    return Ok(table_box.clone());
+                }
                 // @todo suport for schemas and catalogs
                 let metadata = self.catalog.get_table(s.get_name())?;
                 // @todo avoid cloning the metadata. The catalog should return a ref counted instance
@@ -639,6 +644,8 @@ impl<'a> ModelGenerator<'a> {
                         table_box.borrow_mut().add_unique_key(index.columns.clone());
                     }
                 }
+                self.base_tables
+                    .insert(s.get_name().to_string(), table_box.clone());
                 Ok(table_box)
             }
             Join(join_type, l, r, join_cond) => {
