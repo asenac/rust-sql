@@ -2102,6 +2102,7 @@ mod tests {
                 "OrderByRemoval" => Box::new(OrderByRemovalRule::new()),
                 "OuterToInnerJoin" => Box::new(OuterToInnerJoinRule::new()),
                 "PushDownPredicates" => Box::new(PushDownPredicatesRule::new()),
+                "RedundantJoin" => Box::new(RedundantJoinRule::new()),
                 _ => return Err(format!("invalid rule")),
             };
             Ok(rule)
