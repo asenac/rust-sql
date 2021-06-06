@@ -933,6 +933,7 @@ impl rewrite_engine::Rule<BoxRef> for MergeRule {
 // ColumnRemovalRule
 //
 
+/// Remove un-referenced columns from the projection of intermediate boxes.
 struct ColumnRemovalRule {
     column_references: Option<PerBoxColumnReferenceMap>,
     top_box: Option<BoxRef>,
