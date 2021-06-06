@@ -1,5 +1,5 @@
 ddl
-create table a(a, b); create unique index aa on a(a);
+create table a(a, b); create unique index aa on a(a); create table b(c, d);
 ----
 
 query apply=RedundantJoin
@@ -107,6 +107,157 @@ digraph G {
     Q2 -> boxhead2 [ lhead = cluster2 ]
     Q1 -> boxhead0 [ lhead = cluster0 ]
     Q0 -> boxhead1 [ lhead = cluster1 ]
+}
+
+----
+----
+
+query apply=RedundantOuterJoin
+select a from a left join b on a = c;
+----
+----
+digraph G {
+    compound = true
+    labeljust = l
+    label="select a from a left join b on a = c;
+ + RedundantOuterJoin"
+    node [ shape = box ]
+    subgraph cluster0 {
+        label = "Box0:Select"
+        boxhead0 [ shape = record, label="{ 0: Q2.c0 AS A }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q2 [ label="Q2(F)" ]
+        }
+    }
+    subgraph cluster1 {
+        label = "Box1:OuterJoin"
+        boxhead1 [ shape = record, label="{ 0: Q0.c0 AS A|1: Q0.c1 AS B|2: Q1.c0 AS C|3: Q1.c1 AS D }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q0 [ label="Q0(P)" ]
+            Q1 [ label="Q1(F)" ]
+            edge [ arrowhead = none, style = solid ]
+            Q0 -> Q1 [ label="(Q0.c0) = (Q1.c0)" ]
+        }
+    }
+    subgraph cluster3 {
+        label = "Box3:BaseTable B"
+        boxhead3 [ shape = record, label="{ 0: c0 AS C|1: c1 AS D }" ]
+        {
+            rank = same
+        }
+    }
+    subgraph cluster2 {
+        label = "Box2:BaseTable A"
+        boxhead2 [ shape = record, label="{ DISTINCT TUPLES|0: c0 AS A|1: c1 AS B| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+        }
+    }
+    edge [ arrowhead = none, style = dashed ]
+    Q2 -> boxhead1 [ lhead = cluster1 ]
+    Q0 -> boxhead2 [ lhead = cluster2 ]
+    Q1 -> boxhead3 [ lhead = cluster3 ]
+}
+
+----
+----
+
+query apply=(ColumnRemoval,RedundantOuterJoin)
+select a from a left join b on a = c;
+----
+----
+digraph G {
+    compound = true
+    labeljust = l
+    label="select a from a left join b on a = c;
+ + ColumnRemoval + RedundantOuterJoin"
+    node [ shape = box ]
+    subgraph cluster0 {
+        label = "Box0:Select"
+        boxhead0 [ shape = record, label="{ 0: Q2.c0 AS A }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q2 [ label="Q2(F)" ]
+        }
+    }
+    subgraph cluster1 {
+        label = "Box1:OuterJoin"
+        boxhead1 [ shape = record, label="{ 0: Q0.c0 AS A }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q0 [ label="Q0(P)" ]
+            Q1 [ label="Q1(F)" ]
+            edge [ arrowhead = none, style = solid ]
+            Q0 -> Q1 [ label="(Q0.c0) = (Q1.c0)" ]
+        }
+    }
+    subgraph cluster3 {
+        label = "Box3:BaseTable B"
+        boxhead3 [ shape = record, label="{ 0: c0 AS C }" ]
+        {
+            rank = same
+        }
+    }
+    subgraph cluster2 {
+        label = "Box2:BaseTable A"
+        boxhead2 [ shape = record, label="{ DISTINCT TUPLES|0: c0 AS A| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+        }
+    }
+    edge [ arrowhead = none, style = dashed ]
+    Q2 -> boxhead1 [ lhead = cluster1 ]
+    Q0 -> boxhead2 [ lhead = cluster2 ]
+    Q1 -> boxhead3 [ lhead = cluster3 ]
+}
+
+----
+----
+
+query apply=(ColumnRemoval,RedundantOuterJoin)
+select c from b left join a on a = c;
+----
+----
+digraph G {
+    compound = true
+    labeljust = l
+    label="select c from b left join a on a = c;
+ + ColumnRemoval + RedundantOuterJoin"
+    node [ shape = box ]
+    subgraph cluster0 {
+        label = "Box0:Select"
+        boxhead0 [ shape = record, label="{ 0: Q2.c0 AS C }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q2 [ label="Q2(F)" ]
+        }
+    }
+    subgraph cluster1 {
+        label = "Box1:Select"
+        boxhead1 [ shape = record, label="{ 0: Q0.c0 AS C }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q0 [ label="Q0(F)" ]
+        }
+    }
+    subgraph cluster2 {
+        label = "Box2:BaseTable B"
+        boxhead2 [ shape = record, label="{ 0: c0 AS C }" ]
+        {
+            rank = same
+        }
+    }
+    edge [ arrowhead = none, style = dashed ]
+    Q2 -> boxhead1 [ lhead = cluster1 ]
+    Q0 -> boxhead2 [ lhead = cluster2 ]
 }
 
 ----

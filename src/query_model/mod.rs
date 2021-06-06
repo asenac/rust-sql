@@ -1700,6 +1700,77 @@ impl rewrite_engine::Rule<BoxRef> for RedundantJoinRule {
     }
 }
 
+/// Remove redundant outer joins when the projection only contains
+/// columns from the preserving side and each unique tuple from the
+/// preserving side matches exactly one row from the non-presering
+/// side.
+struct RedundantOuterJoinRule {}
+
+impl RedundantOuterJoinRule {
+    fn new() -> Self {
+        Self {}
+    }
+}
+
+impl rewrite_engine::Rule<BoxRef> for RedundantOuterJoinRule {
+    fn name(&self) -> &'static str {
+        "RedundantOuterJoinRule"
+    }
+    fn apply_top_down(&self) -> bool {
+        false
+    }
+    fn condition(&mut self, obj: &BoxRef) -> bool {
+        let bo = obj.borrow();
+        if let BoxType::OuterJoin = &bo.box_type {
+            let mut quantifiers = QuantifierSet::new();
+            for c in bo.columns.iter() {
+                collect_quantifiers(&mut quantifiers, &c.expr);
+            }
+
+            if let Some(predicates) = &bo.predicates {
+                let preserving_q = bo
+                    .quantifiers
+                    .iter()
+                    .filter(|q| q.borrow().quantifier_type == QuantifierType::PreservedForeach)
+                    .next()
+                    .unwrap();
+                if quantifiers.len() == 1 && quantifiers.contains(preserving_q) {
+                    let non_preserving_q = bo
+                        .quantifiers
+                        .iter()
+                        .filter(|q| q.borrow().quantifier_type == QuantifierType::Foreach)
+                        .next()
+                        .unwrap();
+                    let classes = compute_class_equivalence(predicates);
+                    let bnpq = non_preserving_q.borrow();
+                    let bib = bnpq.input_box.borrow();
+
+                    return bib
+                        .unique_keys
+                        .iter()
+                        .any(|k| k.iter().all(|p| classes.contains_key(&(bnpq.id, *p))));
+                }
+            }
+        }
+        false
+    }
+    fn action(&mut self, obj: &mut BoxRef) {
+        let mut bo = obj.borrow_mut();
+        bo.predicates = None;
+        bo.box_type = BoxType::Select(Select::new());
+        bo.quantifiers = bo
+            .quantifiers
+            .iter()
+            .filter(|q| q.borrow().quantifier_type == QuantifierType::PreservedForeach)
+            .map(|q| {
+                q.borrow_mut().quantifier_type = QuantifierType::Foreach;
+                q
+            })
+            .cloned()
+            .collect();
+    }
+}
+
 type BoxRule = dyn rewrite_engine::Rule<BoxRef>;
 type RuleBox = Box<BoxRule>;
 
@@ -1793,6 +1864,7 @@ pub fn rewrite_model(m: &ModelRef) {
         Box::new(OrderByRemovalRule::new()),
         Box::new(OuterToInnerJoinRule::new()),
         Box::new(RedundantJoinRule::new()),
+        Box::new(RedundantOuterJoinRule::new()),
         // cleanup
         Box::new(NormalizationRule::new()),
         Box::new(PushDownPredicatesRule::new()),
@@ -2103,6 +2175,7 @@ mod tests {
                 "OuterToInnerJoin" => Box::new(OuterToInnerJoinRule::new()),
                 "PushDownPredicates" => Box::new(PushDownPredicatesRule::new()),
                 "RedundantJoin" => Box::new(RedundantJoinRule::new()),
+                "RedundantOuterJoin" => Box::new(RedundantOuterJoinRule::new()),
                 _ => return Err(format!("invalid rule")),
             };
             Ok(rule)
