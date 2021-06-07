@@ -750,6 +750,14 @@ impl MergeRule {
             to_merge: BTreeSet::new(),
         }
     }
+
+    fn add_quantifier_to_box(obj: &BoxRef, source_q: &QuantifierRef, new_q: &QuantifierRef) {
+        if let BoxType::OuterJoin = &obj.borrow().box_type {
+            // this is a 1-1 replacement, so the type must be preserved
+            new_q.borrow_mut().quantifier_type = source_q.borrow_mut().quantifier_type;
+        }
+        add_quantifier_to_box(obj, new_q);
+    }
 }
 
 impl rewrite_engine::Rule<BoxRef> for MergeRule {
@@ -846,7 +854,7 @@ impl rewrite_engine::Rule<BoxRef> for MergeRule {
                 }
                 for oq in &input_box.quantifiers {
                     if input_box.ranging_quantifiers.len() == 1 {
-                        add_quantifier_to_box(obj, oq);
+                        Self::add_quantifier_to_box(obj, &q, oq);
                     } else {
                         // this is a CTE: we must clone its quantifiers before adding
                         // to the current box
@@ -863,7 +871,7 @@ impl rewrite_engine::Rule<BoxRef> for MergeRule {
                             b_oq.input_box.clone(),
                             &obj,
                         );
-                        add_quantifier_to_box(obj, &new_q);
+                        Self::add_quantifier_to_box(obj, &q, &new_q);
                         to_replace.insert(oq.clone(), new_q);
                     }
                 }
