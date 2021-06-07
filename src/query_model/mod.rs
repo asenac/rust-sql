@@ -1059,6 +1059,15 @@ impl rewrite_engine::Rule<BoxRef> for EquivalentColumnsRule {
         for q in bo.quantifiers.iter() {
             let bq = q.borrow();
             let ib = bq.input_box.borrow();
+            let classes = if ib.is_select() {
+                if let Some(predicates) = &ib.predicates {
+                    Some(compute_class_equivalence(predicates))
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
             let mut eq_cols = HashMap::new();
             for i in 0..ib.columns.len() {
                 if !eq_cols.contains_key(&i) {
@@ -1067,11 +1076,21 @@ impl rewrite_engine::Rule<BoxRef> for EquivalentColumnsRule {
                         let je = ib.columns[j].expr.borrow();
                         if ie.is_equiv(&je) {
                             eq_cols.insert(j, i);
+                        } else if let Some(classes) = &classes {
+                            //  select boxes use also equivalence classes
+                            if let ExprType::ColumnReference(ic) = &ie.expr_type {
+                                if let ExprType::ColumnReference(jc) = &je.expr_type {
+                                    let ic = classes.get(&ic.to_desc());
+                                    let ij = classes.get(&jc.to_desc());
+                                    if ic.is_some() && ij.is_some() && ic.unwrap() == ij.unwrap() {
+                                        eq_cols.insert(j, i);
+                                    }
+                                }
+                            }
                         }
                     }
                 }
             }
-            // @todo for select boxes use also equivalence classes
             if !eq_cols.is_empty() {
                 self.equivalent_columns.insert(q.clone(), eq_cols);
             }
@@ -2176,6 +2195,7 @@ mod tests {
                 "ConstraintLifting" => Box::new(ConstraintLiftingRule::new()),
                 "ConstraintPropagation" => Box::new(ConstraintPropagationRule::new()),
                 "EmptyBoxes" => Box::new(EmptyBoxesRule::new()),
+                "EquivalentColumns" => Box::new(EquivalentColumnsRule::new()),
                 "GroupByRemoval" => Box::new(GroupByRemovalRule::new()),
                 "Merge" => Box::new(MergeRule::new()),
                 "Normalization" => Box::new(NormalizationRule::new()),
