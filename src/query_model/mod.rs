@@ -1758,29 +1758,53 @@ impl rewrite_engine::Rule<BoxRef> for RedundantOuterJoinRule {
                 collect_quantifiers(&mut quantifiers, &c.expr);
             }
 
-            if let Some(predicates) = &bo.predicates {
-                let preserving_q = bo
-                    .quantifiers
-                    .iter()
-                    .filter(|q| q.borrow().quantifier_type == QuantifierType::PreservedForeach)
-                    .next()
-                    .unwrap();
-                if quantifiers.len() == 1 && quantifiers.contains(preserving_q) {
-                    let non_preserving_q = bo
-                        .quantifiers
-                        .iter()
-                        .filter(|q| q.borrow().quantifier_type == QuantifierType::Foreach)
-                        .next()
-                        .unwrap();
+            let preserving_q = bo
+                .quantifiers
+                .iter()
+                .filter(|q| q.borrow().quantifier_type == QuantifierType::PreservedForeach)
+                .next()
+                .unwrap();
+            let non_preserving_q = bo
+                .quantifiers
+                .iter()
+                .filter(|q| q.borrow().quantifier_type == QuantifierType::Foreach)
+                .next()
+                .unwrap();
+            if quantifiers.len() == 1 && quantifiers.contains(preserving_q) {
+                if let Some(predicates) = &bo.predicates {
                     let classes = compute_class_equivalence(predicates);
                     let bnpq = non_preserving_q.borrow();
                     let bib = bnpq.input_box.borrow();
 
-                    return bib
+                    if bib
                         .unique_keys
                         .iter()
-                        .any(|k| k.iter().all(|p| classes.contains_key(&(bnpq.id, *p))));
+                        .any(|k| k.iter().all(|p| classes.contains_key(&(bnpq.id, *p))))
+                    {
+                        return true;
+                    }
                 }
+            }
+            if !quantifiers.contains(non_preserving_q) {
+                // outer joins within an existential quantifier can be removed if no columns
+                // from the non-preserving side are referenced
+                return bo.ranging_quantifiers.len() > 0
+                    && bo.ranging_quantifiers.iter().all(|q| {
+                        if let Some(q) = q.upgrade() {
+                            if let Some(p) = q.borrow().parent_box.upgrade() {
+                                let p = p.borrow();
+                                return p.ranging_quantifiers.len() > 0
+                                    && p.ranging_quantifiers.iter().all(|q| {
+                                        if let Some(q) = q.upgrade() {
+                                            return q.borrow().quantifier_type
+                                                == QuantifierType::Existential;
+                                        }
+                                        false
+                                    });
+                            }
+                        }
+                        false
+                    });
             }
         }
         false
