@@ -2106,9 +2106,17 @@ mod tests {
         test_valid_query("with b(b) as (select a from a) select * from b, b c, (with c(c) as (select b from b) select * from c, b where b.b = c.c) as d where b.b = c.b and b.b = d.c");
     }
 
+    #[derive(PartialEq, Copy, Clone)]
+    pub enum DumpMode {
+        None,
+        Final,
+        Steps,
+    }
+
     struct TestRunner {
         catalog: FakeCatalog,
     }
+
     impl TestRunner {
         pub fn new() -> Self {
             Self {
@@ -2164,12 +2172,11 @@ mod tests {
             }
             Ok(())
         }
-
         pub fn process_query(
             &mut self,
             query: &str,
             rules: Option<&Vec<String>>,
-            dump: bool,
+            dump: DumpMode,
         ) -> Result<String, String> {
             let parser = ast::Parser::new();
             let mut result = parser.parse(query)?;
@@ -2183,11 +2190,17 @@ mod tests {
                         let model = generator.process(&c)?;
                         if let Some(rules) = &rules {
                             for rule in rules.iter() {
+                                if dump == DumpMode::Steps {
+                                    output.push_str(
+                                        &DotGenerator::new().generate(&model.borrow(), &label)?,
+                                    );
+                                }
+
                                 Self::apply_rule(&model, rule)?;
                                 label.push_str(&format!(" + {}", rule));
                             }
                         }
-                        if dump {
+                        if dump != DumpMode::None {
                             output
                                 .push_str(&DotGenerator::new().generate(&model.borrow(), &label)?);
                         }
@@ -2232,7 +2245,8 @@ mod tests {
                 "PushDownPredicates" => Box::new(PushDownPredicatesRule::new()),
                 "RedundantJoin" => Box::new(RedundantJoinRule::new()),
                 "RedundantOuterJoin" => Box::new(RedundantOuterJoinRule::new()),
-                _ => return Err(format!("invalid rule")),
+                "SemiJoinRemoval" => Box::new(SemiJoinRemovalRule::new()),
+                _ => return Err(format!("invalid rule {}", rule)),
             };
             Ok(rule)
         }
@@ -2248,8 +2262,15 @@ mod tests {
                 let apply = test_case.args.get("apply");
                 let result = match &test_case.directive[..] {
                     "ddl" => interpreter.process_ddl(&test_case.input[..]),
-                    "query" => interpreter.process_query(&test_case.input[..], apply, true),
-                    "check" => interpreter.process_query(&test_case.input[..], apply, false),
+                    "query" => {
+                        interpreter.process_query(&test_case.input[..], apply, DumpMode::Final)
+                    }
+                    "check" => {
+                        interpreter.process_query(&test_case.input[..], apply, DumpMode::None)
+                    }
+                    "steps" => {
+                        interpreter.process_query(&test_case.input[..], apply, DumpMode::Steps)
+                    }
                     _ => Err(format!("invalid test directive")),
                 };
                 match result {
