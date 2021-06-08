@@ -1414,6 +1414,7 @@ impl rewrite_engine::Rule<BoxRef> for PushDownPredicatesRule {
                     }
                     (BoxType::OuterJoin, QuantifierType::PreservedForeach)
                     | (BoxType::Select(_), QuantifierType::Foreach)
+                    | (BoxType::Select(_), QuantifierType::Existential)
                     | (BoxType::Grouping(_), QuantifierType::Foreach) => {
                         // @todo special handling for aggregate functions
                         let p = Self::dereference_predicate(&p, &q_ref);
@@ -1497,7 +1498,10 @@ impl rewrite_engine::Rule<BoxRef> for PushDownPredicatesRule {
                 select.borrow_mut().add_predicate(p);
             }
 
-            obj.borrow_mut().remove_predicate(&original_p);
+            // subqueries must be referenced by at least one predicate
+            if !original_p.borrow().is_existential_comparison() {
+                obj.borrow_mut().remove_predicate(&original_p);
+            }
         }
     }
 }
