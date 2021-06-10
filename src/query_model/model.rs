@@ -856,7 +856,7 @@ impl Drop for Quantifier {
     }
 }
 
-#[derive(PartialEq, Copy, Clone)]
+#[derive(PartialEq, Eq, Copy, Clone, Hash)]
 pub enum QuantifierType {
     Foreach,
     PreservedForeach,

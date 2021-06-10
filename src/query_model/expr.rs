@@ -121,7 +121,7 @@ impl Commutate for CmpOpType {
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ExprType {
-    Column(usize),
+    Column((usize, usize)),
     BaseColumn(BaseColumn),
     ColumnReference(ColumnReference),
     InList,
@@ -471,7 +471,7 @@ impl fmt::Display for Expr {
             }
             ColumnReference(c) => write!(f, "Q{}.c{}", c.quantifier.borrow().id, c.position),
             Parameter(c) => write!(f, "?:{}", c),
-            Column(c) => write!(f, "c{}", c),
+            Column((id, c)) => write!(f, "c{}_{}", id, c),
             // @todo print the column name
             BaseColumn(c) => write!(f, "c{}", c.position),
             Literal(c) => write!(f, "{}", c),

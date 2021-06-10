@@ -424,7 +424,7 @@ impl rewrite_engine::Rule<BoxRef> for ConstraintPropagationRule {
                         // the class for rewriting it later
                         if let Some(class) = class {
                             predicate_classes.insert(*class);
-                            e.expr_type = ExprType::Column(*class);
+                            e.expr_type = ExprType::Column((0, *class));
                         }
                         Ok(())
                     });
@@ -445,7 +445,7 @@ impl rewrite_engine::Rule<BoxRef> for ConstraintPropagationRule {
                         let _ = p.borrow_mut().visit_mut(&mut |e| -> Result<(), ()> {
                             let mut cr = None;
                             if let ExprType::Column(c) = &e.expr_type {
-                                cr = Some(mapping.get(c).expect("expected mapping for class"));
+                                cr = Some(mapping.get(&c.1).expect("expected mapping for class"));
                             }
                             if let Some(cr) = cr {
                                 e.expr_type = ExprType::ColumnReference(ColumnReference {
@@ -2093,6 +2093,152 @@ impl rewrite_engine::Rule<BoxRef> for FlattenJoinRule {
     }
 }
 
+struct CteDiscovery {}
+
+impl CteDiscovery {
+    fn condition(&mut self, obj: &BoxRef) -> bool {
+        let mut stack = vec![obj.clone()];
+        let mut inputs_per_box = HashMap::new();
+        let mut box_by_id = HashMap::new();
+        while let Some(obj) = stack.pop() {
+            let bo = obj.borrow();
+            if box_by_id.contains_key(&bo.id) {
+                continue;
+            }
+            if let BoxType::Select(_) = &bo.box_type {
+                let inputs = bo
+                    .quantifiers
+                    .iter()
+                    .map(|q| {
+                        let q = q.borrow();
+                        let ib = q.input_box.borrow();
+                        (ib.id, q.quantifier_type)
+                    })
+                    .collect::<HashSet<(i32, QuantifierType)>>();
+                inputs_per_box.insert(bo.id, inputs);
+            }
+
+            stack.extend(bo.quantifiers.iter().map(|q| q.borrow().input_box.clone()));
+            box_by_id.insert(bo.id, obj.clone());
+        }
+
+        let v = inputs_per_box
+            .iter()
+            .map(|(id1, set1)| {
+                let id1 = *id1;
+                inputs_per_box.iter().filter_map(move |(id2, set2)| {
+                    if id1 >= *id2 {
+                        return None;
+                    }
+                    let intersection_size = set1.intersection(set2).count();
+                    if intersection_size > 1 {
+                        Some((id1, *id2, intersection_size))
+                    } else {
+                        None
+                    }
+                })
+            })
+            .flatten()
+            .sorted_by_key(|(_, _, size)| *size)
+            .rev()
+            .collect::<Vec<_>>();
+
+        println!("cte discovery {:#?}", v);
+
+        for (b1_id, b2_id, _) in v {
+            let b1 = box_by_id.get(&b1_id).unwrap();
+            let b1 = b1.borrow();
+            let b2 = box_by_id.get(&b2_id).unwrap();
+            let b2 = b2.borrow();
+
+            let equivalences = b1
+                .quantifiers
+                .iter()
+                .filter_map(|q| {
+                    let q1 = q.borrow();
+                    let ib1 = q1.input_box.borrow();
+                    // find again the matching quantifiers
+                    if let Some(it) = b2.quantifiers.iter().find(|q2| {
+                        let q2 = q2.borrow();
+                        let ib2 = q2.input_box.borrow();
+                        q1.quantifier_type == q2.quantifier_type && ib1.id == ib2.id
+                    }) {
+                        Some((q.clone(), it.clone()))
+                    } else {
+                        None
+                    }
+                })
+                .enumerate()
+                .collect::<Vec<_>>();
+            let translation_map1 = equivalences
+                .iter()
+                .map(|(i, (q, _))| (q.clone(), *i))
+                .collect::<BTreeMap<_, _>>();
+            let translation_map2 = equivalences
+                .iter()
+                .map(|(i, (_, q))| (q.clone(), *i))
+                .collect::<BTreeMap<_, _>>();
+
+            let predicates1 = Self::translate_predicates(&b1, &translation_map1);
+            let predicates2 = Self::translate_predicates(&b2, &translation_map2);
+
+            let intersection = predicates1
+                .iter()
+                .filter_map(|(p1, o1)| {
+                    if let Some((_, o2)) = predicates2.iter().find(|(p2, _)| p1 == p2) {
+                        Some((p1, o1, o2))
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>();
+
+            for (p, _, _) in intersection.iter() {
+                println!("-> {}", p.borrow());
+            }
+        }
+
+        false
+    }
+
+    fn translate_predicates(
+        obj: &QGBox,
+        translation_map: &BTreeMap<QuantifierRef, usize>,
+    ) -> Vec<(ExprRef, ExprRef)> {
+        let mut translated = Vec::new();
+        if let Some(predicates) = &obj.predicates {
+            for p in predicates.iter() {
+                let mut column_references = BTreeMap::new();
+                collect_column_references(p, &mut column_references);
+
+                if column_references
+                    .keys()
+                    .all(|q| translation_map.contains_key(q))
+                {
+                    let cloned_p = deep_clone(p);
+
+                    let _ = cloned_p.borrow_mut().visit_mut(&mut |e| -> Result<(), ()> {
+                        let mut class = None;
+                        if let ExprType::ColumnReference(c) = &e.expr_type {
+                            class = Some((
+                                translation_map.get(&c.quantifier).unwrap().clone(),
+                                c.position,
+                            ));
+                        }
+                        if let Some(class) = class {
+                            e.expr_type = ExprType::Column((class.0, class.1));
+                        }
+                        Ok(())
+                    });
+
+                    translated.push((cloned_p, p.clone()));
+                }
+            }
+        }
+        translated
+    }
+}
+
 type BoxRule = dyn rewrite_engine::Rule<BoxRef>;
 type RuleBox = Box<BoxRule>;
 
@@ -2196,6 +2342,9 @@ pub fn rewrite_model(m: &ModelRef) {
     for _ in 0..5 {
         apply_rules(m, &mut rules);
     }
+
+    let mut cte_discovery = CteDiscovery {};
+    cte_discovery.condition(&m.borrow().top_box);
 }
 
 impl rewrite_engine::Traverse<BoxRef> for BoxRef {
