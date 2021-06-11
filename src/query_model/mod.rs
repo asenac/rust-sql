@@ -644,11 +644,13 @@ impl rewrite_engine::Rule<BoxRef> for SemiJoinRemovalRule {
                             let existential_quantifiers = get_existential_quantifiers(x);
                             // @note this should actually be an assert
                             if existential_quantifiers.len() == 1 {
-                                let q = existential_quantifiers.into_iter().next().unwrap();
-                                if q.borrow().input_box.borrow().distinct_tuples() {
-                                    return Some(q);
+                                let q_ref = existential_quantifiers.into_iter().next().unwrap();
+                                let q = q_ref.borrow();
+                                let ib = q.input_box.borrow();
+                                if ib.distinct_tuples() || ib.one_tuple_at_most() {
+                                    return Some(q_ref.clone());
                                 }
-                            }
+                            };
                         }
                         None
                     })
