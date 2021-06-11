@@ -1826,6 +1826,46 @@ impl rewrite_engine::Rule<BoxRef> for RedundantOuterJoinRule {
     }
 }
 
+/// Convert scalar subqueries into join operands
+struct ScalarToForeachRule {}
+
+impl ScalarToForeachRule {
+    fn new() -> Self {
+        Self {}
+    }
+}
+
+impl rewrite_engine::Rule<BoxRef> for ScalarToForeachRule {
+    fn name(&self) -> &'static str {
+        "ScalarToForeachRule"
+    }
+    fn apply_top_down(&self) -> bool {
+        false
+    }
+    fn condition(&mut self, obj: &BoxRef) -> bool {
+        let obj = obj.borrow();
+        obj.one_tuple_at_most()
+            && obj.ranging_quantifiers.len() > 0
+            && obj.ranging_quantifiers.iter().all(|q| {
+                let q = q.upgrade();
+                if let Some(q) = q {
+                    q.borrow().quantifier_type == QuantifierType::Scalar
+                } else {
+                    false
+                }
+            })
+    }
+    fn action(&mut self, obj: &mut BoxRef) {
+        let obj = obj.borrow();
+        for q in obj.ranging_quantifiers.iter() {
+            let q = q.upgrade();
+            if let Some(q) = q {
+                q.borrow_mut().quantifier_type = QuantifierType::Foreach;
+            }
+        }
+    }
+}
+
 type BoxRule = dyn rewrite_engine::Rule<BoxRef>;
 type RuleBox = Box<BoxRule>;
 
@@ -1920,6 +1960,7 @@ pub fn rewrite_model(m: &ModelRef) {
         Box::new(OuterToInnerJoinRule::new()),
         Box::new(RedundantJoinRule::new()),
         Box::new(RedundantOuterJoinRule::new()),
+        Box::new(ScalarToForeachRule::new()),
         // cleanup
         Box::new(NormalizationRule::new()),
         Box::new(PushDownPredicatesRule::new()),
@@ -2245,6 +2286,7 @@ mod tests {
                 "PushDownPredicates" => Box::new(PushDownPredicatesRule::new()),
                 "RedundantJoin" => Box::new(RedundantJoinRule::new()),
                 "RedundantOuterJoin" => Box::new(RedundantOuterJoinRule::new()),
+                "ScalarToForeach" => Box::new(ScalarToForeachRule::new()),
                 "SemiJoinRemoval" => Box::new(SemiJoinRemovalRule::new()),
                 _ => return Err(format!("invalid rule {}", rule)),
             };

@@ -292,6 +292,56 @@ impl QGBox {
         self.is_select() && self.quantifiers.is_empty()
     }
 
+    pub fn one_tuple_at_most(&self) -> bool {
+        match &self.box_type {
+            BoxType::Select(_) => {
+                let foreach_q = self
+                    .quantifiers
+                    .iter()
+                    .filter(|q| q.borrow().quantifier_type == QuantifierType::Foreach)
+                    .collect::<Vec<_>>();
+                match foreach_q.len() {
+                    // a single quantifier select return one tuple at most if any of the unique
+                    // keys of its input quantifier is full bound via equality predicates, or
+                    // it's a one tuple input
+                    1 => foreach_q.iter().all(|q_ref| {
+                        let q = q_ref.borrow();
+                        let ib = q.input_box.borrow();
+                        ib.one_tuple_at_most()
+                            || ib.unique_keys.iter().any(|key| {
+                                key.iter().all(|c| {
+                                    let column_ref = Expr::make_column_ref((**q_ref).clone(), *c);
+                                    self.predicates.iter().any(|predicates| {
+                                        predicates.iter().any(|p| {
+                                            let p = p.borrow();
+                                            match &p.expr_type {
+                                                ExprType::Cmp(super::CmpOpType::Eq) => p
+                                                    .operands
+                                                    .as_ref()
+                                                    .expect("malformed expression")
+                                                    .iter()
+                                                    .any(|o| *o.borrow() == column_ref),
+                                                _ => false,
+                                            }
+                                        })
+                                    })
+                                })
+                            })
+                    }),
+                    _ => false, // @todo fully connected joins of unique tuple quantiifers
+                }
+            }
+            BoxType::OuterJoin => self
+                .quantifiers
+                .iter()
+                .filter(|q| q.borrow().quantifier_type == QuantifierType::PreservedForeach)
+                .all(|q| q.borrow().input_box.borrow().one_tuple_at_most()),
+            BoxType::Grouping(g) => g.groups.len() == 0,
+            BoxType::Values(v) => v.len() <= 1,
+            _ => false,
+        }
+    }
+
     pub fn get_box_type_str(&self) -> &'static str {
         match self.box_type {
             BoxType::Select(_) => "Select",
