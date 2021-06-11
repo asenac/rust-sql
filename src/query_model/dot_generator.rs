@@ -140,6 +140,12 @@ impl DotGenerator {
         if b.distinct_tuples() {
             r.push_str("DISTINCT TUPLES")
         }
+        if b.one_tuple_at_most() {
+            if r.len() > 0 {
+                r.push('|');
+            }
+            r.push_str("ONE TUPLE AT MOST")
+        }
         for (i, c) in b.columns.iter().enumerate() {
             if r.len() > 0 {
                 r.push('|');

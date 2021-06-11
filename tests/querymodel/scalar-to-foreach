@@ -26,7 +26,7 @@ digraph G {
     }
     subgraph cluster2 {
         label = "Box2:Select"
-        boxhead2 [ shape = record, label="{ DISTINCT TUPLES|0: Q1.c0 AS C| UNIQUE KEY [0] }" ]
+        boxhead2 [ shape = record, label="{ DISTINCT TUPLES|ONE TUPLE AT MOST|0: Q1.c0 AS C| UNIQUE KEY [0] }" ]
         {
             rank = same
             node [ shape = circle ]
@@ -74,7 +74,7 @@ digraph G {
     }
     subgraph cluster2 {
         label = "Box2:Select"
-        boxhead2 [ shape = record, label="{ DISTINCT TUPLES|0: Q1.c0 AS C| UNIQUE KEY [0] }" ]
+        boxhead2 [ shape = record, label="{ DISTINCT TUPLES|ONE TUPLE AT MOST|0: Q1.c0 AS C| UNIQUE KEY [0] }" ]
         {
             rank = same
             node [ shape = circle ]
@@ -167,7 +167,7 @@ digraph G {
     }
     subgraph cluster2 {
         label = "Box2:Select"
-        boxhead2 [ shape = record, label="{ DISTINCT TUPLES|0: Q1.c0 AS C| UNIQUE KEY [0] }" ]
+        boxhead2 [ shape = record, label="{ DISTINCT TUPLES|ONE TUPLE AT MOST|0: Q1.c0 AS C| UNIQUE KEY [0] }" ]
         {
             rank = same
             node [ shape = circle ]
@@ -266,7 +266,7 @@ digraph G {
     }
     subgraph cluster2 {
         label = "Box2:Select"
-        boxhead2 [ shape = record, label="{ DISTINCT TUPLES|0: Q1.c0 AS C| UNIQUE KEY [0] }" ]
+        boxhead2 [ shape = record, label="{ DISTINCT TUPLES|ONE TUPLE AT MOST|0: Q1.c0 AS C| UNIQUE KEY [0] }" ]
         {
             rank = same
             node [ shape = circle ]
@@ -320,7 +320,7 @@ digraph G {
     }
     subgraph cluster3 {
         label = "Box3:Select"
-        boxhead3 [ shape = record, label="{ DISTINCT TUPLES|0: Q1.c0 AS C| UNIQUE KEY [0] }" ]
+        boxhead3 [ shape = record, label="{ DISTINCT TUPLES|ONE TUPLE AT MOST|0: Q1.c0 AS C| UNIQUE KEY [0] }" ]
         {
             rank = same
             node [ shape = circle ]

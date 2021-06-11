@@ -315,12 +315,16 @@ impl QGBox {
                                         predicates.iter().any(|p| {
                                             let p = p.borrow();
                                             match &p.expr_type {
-                                                ExprType::Cmp(super::CmpOpType::Eq) => p
-                                                    .operands
-                                                    .as_ref()
-                                                    .expect("malformed expression")
-                                                    .iter()
-                                                    .any(|o| *o.borrow() == column_ref),
+                                                ExprType::Cmp(super::CmpOpType::Eq) => {
+                                                    !p.is_existential_comparison()
+                                                        && p.operands
+                                                            .as_ref()
+                                                            .expect("malformed expression")
+                                                            .iter()
+                                                            .filter(|o| *o.borrow() == column_ref)
+                                                            .count()
+                                                            == 1
+                                                }
                                                 _ => false,
                                             }
                                         })
