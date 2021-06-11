@@ -408,6 +408,7 @@ impl<'a> ModelGenerator<'a> {
         if let Some(order_by_clause) = &query_block.order_by_clause {
             let mut keys = Vec::new();
             for key in order_by_clause {
+                Self::disallow_subqueries(&key.expr, "ORDER BY")?;
                 let expr = self.process_expr(&key.expr, &current_context)?;
                 keys.push(KeyItem {
                     expr,
@@ -417,6 +418,7 @@ impl<'a> ModelGenerator<'a> {
             current_box.borrow_mut().set_order_by(keys);
         }
         if let Some(limit_clause) = &query_block.limit_clause {
+            Self::disallow_subqueries(&limit_clause, "LIMIT")?;
             // @todo empty context
             let expr = self.process_expr(&limit_clause, &current_context)?;
             current_box.borrow_mut().set_limit(expr);
@@ -453,6 +455,8 @@ impl<'a> ModelGenerator<'a> {
             current_context.add_quantifier(&q);
             let mut input_column_in_group_key = HashSet::new();
             for key in &grouping.groups {
+                Self::disallow_subqueries(&key.expr, "GROUP BY")?;
+
                 let expr = self.process_expr(&key.expr, &current_context)?;
                 if let ExprType::ColumnReference(c) = &expr.borrow().expr_type {
                     input_column_in_group_key.insert(c.position);
@@ -828,6 +832,22 @@ impl<'a> ModelGenerator<'a> {
                         e.as_ref(),
                         subquery_box,
                     );
+                }
+                _ => {}
+            }
+        }
+        Ok(())
+    }
+
+    fn disallow_subqueries(expr: &ast::Expr, context_name: &str) -> Result<(), String> {
+        use ast::Expr::*;
+        for expr in expr.iter() {
+            match expr {
+                ScalarSubquery(_) | InSelect(_, _) | Exists(_) | Any(_) | All(_) => {
+                    return Err(format!(
+                        "subqueries are not allowed in {} clause",
+                        context_name
+                    ));
                 }
                 _ => {}
             }
