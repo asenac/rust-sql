@@ -259,6 +259,7 @@ fn make_ref<T>(t: T) -> Rc<RefCell<T>> {
 
 use crate::rewrite_engine;
 
+/// Template for new model rewrite rules
 struct EmptyRule {}
 
 impl rewrite_engine::Rule<BoxRef> for EmptyRule {
@@ -274,6 +275,7 @@ impl rewrite_engine::Rule<BoxRef> for EmptyRule {
     fn action(&mut self, _obj: &mut BoxRef) {}
 }
 
+/// Executes a collection of rules within the same model traversal.
 struct SingleTraversalRule {
     rules: Vec<RuleBox>,
     current: usize,
@@ -318,6 +320,7 @@ impl rewrite_engine::Rule<BoxRef> for SingleTraversalRule {
     }
 }
 
+/// Nomarlizes the expressions in the boxes of the model.
 struct NormalizationRule {}
 
 impl NormalizationRule {
@@ -342,6 +345,7 @@ impl rewrite_engine::Rule<BoxRef> for NormalizationRule {
     }
 }
 
+/// Uses class equivalences to propagate constraints.
 struct ConstraintPropagationRule {
     new_predicates: Vec<ExprRef>,
 }
@@ -742,6 +746,7 @@ impl rewrite_engine::Rule<BoxRef> for GroupByRemovalRule {
 // MergeRule
 //
 
+/// Merges nested select boxes.
 struct MergeRule {
     to_merge: QuantifierSet,
 }
