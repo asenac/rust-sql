@@ -196,6 +196,14 @@ impl QGBox {
         }
         self.add_column(None, make_ref(expr))
     }
+    pub fn find_column(&mut self, expr: Expr) -> Option<usize> {
+        for (i, c) in self.columns.iter().enumerate() {
+            if c.expr.borrow().is_equiv(&expr) {
+                return Some(i);
+            }
+        }
+        None
+    }
     pub fn add_predicate(&mut self, predicate: ExprRef) {
         let predicates = {
             let borrowed = predicate.borrow();

@@ -67,6 +67,18 @@ impl<'a> NameResolutionContext<'a> {
         }
     }
 
+    fn for_grouping(owner_box: BoxRef, other: Self) -> Self {
+        Self {
+            owner_box: Some(owner_box),
+            quantifiers: other.quantifiers,
+            subquery_quantifiers: None,
+            ctes: None,
+            parent_context: other.parent_context,
+            sibling_context: other.sibling_context,
+            is_lateral: false,
+        }
+    }
+
     fn add_quantifier(&mut self, q: &QuantifierRef) {
         self.quantifiers.push(Rc::clone(q))
     }
@@ -112,14 +124,14 @@ impl<'a> NameResolutionContext<'a> {
                 // @todo case insensitive comparisons
                 let q_name = q.borrow().get_effective_name();
                 if q_name.is_some() && q_name.as_ref().unwrap() == tn {
-                    return Ok(self.resolve_column_in_quantifier(q, column));
+                    return self.resolve_column_in_quantifier(q, column);
                 }
             }
         } else {
             let mut found = None;
             for q in &self.quantifiers {
                 // @todo check for column name ambiguity
-                let r = self.resolve_column_in_quantifier(q, column);
+                let r = self.resolve_column_in_quantifier(q, column)?;
                 if r.is_some() {
                     if found.is_some() {
                         return Err(format!("column {} is ambigous", column));
@@ -145,7 +157,11 @@ impl<'a> NameResolutionContext<'a> {
         Ok(None)
     }
 
-    fn resolve_column_in_quantifier(&self, q: &QuantifierRef, column: &str) -> Option<ExprRef> {
+    fn resolve_column_in_quantifier(
+        &self,
+        q: &QuantifierRef,
+        column: &str,
+    ) -> Result<Option<ExprRef>, String> {
         for (i, c) in q.borrow().input_box.borrow().columns.iter().enumerate() {
             // ideally, this should be a reference to avoid the cloning... (*)
             let mut c: Option<Column> = Some(c.clone());
@@ -154,8 +170,8 @@ impl<'a> NameResolutionContext<'a> {
                     // @todo case insensitive comparisons
                     if column == col.name.as_ref().unwrap() {
                         let column_ref = Expr::make_column_ref(Rc::clone(&q), i);
-                        let column_ref = self.pullup_column_ref(column_ref);
-                        return Some(make_ref(column_ref));
+                        let column_ref = self.pullup_column_ref(column_ref)?;
+                        return Ok(Some(make_ref(column_ref)));
                     } else {
                         c = None;
                     }
@@ -172,18 +188,18 @@ impl<'a> NameResolutionContext<'a> {
                 }
             }
         }
-        None
+        Ok(None)
     }
 
     fn get_column_in_quantifier(&self, q: &QuantifierRef, column: &str) -> Result<ExprRef, String> {
-        if let Some(c) = self.resolve_column_in_quantifier(q, column) {
+        if let Some(c) = self.resolve_column_in_quantifier(q, column)? {
             Ok(c)
         } else {
             Err(format!("column {} not found", column))
         }
     }
 
-    fn pullup_column_ref(&self, column_ref: Expr) -> Expr {
+    fn pullup_column_ref(&self, column_ref: Expr) -> Result<Expr, String> {
         let mut column_ref = column_ref;
         match &mut column_ref.expr_type {
             ExprType::ColumnReference(c) => {
@@ -221,7 +237,7 @@ impl<'a> NameResolutionContext<'a> {
                         ));
                     c.quantifier = parent_q;
                 }
-                column_ref
+                Ok(column_ref)
             }
             _ => {
                 panic!();
@@ -448,20 +464,25 @@ impl<'a> ModelGenerator<'a> {
             self.add_unique_keys(&current_box);
 
             let grouping_box = self.make_box(BoxType::Grouping(Grouping::new()));
-            let q = self.make_quantifier(current_box, &grouping_box);
+            let q = self.make_quantifier(current_box.clone(), &grouping_box);
             grouping_box.borrow_mut().add_quantifier(Rc::clone(&q));
-            // context for resolving the grouping keys
-            current_context = NameResolutionContext::new(Rc::clone(&grouping_box), parent_context);
-            current_context.add_quantifier(&q);
+
+            // Process the grouping key
             let mut input_column_in_group_key = HashSet::new();
             for key in &grouping.groups {
                 Self::disallow_subqueries(&key.expr, "GROUP BY")?;
 
+                // resolve the expression in the input quantifier
                 let expr = self.process_expr(&key.expr, &current_context)?;
-                if let ExprType::ColumnReference(c) = &expr.borrow().expr_type {
-                    input_column_in_group_key.insert(c.position);
-                }
+                let position = current_box
+                    .borrow_mut()
+                    .add_column_if_not_exists(expr.borrow().clone());
+                input_column_in_group_key.insert(position);
+
+                // ... and pull it up as a column ref in the grouping box: computed
+                // expression belong in the input box.
                 let mut grouping_box = grouping_box.borrow_mut();
+                let expr = make_ref(Expr::make_column_ref(q.clone(), position));
                 grouping_box.add_column(None, expr.clone());
                 grouping_box.add_group(KeyItem {
                     expr,
@@ -493,8 +514,8 @@ impl<'a> ModelGenerator<'a> {
             // put a select box on top of the grouping box and use the grouping quantifier for name resolution
             current_box = self.make_select_box();
             let q = self.make_quantifier(grouping_box, &current_box);
-            current_context = NameResolutionContext::new(Rc::clone(&current_box), parent_context);
-            current_context.add_quantifier(&q);
+            current_context =
+                NameResolutionContext::for_grouping(Rc::clone(&current_box), current_context);
             current_box.borrow_mut().add_quantifier(q);
 
             if let Some(having_clause) = &grouping.having_clause {
