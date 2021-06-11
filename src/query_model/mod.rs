@@ -1918,6 +1918,72 @@ impl rewrite_engine::Rule<BoxRef> for ScalarToForeachRule {
     }
 }
 
+//
+// FlattenJoin
+//
+
+struct FlattenJoinRule {
+    to_pull: Vec<(BoxRef, QuantifierRef)>,
+}
+
+impl FlattenJoinRule {
+    fn new() -> SingleTraversalRule {
+        SingleTraversalRule::new(vec![
+            Box::new(Self::new_internal()),
+            Box::new(MergeRule::new()),
+        ])
+    }
+    fn new_internal() -> Self {
+        Self {
+            to_pull: Vec::new(),
+        }
+    }
+}
+
+impl rewrite_engine::Rule<BoxRef> for FlattenJoinRule {
+    fn name(&self) -> &'static str {
+        "FlattenJoinRule"
+    }
+    fn apply_top_down(&self) -> bool {
+        false
+    }
+    fn condition(&mut self, obj: &BoxRef) -> bool {
+        self.to_pull.clear();
+        let bo = obj.borrow();
+        if let BoxType::Select(_) = &bo.box_type {
+            self.to_pull.extend(bo.quantifiers.iter().filter_map(|q| {
+                let bq = q.borrow();
+                let ib = &bq.input_box;
+                let bib = bq.input_box.borrow();
+                if let BoxType::OuterJoin = &bib.box_type {
+                    if let Some(q) = bib
+                        .quantifiers
+                        .iter()
+                        .filter(|q| q.borrow().quantifier_type == QuantifierType::PreservedForeach)
+                        .next()
+                    {
+                        return Some((ib.clone(), q.clone()));
+                    }
+                }
+                None
+            }));
+        }
+        !self.to_pull.is_empty()
+    }
+    fn action(&mut self, obj: &mut BoxRef) {
+        loop {
+            for (b, q) in self.to_pull.drain(..) {
+                b.borrow_mut().quantifiers.remove(&q);
+                q.borrow_mut().quantifier_type = QuantifierType::Foreach;
+                add_quantifier_to_box(obj, &q);
+            }
+            if !self.condition(obj) {
+                break;
+            }
+        }
+    }
+}
+
 type BoxRule = dyn rewrite_engine::Rule<BoxRef>;
 type RuleBox = Box<BoxRule>;
 
@@ -2330,6 +2396,7 @@ mod tests {
                 "ConstraintPropagation" => Box::new(ConstraintPropagationRule::new()),
                 "EmptyBoxes" => Box::new(EmptyBoxesRule::new()),
                 "EquivalentColumns" => Box::new(EquivalentColumnsRule::new()),
+                "FlattenJoin" => Box::new(FlattenJoinRule::new()),
                 "GroupByRemoval" => Box::new(GroupByRemovalRule::new()),
                 "Merge" => Box::new(MergeRule::new()),
                 "Normalization" => Box::new(NormalizationRule::new()),

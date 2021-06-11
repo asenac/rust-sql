@@ -339,7 +339,7 @@ impl QGBox {
                 .quantifiers
                 .iter()
                 .filter(|q| q.borrow().quantifier_type == QuantifierType::PreservedForeach)
-                .all(|q| q.borrow().input_box.borrow().one_tuple_at_most()),
+                .any(|q| q.borrow().input_box.borrow().one_tuple_at_most()),
             BoxType::Grouping(g) => g.groups.len() == 0,
             BoxType::Values(v) => v.len() <= 1,
             _ => false,
