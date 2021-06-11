@@ -1,0 +1,220 @@
+ddl
+create table a(a, b); create unique index aa on a(a); create table b(c, d);
+----
+
+steps apply=(ColumnRemoval,ConstraintPropagation,PushDownPredicates)
+select a from a where a > 10 and a < 100 and a in (select c from b where c = 1308)
+----
+----
+digraph G {
+    compound = true
+    labeljust = l
+    label="select a from a where a > 10 and a < 100 and a in (select c from b where c = 1308)
+"
+    node [ shape = box ]
+    subgraph cluster0 {
+        label = "Box0:Select"
+        boxhead0 [ shape = record, label="{ DISTINCT TUPLES|0: Q0.c0 AS A| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q0 [ label="Q0(F)" ]
+            Q2 [ label="Q2(E)" ]
+            edge [ arrowhead = none, style = solid ]
+            Q0 -> Q0 [ label="(Q0.c0) > (10)" ]
+            Q0 -> Q0 [ label="(Q0.c0) < (100)" ]
+            Q0 -> Q2 [ label="(Q0.c0) = (Q2.c0)" ]
+        }
+    }
+    subgraph cluster2 {
+        label = "Box2:Select"
+        boxhead2 [ shape = record, label="{ 0: Q1.c0 AS C }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q1 [ label="Q1(F)" ]
+            edge [ arrowhead = none, style = solid ]
+            Q1 -> Q1 [ label="(Q1.c0) = (1308)" ]
+        }
+    }
+    subgraph cluster3 {
+        label = "Box3:BaseTable B"
+        boxhead3 [ shape = record, label="{ 0: c0 AS C|1: c1 AS D }" ]
+        {
+            rank = same
+        }
+    }
+    subgraph cluster1 {
+        label = "Box1:BaseTable A"
+        boxhead1 [ shape = record, label="{ DISTINCT TUPLES|0: c0 AS A|1: c1 AS B| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+        }
+    }
+    edge [ arrowhead = none, style = dashed ]
+    Q0 -> boxhead1 [ lhead = cluster1 ]
+    Q2 -> boxhead2 [ lhead = cluster2 ]
+    Q1 -> boxhead3 [ lhead = cluster3 ]
+}
+digraph G {
+    compound = true
+    labeljust = l
+    label="select a from a where a > 10 and a < 100 and a in (select c from b where c = 1308)
+ + ColumnRemoval"
+    node [ shape = box ]
+    subgraph cluster0 {
+        label = "Box0:Select"
+        boxhead0 [ shape = record, label="{ DISTINCT TUPLES|0: Q0.c0 AS A| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q0 [ label="Q0(F)" ]
+            Q2 [ label="Q2(E)" ]
+            edge [ arrowhead = none, style = solid ]
+            Q0 -> Q0 [ label="(Q0.c0) > (10)" ]
+            Q0 -> Q0 [ label="(Q0.c0) < (100)" ]
+            Q0 -> Q2 [ label="(Q0.c0) = (Q2.c0)" ]
+        }
+    }
+    subgraph cluster2 {
+        label = "Box2:Select"
+        boxhead2 [ shape = record, label="{ 0: Q1.c0 AS C }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q1 [ label="Q1(F)" ]
+            edge [ arrowhead = none, style = solid ]
+            Q1 -> Q1 [ label="(Q1.c0) = (1308)" ]
+        }
+    }
+    subgraph cluster3 {
+        label = "Box3:BaseTable B"
+        boxhead3 [ shape = record, label="{ 0: c0 AS C }" ]
+        {
+            rank = same
+        }
+    }
+    subgraph cluster1 {
+        label = "Box1:BaseTable A"
+        boxhead1 [ shape = record, label="{ DISTINCT TUPLES|0: c0 AS A| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+        }
+    }
+    edge [ arrowhead = none, style = dashed ]
+    Q0 -> boxhead1 [ lhead = cluster1 ]
+    Q2 -> boxhead2 [ lhead = cluster2 ]
+    Q1 -> boxhead3 [ lhead = cluster3 ]
+}
+digraph G {
+    compound = true
+    labeljust = l
+    label="select a from a where a > 10 and a < 100 and a in (select c from b where c = 1308)
+ + ColumnRemoval + ConstraintPropagation"
+    node [ shape = box ]
+    subgraph cluster0 {
+        label = "Box0:Select"
+        boxhead0 [ shape = record, label="{ DISTINCT TUPLES|0: Q0.c0 AS A| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q0 [ label="Q0(F)" ]
+            Q2 [ label="Q2(E)" ]
+            edge [ arrowhead = none, style = solid ]
+            Q0 -> Q0 [ label="(Q0.c0) > (10)" ]
+            Q0 -> Q0 [ label="(Q0.c0) < (100)" ]
+            Q0 -> Q2 [ label="(Q0.c0) = (Q2.c0)" ]
+            Q2 -> Q2 [ label="(Q2.c0) < (100)" ]
+            Q2 -> Q2 [ label="(Q2.c0) > (10)" ]
+            Q0 -> Q0 [ label="NOT ((Q0.c0) IS NULL)" ]
+            Q2 -> Q2 [ label="NOT ((Q2.c0) IS NULL)" ]
+        }
+    }
+    subgraph cluster2 {
+        label = "Box2:Select"
+        boxhead2 [ shape = record, label="{ 0: Q1.c0 AS C }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q1 [ label="Q1(F)" ]
+            edge [ arrowhead = none, style = solid ]
+            Q1 -> Q1 [ label="(Q1.c0) = (1308)" ]
+            Q1 -> Q1 [ label="NOT ((Q1.c0) IS NULL)" ]
+        }
+    }
+    subgraph cluster3 {
+        label = "Box3:BaseTable B"
+        boxhead3 [ shape = record, label="{ 0: c0 AS C }" ]
+        {
+            rank = same
+        }
+    }
+    subgraph cluster1 {
+        label = "Box1:BaseTable A"
+        boxhead1 [ shape = record, label="{ DISTINCT TUPLES|0: c0 AS A| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+        }
+    }
+    edge [ arrowhead = none, style = dashed ]
+    Q0 -> boxhead1 [ lhead = cluster1 ]
+    Q2 -> boxhead2 [ lhead = cluster2 ]
+    Q1 -> boxhead3 [ lhead = cluster3 ]
+}
+digraph G {
+    compound = true
+    labeljust = l
+    label="select a from a where a > 10 and a < 100 and a in (select c from b where c = 1308)
+ + ColumnRemoval + ConstraintPropagation + PushDownPredicates"
+    node [ shape = box ]
+    subgraph cluster0 {
+        label = "Box0:Select"
+        boxhead0 [ shape = record, label="{ DISTINCT TUPLES|0: Q0.c0 AS A| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q0 [ label="Q0(F)" ]
+            Q2 [ label="Q2(E)" ]
+            edge [ arrowhead = none, style = solid ]
+            Q0 -> Q0 [ label="(Q0.c0) > (10)" ]
+            Q0 -> Q0 [ label="(Q0.c0) < (100)" ]
+            Q0 -> Q2 [ label="(Q0.c0) = (Q2.c0)" ]
+            Q0 -> Q0 [ label="NOT ((Q0.c0) IS NULL)" ]
+        }
+    }
+    subgraph cluster2 {
+        label = "Box2:Select"
+        boxhead2 [ shape = record, label="{ 0: Q1.c0 AS C }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q1 [ label="Q1(F)" ]
+            edge [ arrowhead = none, style = solid ]
+            Q1 -> Q1 [ label="(Q1.c0) = (1308)" ]
+            Q1 -> Q1 [ label="NOT ((Q1.c0) IS NULL)" ]
+            Q1 -> Q1 [ label="(Q1.c0) > (10)" ]
+            Q1 -> Q1 [ label="(Q1.c0) < (100)" ]
+        }
+    }
+    subgraph cluster3 {
+        label = "Box3:BaseTable B"
+        boxhead3 [ shape = record, label="{ 0: c0 AS C }" ]
+        {
+            rank = same
+        }
+    }
+    subgraph cluster1 {
+        label = "Box1:BaseTable A"
+        boxhead1 [ shape = record, label="{ DISTINCT TUPLES|0: c0 AS A| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+        }
+    }
+    edge [ arrowhead = none, style = dashed ]
+    Q0 -> boxhead1 [ lhead = cluster1 ]
+    Q2 -> boxhead2 [ lhead = cluster2 ]
+    Q1 -> boxhead3 [ lhead = cluster3 ]
+}
+
+----
+----
