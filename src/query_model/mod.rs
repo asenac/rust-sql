@@ -1833,6 +1833,47 @@ impl ScalarToForeachRule {
     fn new() -> Self {
         Self {}
     }
+
+    fn is_column_ref_from(q: &Quantifier, p: &ExprRef) -> bool {
+        if let ExprType::ColumnReference(c) = &p.borrow().expr_type {
+            *c.quantifier.borrow() == *q
+        } else {
+            false
+        }
+    }
+
+    fn nulls_are_rejected(q: &Quantifier) -> bool {
+        let p = q.parent_box.upgrade();
+        if let Some(p) = p {
+            let p = p.borrow();
+            if let BoxType::Select(_) = &p.box_type {
+                if let Some(predicates) = &p.predicates {
+                    for pred in predicates.iter() {
+                        let pred = pred.borrow();
+                        match &pred.expr_type {
+                            ExprType::Cmp(_) => {
+                                if pred
+                                    .operands
+                                    .as_ref()
+                                    .expect("malformed expression")
+                                    .iter()
+                                    .any(|p| Self::is_column_ref_from(q, p))
+                                {
+                                    return true;
+                                }
+                            }
+                            _ => {
+                                if let Some(p) = pred.is_not_null() {
+                                    return Self::is_column_ref_from(q, &p);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        false
+    }
 }
 
 impl rewrite_engine::Rule<BoxRef> for ScalarToForeachRule {
@@ -1849,7 +1890,8 @@ impl rewrite_engine::Rule<BoxRef> for ScalarToForeachRule {
             && obj.ranging_quantifiers.iter().all(|q| {
                 let q = q.upgrade();
                 if let Some(q) = q {
-                    q.borrow().quantifier_type == QuantifierType::Scalar
+                    let q = q.borrow();
+                    q.quantifier_type == QuantifierType::Scalar && Self::nulls_are_rejected(&q)
                 } else {
                     false
                 }
