@@ -1849,6 +1849,9 @@ impl ScalarToForeachRule {
             if let BoxType::Select(_) = &p.box_type {
                 if let Some(predicates) = &p.predicates {
                     for pred in predicates.iter() {
+                        if Self::is_column_ref_from(q, pred) {
+                            return true;
+                        }
                         let pred = pred.borrow();
                         match &pred.expr_type {
                             ExprType::Cmp(_) => {
