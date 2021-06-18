@@ -75,7 +75,7 @@ pub struct JoinTerm {
     pub alias: Option<TableAlias>,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Direction {
     Ascending,
     Descending,

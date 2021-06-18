@@ -2188,7 +2188,13 @@ impl CteDiscovery {
         if let Some(predicates) = &expressions {
             predicates
                 .iter()
-                .filter_map(|p| Self::translate_expression(p, translation_map))
+                .filter_map(|p| {
+                    if let Some(translated) = Self::translate_expression(p, translation_map) {
+                        Some((translated, p.clone()))
+                    } else {
+                        None
+                    }
+                })
                 .collect()
         } else {
             Vec::new()
@@ -2198,7 +2204,7 @@ impl CteDiscovery {
     fn translate_expression(
         p: &ExprRef,
         translation_map: &BTreeMap<QuantifierRef, usize>,
-    ) -> Option<(ExprRef, ExprRef)> {
+    ) -> Option<ExprRef> {
         let mut column_references = BTreeMap::new();
         collect_column_references(p, &mut column_references);
 
@@ -2222,7 +2228,7 @@ impl CteDiscovery {
                 Ok(())
             });
 
-            Some((cloned_p, p.clone()))
+            Some(cloned_p)
         } else {
             None
         }
@@ -2288,13 +2294,11 @@ impl CteDiscovery {
                     .columns
                     .iter()
                     .filter_map(|c| Self::translate_expression(&c.expr, &translation_map1))
-                    .map(|(c, _)| c)
                     .collect::<Vec<_>>();
                 let translated_columns2 = b2
                     .columns
                     .iter()
                     .filter_map(|c| Self::translate_expression(&c.expr, &translation_map2))
-                    .map(|(c, _)| c)
                     .collect::<Vec<_>>();
 
                 if b1.columns.len() == translated_columns1.len()
@@ -2308,7 +2312,7 @@ impl CteDiscovery {
                                 .groups
                                 .iter()
                                 .filter_map(|c| {
-                                    if let Some((p, _)) =
+                                    if let Some(p) =
                                         Self::translate_expression(&c.expr, &translation_map1)
                                     {
                                         Some((p, c.dir.clone()))
@@ -2316,13 +2320,12 @@ impl CteDiscovery {
                                         None
                                     }
                                 })
-                                .map(|(c, _)| c)
                                 .collect::<Vec<_>>();
                             let translated_key2 = g2
                                 .groups
                                 .iter()
                                 .filter_map(|c| {
-                                    if let Some((p, _)) =
+                                    if let Some(p) =
                                         Self::translate_expression(&c.expr, &translation_map2)
                                     {
                                         Some((p, c.dir.clone()))
@@ -2330,7 +2333,6 @@ impl CteDiscovery {
                                         None
                                     }
                                 })
-                                .map(|(c, _)| c)
                                 .collect::<Vec<_>>();
 
                             g1.groups.len() == g2.groups.len()
