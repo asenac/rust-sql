@@ -878,7 +878,7 @@ impl rewrite_engine::Rule<BoxRef> for MergeRule {
                         if let QuantifierType::Foreach = borrowed_q.quantifier_type {
                             let input_box = borrowed_q.input_box.borrow();
                             if let BoxType::Select(inner_select) = &input_box.box_type {
-                                if borrowed_obj.distinct_operation == DistinctOperation::Enforce
+                                if borrowed_obj.distinct_tuples()
                                     || input_box.distinct_operation != DistinctOperation::Enforce
                                 {
                                     if inner_select.order_by.is_none()
