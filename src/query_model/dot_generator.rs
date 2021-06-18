@@ -137,20 +137,16 @@ impl DotGenerator {
 
     fn get_box_head(b: &QGBox, predicates: &[ExprRef]) -> String {
         let mut r = String::new();
+
+        r.push_str(&format!("Distinct: {:?}", b.distinct_operation));
         if b.distinct_tuples() {
-            r.push_str("DISTINCT TUPLES")
+            r.push_str(" (DISTINCT TUPLES)")
         }
         if b.one_tuple_at_most() {
-            if r.len() > 0 {
-                r.push('|');
-            }
-            r.push_str("ONE TUPLE AT MOST")
+            r.push_str("| ONE TUPLE AT MOST")
         }
         for (i, c) in b.columns.iter().enumerate() {
-            if r.len() > 0 {
-                r.push('|');
-            }
-            r.push_str(&format!("{}: {}", i, c.expr.borrow()));
+            r.push_str(&format!("| {}: {}", i, c.expr.borrow()));
             if let Some(c) = &c.name {
                 r.push_str(&format!(" AS {}", c));
             }

@@ -14,7 +14,7 @@ digraph G {
     node [ shape = box ]
     subgraph cluster0 {
         label = "Box0:Select"
-        boxhead0 [ shape = record, label="{ 0: Q0.c0 AS A| ORDER Q0.c0 Ascending }" ]
+        boxhead0 [ shape = record, label="{ Distinct: Preserve| 0: Q0.c0 AS A| ORDER Q0.c0 Ascending }" ]
         {
             rank = same
             node [ shape = circle ]
@@ -23,7 +23,7 @@ digraph G {
     }
     subgraph cluster1 {
         label = "Box1:BaseTable A"
-        boxhead1 [ shape = record, label="{ 0: c0 AS A|1: c1 AS B }" ]
+        boxhead1 [ shape = record, label="{ Distinct: Preserve| 0: c0 AS A| 1: c1 AS B }" ]
         {
             rank = same
         }
@@ -47,7 +47,7 @@ digraph G {
     node [ shape = box ]
     subgraph cluster0 {
         label = "Box0:Select"
-        boxhead0 [ shape = record, label="{ 0: Q2.c0 AS A| ORDER Q2.c3 Ascending }" ]
+        boxhead0 [ shape = record, label="{ Distinct: Preserve| 0: Q2.c0 AS A| ORDER Q2.c3 Ascending }" ]
         {
             rank = same
             node [ shape = circle ]
@@ -56,7 +56,7 @@ digraph G {
     }
     subgraph cluster1 {
         label = "Box1:Select"
-        boxhead1 [ shape = record, label="{ 0: Q0.c0 AS A|1: Q0.c1 AS B|2: Q1.c1 AS B|3: Q1.c0 AS A }" ]
+        boxhead1 [ shape = record, label="{ Distinct: Preserve| 0: Q0.c0 AS A| 1: Q0.c1 AS B| 2: Q1.c1 AS B| 3: Q1.c0 AS A }" ]
         {
             rank = same
             node [ shape = circle ]
@@ -68,14 +68,14 @@ digraph G {
     }
     subgraph cluster3 {
         label = "Box3:BaseTable B"
-        boxhead3 [ shape = record, label="{ 0: c0 AS A|1: c1 AS B }" ]
+        boxhead3 [ shape = record, label="{ Distinct: Preserve| 0: c0 AS A| 1: c1 AS B }" ]
         {
             rank = same
         }
     }
     subgraph cluster2 {
         label = "Box2:BaseTable A"
-        boxhead2 [ shape = record, label="{ 0: c0 AS A|1: c1 AS B }" ]
+        boxhead2 [ shape = record, label="{ Distinct: Preserve| 0: c0 AS A| 1: c1 AS B }" ]
         {
             rank = same
         }
@@ -102,7 +102,7 @@ digraph G {
     node [ shape = box ]
     subgraph cluster0 {
         label = "Box0:Select"
-        boxhead0 [ shape = record, label="{ 0: Q0.c0 AS A| ORDER Q0.c0 Ascending }" ]
+        boxhead0 [ shape = record, label="{ Distinct: Preserve| 0: Q0.c0 AS A| ORDER Q0.c0 Ascending }" ]
         {
             rank = same
             node [ shape = circle ]
@@ -111,7 +111,7 @@ digraph G {
     }
     subgraph cluster1 {
         label = "Box1:BaseTable A"
-        boxhead1 [ shape = record, label="{ 0: c0 AS A|1: c1 AS B }" ]
+        boxhead1 [ shape = record, label="{ Distinct: Preserve| 0: c0 AS A| 1: c1 AS B }" ]
         {
             rank = same
         }
@@ -136,7 +136,7 @@ digraph G {
     node [ shape = box ]
     subgraph cluster0 {
         label = "Box0:Select"
-        boxhead0 [ shape = record, label="{ 0: 1 }" ]
+        boxhead0 [ shape = record, label="{ Distinct: Preserve| 0: 1 }" ]
         {
             rank = same
             node [ shape = circle ]
@@ -145,7 +145,7 @@ digraph G {
     }
     subgraph cluster1 {
         label = "Box1:BaseTable A"
-        boxhead1 [ shape = record, label="{ 0: c0 AS A|1: c1 AS B }" ]
+        boxhead1 [ shape = record, label="{ Distinct: Preserve| 0: c0 AS A| 1: c1 AS B }" ]
         {
             rank = same
         }
@@ -169,7 +169,7 @@ digraph G {
     node [ shape = box ]
     subgraph cluster0 {
         label = "Box0:Select"
-        boxhead0 [ shape = record, label="{ 0: Q0.c0 AS A|1: Q0.c1 AS B }" ]
+        boxhead0 [ shape = record, label="{ Distinct: Preserve| 0: Q0.c0 AS A| 1: Q0.c1 AS B }" ]
         {
             rank = same
             node [ shape = circle ]
@@ -178,7 +178,7 @@ digraph G {
     }
     subgraph cluster1 {
         label = "Box1:BaseTable A"
-        boxhead1 [ shape = record, label="{ 0: c0 AS A|1: c1 AS B }" ]
+        boxhead1 [ shape = record, label="{ Distinct: Preserve| 0: c0 AS A| 1: c1 AS B }" ]
         {
             rank = same
         }
@@ -202,7 +202,7 @@ digraph G {
     node [ shape = box ]
     subgraph cluster0 {
         label = "Box0:Select"
-        boxhead0 [ shape = record, label="{ 0: Q0.c0 AS A|1: Q0.c1 AS B| ORDER Q0.c0 Ascending }" ]
+        boxhead0 [ shape = record, label="{ Distinct: Preserve| 0: Q0.c0 AS A| 1: Q0.c1 AS B| ORDER Q0.c0 Ascending }" ]
         {
             rank = same
             node [ shape = circle ]
@@ -211,7 +211,7 @@ digraph G {
     }
     subgraph cluster1 {
         label = "Box1:BaseTable A"
-        boxhead1 [ shape = record, label="{ 0: c0 AS A|1: c1 AS B }" ]
+        boxhead1 [ shape = record, label="{ Distinct: Preserve| 0: c0 AS A| 1: c1 AS B }" ]
         {
             rank = same
         }

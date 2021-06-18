@@ -870,13 +870,16 @@ impl rewrite_engine::Rule<BoxRef> for MergeRule {
                     if let QuantifierType::Foreach = borrowed_q.quantifier_type {
                         let input_box = borrowed_q.input_box.borrow();
                         if let BoxType::Select(inner_select) = &input_box.box_type {
-                            if inner_select.order_by.is_none() && inner_select.limit.is_none() {
-                                self.to_merge.insert(Rc::clone(q));
-                            } else if borrowed_obj.quantifiers.len() == 1
-                                && (outer_select.order_by.is_none() || inner_select.limit.is_none())
-                            // @todo revisit this
-                            {
-                                self.to_merge.insert(Rc::clone(q));
+                            if input_box.distinct_operation != DistinctOperation::Enforce {
+                                if inner_select.order_by.is_none() && inner_select.limit.is_none() {
+                                    self.to_merge.insert(Rc::clone(q));
+                                } else if borrowed_obj.quantifiers.len() == 1
+                                    && (outer_select.order_by.is_none()
+                                        || inner_select.limit.is_none())
+                                // @todo revisit this
+                                {
+                                    self.to_merge.insert(Rc::clone(q));
+                                }
                             }
                         }
                     }
@@ -893,6 +896,7 @@ impl rewrite_engine::Rule<BoxRef> for MergeRule {
                                     && inner_select.order_by.is_none()
                                     && inner_select.limit.is_none()
                                     && !input_box.has_predicates()
+                                    && input_box.distinct_operation != DistinctOperation::Enforce
                                 {
                                     self.to_merge.insert(Rc::clone(q));
                                 }
@@ -1062,14 +1066,16 @@ impl rewrite_engine::Rule<BoxRef> for ColumnRemovalRule {
             return false;
         }
         let obj = obj.borrow();
-        obj.columns.len()
-            != self
-                .column_references
-                .as_mut()
-                .unwrap()
-                .entry(obj.id)
-                .or_default()
-                .len()
+        // cannot remove columns from a DISTINCT operator
+        obj.distinct_operation == DistinctOperation::Preserve
+            && obj.columns.len()
+                != self
+                    .column_references
+                    .as_mut()
+                    .unwrap()
+                    .entry(obj.id)
+                    .or_default()
+                    .len()
     }
     fn action(&mut self, obj: &mut BoxRef) {
         let mut obj = obj.borrow_mut();

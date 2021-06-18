@@ -1,20 +1,20 @@
 ddl
-create table a(a, b, c);
+create table a(a, b); create unique index aa on a(a);
 ----
 
-query apply=ColumnRemoval
-select a, c from (select * from a);
+query apply=Merge
+select * from (select distinct a from a);
 ----
 ----
 digraph G {
     compound = true
     labeljust = l
-    label="select a, c from (select * from a);
- + ColumnRemoval"
+    label="select * from (select distinct a from a);
+ + Merge"
     node [ shape = box ]
     subgraph cluster0 {
         label = "Box0:Select"
-        boxhead0 [ shape = record, label="{ Distinct: Preserve| 0: Q1.c0 AS A| 1: Q1.c1 AS C }" ]
+        boxhead0 [ shape = record, label="{ Distinct: Preserve (DISTINCT TUPLES)| 0: Q1.c0 AS A| UNIQUE KEY [0] }" ]
         {
             rank = same
             node [ shape = circle ]
@@ -23,7 +23,7 @@ digraph G {
     }
     subgraph cluster1 {
         label = "Box1:Select"
-        boxhead1 [ shape = record, label="{ Distinct: Preserve| 0: Q0.c0 AS A| 1: Q0.c1 AS C }" ]
+        boxhead1 [ shape = record, label="{ Distinct: Enforce (DISTINCT TUPLES)| 0: Q0.c0 AS A| UNIQUE KEY [0] }" ]
         {
             rank = same
             node [ shape = circle ]
@@ -32,7 +32,7 @@ digraph G {
     }
     subgraph cluster2 {
         label = "Box2:BaseTable A"
-        boxhead2 [ shape = record, label="{ Distinct: Preserve| 0: c0 AS A| 1: c2 AS C }" ]
+        boxhead2 [ shape = record, label="{ Distinct: Preserve (DISTINCT TUPLES)| 0: c0 AS A| 1: c1 AS B| UNIQUE KEY [0] }" ]
         {
             rank = same
         }
