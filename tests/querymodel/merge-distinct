@@ -34,3 +34,81 @@ digraph G {
 
 ----
 ----
+
+# the top level box must inherit the distinctness enforcement
+query apply=Merge
+select * from (select distinct b from a);
+----
+----
+digraph G {
+    compound = true
+    labeljust = l
+    label="select * from (select distinct b from a);
+ + Merge"
+    node [ shape = box ]
+    subgraph cluster0 {
+        label = "Box0:Select"
+        boxhead0 [ shape = record, label="{ Distinct: Enforce (DISTINCT TUPLES)| 0: Q0.c1 AS B| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q0 [ label="Q0(F)" ]
+        }
+    }
+    subgraph cluster2 {
+        label = "Box2:BaseTable A"
+        boxhead2 [ shape = record, label="{ Distinct: Preserve (DISTINCT TUPLES)| 0: c0 AS A| 1: c1 AS B| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+        }
+    }
+    edge [ arrowhead = none, style = dashed ]
+    Q0 -> boxhead2 [ lhead = cluster2 ]
+}
+
+----
+----
+
+# the top level box cannot be removed: projection/distinct reorder
+query apply=(ColumnRemoval,Merge)
+select b from (select distinct b, b = 10 from a);
+----
+----
+digraph G {
+    compound = true
+    labeljust = l
+    label="select b from (select distinct b, b = 10 from a);
+ + ColumnRemoval + Merge"
+    node [ shape = box ]
+    subgraph cluster0 {
+        label = "Box0:Select"
+        boxhead0 [ shape = record, label="{ Distinct: Preserve| 0: Q1.c0 AS B }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q1 [ label="Q1(F)" ]
+        }
+    }
+    subgraph cluster1 {
+        label = "Box1:Select"
+        boxhead1 [ shape = record, label="{ Distinct: Enforce (DISTINCT TUPLES)| 0: Q0.c0 AS B| 1: (Q0.c0) = (10)| UNIQUE KEY [0, 1] }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q0 [ label="Q0(F)" ]
+        }
+    }
+    subgraph cluster2 {
+        label = "Box2:BaseTable A"
+        boxhead2 [ shape = record, label="{ Distinct: Preserve| 0: c1 AS B }" ]
+        {
+            rank = same
+        }
+    }
+    edge [ arrowhead = none, style = dashed ]
+    Q1 -> boxhead1 [ lhead = cluster1 ]
+    Q0 -> boxhead2 [ lhead = cluster2 ]
+}
+
+----
+----

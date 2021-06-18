@@ -865,20 +865,31 @@ impl rewrite_engine::Rule<BoxRef> for MergeRule {
 
         match &borrowed_obj.box_type {
             BoxType::Select(outer_select) => {
-                for q in &borrowed_obj.quantifiers {
-                    let borrowed_q = q.borrow();
-                    if let QuantifierType::Foreach = borrowed_q.quantifier_type {
-                        let input_box = borrowed_q.input_box.borrow();
-                        if let BoxType::Select(inner_select) = &input_box.box_type {
-                            if input_box.distinct_operation != DistinctOperation::Enforce {
-                                if inner_select.order_by.is_none() && inner_select.limit.is_none() {
-                                    self.to_merge.insert(Rc::clone(q));
-                                } else if borrowed_obj.quantifiers.len() == 1
-                                    && (outer_select.order_by.is_none()
-                                        || inner_select.limit.is_none())
-                                // @todo revisit this
-                                {
-                                    self.to_merge.insert(Rc::clone(q));
+                let mut merged = false;
+                if let Some(q) = borrowed_obj.is_dummy_select() {
+                    if let BoxType::Select(_) = &q.borrow().input_box.borrow().box_type {
+                        self.to_merge.insert(q.clone());
+                        merged = true;
+                    }
+                }
+                if !merged {
+                    for q in &borrowed_obj.quantifiers {
+                        let borrowed_q = q.borrow();
+                        if let QuantifierType::Foreach = borrowed_q.quantifier_type {
+                            let input_box = borrowed_q.input_box.borrow();
+                            if let BoxType::Select(inner_select) = &input_box.box_type {
+                                if input_box.distinct_operation != DistinctOperation::Enforce {
+                                    if inner_select.order_by.is_none()
+                                        && inner_select.limit.is_none()
+                                    {
+                                        self.to_merge.insert(Rc::clone(q));
+                                    } else if borrowed_obj.quantifiers.len() == 1
+                                        && (outer_select.order_by.is_none()
+                                            || inner_select.limit.is_none())
+                                    // @todo revisit this
+                                    {
+                                        self.to_merge.insert(Rc::clone(q));
+                                    }
                                 }
                             }
                         }
@@ -970,6 +981,11 @@ impl rewrite_engine::Rule<BoxRef> for MergeRule {
                         Self::add_quantifier_to_box(obj, &q, &new_q);
                         to_replace.insert(oq.clone(), new_q);
                     }
+                }
+
+                // This can only happen for dummy selects
+                if input_box.distinct_operation == DistinctOperation::Enforce {
+                    obj.borrow_mut().distinct_operation = DistinctOperation::Enforce;
                 }
             }
 
