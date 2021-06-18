@@ -1,0 +1,204 @@
+ddl
+create table a(a, b); create unique index aa on a(a);
+----
+
+query apply=(GroupByRemoval,Merge)
+select a, b from a group by a;
+----
+----
+digraph G {
+    compound = true
+    labeljust = l
+    label="select a, b from a group by a;
+ + GroupByRemoval + Merge"
+    node [ shape = box ]
+    subgraph cluster3 {
+        label = "Box3:Select"
+        boxhead3 [ shape = record, label="{ DISTINCT TUPLES|0: Q0.c0 AS A|1: Q0.c1 AS B| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q0 [ label="Q0(F)" ]
+        }
+    }
+    subgraph cluster1 {
+        label = "Box1:BaseTable A"
+        boxhead1 [ shape = record, label="{ DISTINCT TUPLES|0: c0 AS A|1: c1 AS B| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+        }
+    }
+    edge [ arrowhead = none, style = dashed ]
+    Q0 -> boxhead1 [ lhead = cluster1 ]
+}
+
+----
+----
+
+steps apply=(FunctionalDependencies,GroupByRemoval,Merge)
+select a, b from a group by a, b;
+----
+----
+digraph G {
+    compound = true
+    labeljust = l
+    label="select a, b from a group by a, b;
+"
+    node [ shape = box ]
+    subgraph cluster3 {
+        label = "Box3:Select"
+        boxhead3 [ shape = record, label="{ DISTINCT TUPLES|0: Q2.c0 AS A|1: Q2.c1 AS B| UNIQUE KEY [0]| UNIQUE KEY [0, 1] }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q2 [ label="Q2(F)" ]
+        }
+    }
+    subgraph cluster2 {
+        label = "Box2:Grouping"
+        boxhead2 [ shape = record, label="{ DISTINCT TUPLES|0: Q1.c0 AS A|1: Q1.c1 AS B| GROUP Q1.c0 Ascending Q1.c1 Ascending| UNIQUE KEY [0]| UNIQUE KEY [0, 1] }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q1 [ label="Q1(F)" ]
+        }
+    }
+    subgraph cluster0 {
+        label = "Box0:Select"
+        boxhead0 [ shape = record, label="{ DISTINCT TUPLES|0: Q0.c0 AS A|1: Q0.c1 AS B| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q0 [ label="Q0(F)" ]
+        }
+    }
+    subgraph cluster1 {
+        label = "Box1:BaseTable A"
+        boxhead1 [ shape = record, label="{ DISTINCT TUPLES|0: c0 AS A|1: c1 AS B| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+        }
+    }
+    edge [ arrowhead = none, style = dashed ]
+    Q2 -> boxhead2 [ lhead = cluster2 ]
+    Q1 -> boxhead0 [ lhead = cluster0 ]
+    Q0 -> boxhead1 [ lhead = cluster1 ]
+}
+digraph G {
+    compound = true
+    labeljust = l
+    label="select a, b from a group by a, b;
+ + FunctionalDependencies"
+    node [ shape = box ]
+    subgraph cluster3 {
+        label = "Box3:Select"
+        boxhead3 [ shape = record, label="{ DISTINCT TUPLES|0: Q2.c0 AS A|1: Q2.c1 AS B| UNIQUE KEY [0]| UNIQUE KEY [0, 1] }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q2 [ label="Q2(F)" ]
+        }
+    }
+    subgraph cluster2 {
+        label = "Box2:Grouping"
+        boxhead2 [ shape = record, label="{ DISTINCT TUPLES|0: Q1.c0 AS A|1: Q1.c1 AS B| GROUP Q1.c0 Ascending| UNIQUE KEY [0]| UNIQUE KEY [0, 1] }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q1 [ label="Q1(F)" ]
+        }
+    }
+    subgraph cluster0 {
+        label = "Box0:Select"
+        boxhead0 [ shape = record, label="{ DISTINCT TUPLES|0: Q0.c0 AS A|1: Q0.c1 AS B| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q0 [ label="Q0(F)" ]
+        }
+    }
+    subgraph cluster1 {
+        label = "Box1:BaseTable A"
+        boxhead1 [ shape = record, label="{ DISTINCT TUPLES|0: c0 AS A|1: c1 AS B| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+        }
+    }
+    edge [ arrowhead = none, style = dashed ]
+    Q2 -> boxhead2 [ lhead = cluster2 ]
+    Q1 -> boxhead0 [ lhead = cluster0 ]
+    Q0 -> boxhead1 [ lhead = cluster1 ]
+}
+digraph G {
+    compound = true
+    labeljust = l
+    label="select a, b from a group by a, b;
+ + FunctionalDependencies + GroupByRemoval"
+    node [ shape = box ]
+    subgraph cluster3 {
+        label = "Box3:Select"
+        boxhead3 [ shape = record, label="{ DISTINCT TUPLES|0: Q2.c0 AS A|1: Q2.c1 AS B| UNIQUE KEY [0]| UNIQUE KEY [0, 1] }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q2 [ label="Q2(F)" ]
+        }
+    }
+    subgraph cluster2 {
+        label = "Box2:Select"
+        boxhead2 [ shape = record, label="{ DISTINCT TUPLES|0: Q1.c0 AS A|1: Q1.c1 AS B| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q1 [ label="Q1(F)" ]
+        }
+    }
+    subgraph cluster0 {
+        label = "Box0:Select"
+        boxhead0 [ shape = record, label="{ DISTINCT TUPLES|0: Q0.c0 AS A|1: Q0.c1 AS B| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q0 [ label="Q0(F)" ]
+        }
+    }
+    subgraph cluster1 {
+        label = "Box1:BaseTable A"
+        boxhead1 [ shape = record, label="{ DISTINCT TUPLES|0: c0 AS A|1: c1 AS B| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+        }
+    }
+    edge [ arrowhead = none, style = dashed ]
+    Q2 -> boxhead2 [ lhead = cluster2 ]
+    Q1 -> boxhead0 [ lhead = cluster0 ]
+    Q0 -> boxhead1 [ lhead = cluster1 ]
+}
+digraph G {
+    compound = true
+    labeljust = l
+    label="select a, b from a group by a, b;
+ + FunctionalDependencies + GroupByRemoval + Merge"
+    node [ shape = box ]
+    subgraph cluster3 {
+        label = "Box3:Select"
+        boxhead3 [ shape = record, label="{ DISTINCT TUPLES|0: Q0.c0 AS A|1: Q0.c1 AS B| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q0 [ label="Q0(F)" ]
+        }
+    }
+    subgraph cluster1 {
+        label = "Box1:BaseTable A"
+        boxhead1 [ shape = record, label="{ DISTINCT TUPLES|0: c0 AS A|1: c1 AS B| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+        }
+    }
+    edge [ arrowhead = none, style = dashed ]
+    Q0 -> boxhead1 [ lhead = cluster1 ]
+}
+
+----
+----

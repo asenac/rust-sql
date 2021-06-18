@@ -743,6 +743,91 @@ impl rewrite_engine::Rule<BoxRef> for GroupByRemovalRule {
 }
 
 //
+// FunctionalDependencies
+//
+
+/// Remove columns from GROUP KEY that functionally depend on other columns also in the GROUP KEY
+struct FunctionalDependenciesRule {
+    new_key: Option<Vec<KeyItem>>,
+}
+
+impl FunctionalDependenciesRule {
+    fn new() -> Self {
+        Self { new_key: None }
+    }
+}
+
+impl rewrite_engine::Rule<BoxRef> for FunctionalDependenciesRule {
+    fn name(&self) -> &'static str {
+        "FunctionalDependenciesRule"
+    }
+    fn apply_top_down(&self) -> bool {
+        false
+    }
+    fn condition(&mut self, obj: &BoxRef) -> bool {
+        self.new_key = None;
+        let obj = obj.borrow();
+        // note: this should be an assert
+        if obj.quantifiers.len() == 1 {
+            if let BoxType::Grouping(grouping) = &obj.box_type {
+                let column_refs_in_key = grouping
+                    .groups
+                    .iter()
+                    .filter_map(|x| {
+                        let x = x.expr.borrow();
+                        if let ExprType::ColumnReference(c) = &x.expr_type {
+                            Some(c.position)
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Vec<_>>();
+                let q = obj.quantifiers.iter().next().unwrap();
+                let q = q.borrow();
+                let b = q.input_box.borrow();
+                // find the shortest unique key which all columns are contained by the
+                // grouping key.
+                let mut keys = b
+                    .unique_keys
+                    .iter()
+                    .filter(|key| key.iter().all(|x| column_refs_in_key.contains(x)))
+                    .sorted_by_key(|k| k.len());
+                if let Some(key) = keys.next() {
+                    self.new_key = Some(
+                        grouping
+                            .groups
+                            .iter()
+                            .filter(|x| {
+                                let x = x.expr.borrow();
+                                if let ExprType::ColumnReference(c) = &x.expr_type {
+                                    if key.contains(&c.position) {
+                                        return true;
+                                    }
+                                }
+                                false
+                            })
+                            .cloned()
+                            .collect::<Vec<_>>(),
+                    );
+                }
+            }
+        }
+        self.new_key.is_some()
+    }
+    fn action(&mut self, obj: &mut BoxRef) {
+        let mut obj = obj.borrow_mut();
+        if let BoxType::Grouping(grouping) = &mut obj.box_type {
+            std::mem::swap(&mut grouping.groups, self.new_key.as_mut().unwrap());
+            // note: we should recompute all the keys all the way up to the top box
+            obj.recompute_unique_keys();
+            self.new_key = None;
+        } else {
+            panic!("invalid action");
+        }
+    }
+}
+
+//
 // MergeRule
 //
 
@@ -2072,6 +2157,7 @@ pub fn rewrite_model(m: &ModelRef) {
         Box::new(ConstantLiftingRule::new()),
         Box::new(SemiJoinRemovalRule::new()),
         Box::new(GroupByRemovalRule::new()),
+        Box::new(FunctionalDependenciesRule::new()),
         Box::new(PushDownPredicatesRule::new()),
         Box::new(ConstraintPropagationRule::new()),
         Box::new(OrderByRemovalRule::new()),
@@ -2397,6 +2483,7 @@ mod tests {
                 "EmptyBoxes" => Box::new(EmptyBoxesRule::new()),
                 "EquivalentColumns" => Box::new(EquivalentColumnsRule::new()),
                 "FlattenJoin" => Box::new(FlattenJoinRule::new()),
+                "FunctionalDependencies" => Box::new(FunctionalDependenciesRule::new()),
                 "GroupByRemoval" => Box::new(GroupByRemovalRule::new()),
                 "Merge" => Box::new(MergeRule::new()),
                 "Normalization" => Box::new(NormalizationRule::new()),
