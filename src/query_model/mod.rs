@@ -2332,6 +2332,9 @@ impl CteDiscovery {
                 Ok(())
             });
 
+            // normalize the resulting expression for comparison purposes
+            cloned_p.borrow_mut().normalize();
+
             Some(cloned_p)
         } else {
             None
