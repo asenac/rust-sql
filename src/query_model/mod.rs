@@ -402,7 +402,7 @@ impl rewrite_engine::Rule<BoxRef> for ConstraintPropagationRule {
                                             None
                                         }
                                     }) {
-                                        let is_null = make_ref(Expr::make_is_null(o));
+                                        let is_null = make_ref(Expr::make_is_null(deep_clone(&o)));
                                         let not = make_ref(Expr::make_not(is_null));
                                         self.new_predicates.push(not);
                                     }
@@ -2174,7 +2174,7 @@ impl CteDiscovery {
                         rq.replace_input_box(b1_ref.clone());
                     }
                     return true;
-                } else if false && b2.is_select() && quantifier_intersection > 1 {
+                } else if b2.is_select() && quantifier_intersection > 1 {
                     // Pushdown common sub-join
                     let b1 = b1_ref.borrow();
                     let (translation_map1, translation_map2) = Self::get_translation_maps(&b1, &b2);
@@ -2204,10 +2204,11 @@ impl CteDiscovery {
                     // map used to rewrite remaining expressions
                     let mut class_to_offset = HashMap::new();
 
+                    let mut columns = 0;
                     for (q, c) in translation_map1.iter() {
                         b1_ref.borrow_mut().remove_quantifier(q);
-                        add_quantifier_to_box(&select_box, q);
-                        class_to_offset.insert(c, (q.clone(), select_box.borrow().columns.len()));
+                        class_to_offset.insert(c, columns);
+                        columns += q.borrow().input_box.borrow().columns.len();
                     }
                     for (q, _) in translation_map2.iter() {
                         b2_ref.borrow_mut().remove_quantifier(q);
@@ -2224,15 +2225,59 @@ impl CteDiscovery {
                         select_box.clone(),
                         &b1_ref,
                     );
-                    b1_ref.borrow_mut().add_quantifier(q1.clone());
                     let q2 = Quantifier::new(
                         model.borrow_mut().ids.get_quantifier_id(),
                         QuantifierType::Foreach,
                         select_box.clone(),
                         &b2_ref,
                     );
+
+                    // rewrite remaining expressions in both boxes
+                    // note: refcounted expressions are a mess!
+                    visit_boxes_recurisvely(b1_ref.clone(), |obj| {
+                        let mut visit_expression = |e: &mut ExprRef| {
+                            *e = deep_clone(e);
+                            let mut v = |e: &mut Expr| -> Result<(), ()> {
+                                if let ExprType::ColumnReference(c) = &mut e.expr_type {
+                                    if let Some(class) = translation_map1.get(&c.quantifier) {
+                                        if let Some(offset) = class_to_offset.get(class) {
+                                            c.quantifier = q1.clone();
+                                            c.position += offset;
+                                        }
+                                    }
+                                }
+                                Ok(())
+                            };
+                            let _ = e.borrow_mut().visit_mut(&mut v);
+                        };
+                        obj.borrow_mut().visit_expressions(&mut visit_expression);
+                    });
+                    visit_boxes_recurisvely(b2_ref.clone(), |obj| {
+                        let mut visit_expression = |e: &mut ExprRef| {
+                            *e = deep_clone(e);
+                            let mut v = |e: &mut Expr| -> Result<(), ()> {
+                                if let ExprType::ColumnReference(c) = &mut e.expr_type {
+                                    if let Some(class) = translation_map2.get(&c.quantifier) {
+                                        if let Some(offset) = class_to_offset.get(class) {
+                                            c.quantifier = q2.clone();
+                                            c.position += offset;
+                                        }
+                                    }
+                                }
+                                Ok(())
+                            };
+                            let _ = e.borrow_mut().visit_mut(&mut v);
+                        };
+                        obj.borrow_mut().visit_expressions(&mut visit_expression);
+                    });
+
+                    // finally, add the new quantifiers and add the new quantifier to b1
+                    b1_ref.borrow_mut().add_quantifier(q1.clone());
                     b2_ref.borrow_mut().add_quantifier(q2.clone());
-                    // @todo rewrite remaining expressions in both boxes
+                    for (q, _) in translation_map1.iter() {
+                        add_quantifier_to_box(&select_box, q);
+                    }
+                    select_box.borrow_mut().add_all_columns();
                 }
             }
         }
