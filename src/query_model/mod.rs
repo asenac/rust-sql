@@ -2234,6 +2234,26 @@ impl CteDiscovery {
         }
     }
 
+    /// Translate the key if possible. For comparison purposes, the non-translated
+    /// expression is returned if it was not possible to translate it.
+    fn translate_key(
+        key: &Vec<KeyItem>,
+        translation_map: &BTreeMap<QuantifierRef, usize>,
+    ) -> Vec<KeyItem> {
+        key.iter()
+            .map(|k| {
+                if let Some(e) = Self::translate_expression(&k.expr, translation_map) {
+                    KeyItem {
+                        expr: e,
+                        dir: k.dir,
+                    }
+                } else {
+                    k.clone()
+                }
+            })
+            .collect()
+    }
+
     fn are_fully_equivalent_boxes(
         b1: &BoxRef,
         b2: &BoxRef,
@@ -2308,41 +2328,22 @@ impl CteDiscovery {
                     return match (&b1.box_type, &b2.box_type) {
                         (BoxType::Grouping(g1), BoxType::Grouping(g2)) => {
                             // same grouping key
-                            let translated_key1 = g1
-                                .groups
-                                .iter()
-                                .filter_map(|c| {
-                                    if let Some(p) =
-                                        Self::translate_expression(&c.expr, &translation_map1)
-                                    {
-                                        Some((p, c.dir.clone()))
-                                    } else {
-                                        None
-                                    }
-                                })
-                                .collect::<Vec<_>>();
-                            let translated_key2 = g2
-                                .groups
-                                .iter()
-                                .filter_map(|c| {
-                                    if let Some(p) =
-                                        Self::translate_expression(&c.expr, &translation_map2)
-                                    {
-                                        Some((p, c.dir.clone()))
-                                    } else {
-                                        None
-                                    }
-                                })
-                                .collect::<Vec<_>>();
+                            let translated_key1 =
+                                Self::translate_key(&g1.groups, &translation_map1);
+                            let translated_key2 =
+                                Self::translate_key(&g2.groups, &translation_map2);
 
-                            g1.groups.len() == g2.groups.len()
-                                && g1.groups.len() == translated_key1.len()
-                                && g2.groups.len() == translated_key2.len()
-                                && translated_key1 == translated_key2
+                            translated_key1 == translated_key2
                         }
                         (BoxType::Select(s1), BoxType::Select(s2)) => {
-                            // @todo check equivalent order keys
-                            s1.order_by.is_none() && s2.order_by.is_none() && s1.limit == s2.limit
+                            s1.order_by
+                                .as_ref()
+                                .map(|v| Self::translate_key(v, &translation_map1))
+                                == s2
+                                    .order_by
+                                    .as_ref()
+                                    .map(|v| Self::translate_key(v, &translation_map2))
+                                && s1.limit == s2.limit
                         }
                         // @todo (BoxType::Values(..), BoxType::Values(..)) => true,
                         _ => true,

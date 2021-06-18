@@ -713,7 +713,7 @@ pub struct Column {
 
 pub use crate::ast::Direction;
 
-#[derive(Clone)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct KeyItem {
     pub expr: ExprRef,
     pub dir: Direction,
