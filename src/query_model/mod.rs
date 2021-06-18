@@ -2106,18 +2106,17 @@ impl CteDiscovery {
             if box_by_id.contains_key(&bo.id) {
                 continue;
             }
-            if let BoxType::Select(_) = &bo.box_type {
-                let inputs = bo
-                    .quantifiers
-                    .iter()
-                    .map(|q| {
-                        let q = q.borrow();
-                        let ib = q.input_box.borrow();
-                        (ib.id, q.quantifier_type)
-                    })
-                    .collect::<HashSet<(i32, QuantifierType)>>();
-                inputs_per_box.insert(bo.id, inputs);
-            }
+
+            let inputs = bo
+                .quantifiers
+                .iter()
+                .map(|q| {
+                    let q = q.borrow();
+                    let ib = q.input_box.borrow();
+                    (ib.id, q.quantifier_type)
+                })
+                .collect::<HashSet<(i32, QuantifierType)>>();
+            inputs_per_box.insert(bo.id, inputs);
 
             stack.extend(bo.quantifiers.iter().map(|q| q.borrow().input_box.clone()));
             box_by_id.insert(bo.id, obj.clone());
@@ -2128,18 +2127,30 @@ impl CteDiscovery {
         let v = inputs_per_box
             .iter()
             .map(|(id1, set1)| {
+                let b1 = box_by_id.get(id1).unwrap();
+                let b1 = b1.borrow();
                 let id1 = *id1;
-                inputs_per_box.iter().filter_map(move |(id2, set2)| {
-                    if id1 >= *id2 {
-                        return None;
-                    }
-                    let intersection_size = set1.intersection(set2).count();
-                    if intersection_size > 0 {
-                        Some((id1, *id2, intersection_size))
-                    } else {
-                        None
-                    }
-                })
+                inputs_per_box
+                    .iter()
+                    .map(|(id2, set2)| {
+                        let b2 = box_by_id.get(id2).unwrap();
+                        (id2, set2, b2)
+                    })
+                    .filter_map(move |(id2, set2, b2)| {
+                        if id1 >= *id2 {
+                            return None;
+                        }
+                        let b2 = b2.borrow();
+                        if !b1.is_same_type(&b2) {
+                            return None;
+                        }
+                        let intersection_size = set1.intersection(set2).count();
+                        if intersection_size > 0 {
+                            Some((id1, *id2, intersection_size))
+                        } else {
+                            None
+                        }
+                    })
             })
             .flatten()
             .sorted_by_key(|(_, _, size)| *size)
