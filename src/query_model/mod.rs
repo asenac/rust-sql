@@ -878,7 +878,9 @@ impl rewrite_engine::Rule<BoxRef> for MergeRule {
                         if let QuantifierType::Foreach = borrowed_q.quantifier_type {
                             let input_box = borrowed_q.input_box.borrow();
                             if let BoxType::Select(inner_select) = &input_box.box_type {
-                                if input_box.distinct_operation != DistinctOperation::Enforce {
+                                if borrowed_obj.distinct_operation == DistinctOperation::Enforce
+                                    || input_box.distinct_operation != DistinctOperation::Enforce
+                                {
                                     if inner_select.order_by.is_none()
                                         && inner_select.limit.is_none()
                                     {
@@ -983,7 +985,7 @@ impl rewrite_engine::Rule<BoxRef> for MergeRule {
                     }
                 }
 
-                // This can only happen for dummy selects
+                // This can only happen for dummy selects, or distinct is already enforced
                 if input_box.distinct_operation == DistinctOperation::Enforce {
                     obj.borrow_mut().distinct_operation = DistinctOperation::Enforce;
                 }

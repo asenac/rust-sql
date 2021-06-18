@@ -1,5 +1,5 @@
 ddl
-create table a(a, b); create unique index aa on a(a);
+create table a(a, b); create unique index aa on a(a); create table b(c, d);
 ----
 
 query apply=Merge
@@ -107,6 +107,72 @@ digraph G {
     }
     edge [ arrowhead = none, style = dashed ]
     Q1 -> boxhead1 [ lhead = cluster1 ]
+    Q0 -> boxhead2 [ lhead = cluster2 ]
+}
+
+----
+----
+
+query apply=(Merge)
+select distinct c from (select c, d from b);
+----
+----
+digraph G {
+    compound = true
+    labeljust = l
+    label="select distinct c from (select c, d from b);
+ + Merge"
+    node [ shape = box ]
+    subgraph cluster0 {
+        label = "Box0:Select"
+        boxhead0 [ shape = record, label="{ Distinct: Enforce (DISTINCT TUPLES)| 0: Q0.c0 AS C| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q0 [ label="Q0(F)" ]
+        }
+    }
+    subgraph cluster2 {
+        label = "Box2:BaseTable B"
+        boxhead2 [ shape = record, label="{ Distinct: Preserve| 0: c0 AS C| 1: c1 AS D }" ]
+        {
+            rank = same
+        }
+    }
+    edge [ arrowhead = none, style = dashed ]
+    Q0 -> boxhead2 [ lhead = cluster2 ]
+}
+
+----
+----
+
+query apply=(Merge)
+select distinct c from (select distinct c, d from b);
+----
+----
+digraph G {
+    compound = true
+    labeljust = l
+    label="select distinct c from (select distinct c, d from b);
+ + Merge"
+    node [ shape = box ]
+    subgraph cluster0 {
+        label = "Box0:Select"
+        boxhead0 [ shape = record, label="{ Distinct: Enforce (DISTINCT TUPLES)| 0: Q0.c0 AS C| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q0 [ label="Q0(F)" ]
+        }
+    }
+    subgraph cluster2 {
+        label = "Box2:BaseTable B"
+        boxhead2 [ shape = record, label="{ Distinct: Preserve| 0: c0 AS C| 1: c1 AS D }" ]
+        {
+            rank = same
+        }
+    }
+    edge [ arrowhead = none, style = dashed ]
     Q0 -> boxhead2 [ lhead = cluster2 ]
 }
 
