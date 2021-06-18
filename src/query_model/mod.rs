@@ -2589,6 +2589,8 @@ pub fn rewrite_model(m: &ModelRef) {
     let mut cleanup_rules: Vec<RuleBox> = vec![
         Box::new(EquivalentColumnsRule::new()),
         Box::new(ColumnRemovalRule::new()),
+        Box::new(RedundantJoinRule::new()),
+        Box::new(RedundantOuterJoinRule::new()),
     ];
     apply_rules(m, &mut cleanup_rules);
 }
@@ -2875,6 +2877,31 @@ mod tests {
             Ok(output)
         }
 
+        pub fn full_pass(&mut self, query: &str) -> Result<String, String> {
+            let parser = ast::Parser::new();
+            let mut result = parser.parse(query)?;
+            let mut output = String::new();
+            if let Some(stmt) = result.pop() {
+                use ast::Statement::*;
+                match stmt {
+                    Select(c) => {
+                        let generator = ModelGenerator::new(&self.catalog);
+                        let mut model = generator.process(&c)?;
+
+                        let label = format!("{} (before rewrites)", query);
+                        output.push_str(&DotGenerator::new().generate(&model.borrow(), &label)?);
+
+                        rewrite_model(&mut model);
+
+                        let label = format!("{} (after rewrites)", query);
+                        output.push_str(&DotGenerator::new().generate(&model.borrow(), &label)?);
+                    }
+                    _ => return Err(format!("invalid query")),
+                }
+            }
+            Ok(output)
+        }
+
         fn apply_rule(model: &ModelRef, rule: &str) -> Result<(), String> {
             let mut rule: RuleBox = Self::get_rule_by_name(rule)?;
             super::apply_rule(model, &mut *rule);
@@ -2938,6 +2965,7 @@ mod tests {
                     "steps" => {
                         interpreter.process_query(&test_case.input[..], apply, DumpMode::Steps)
                     }
+                    "full-pass" => interpreter.full_pass(&test_case.input[..]),
                     _ => Err(format!("invalid test directive")),
                 };
                 match result {
