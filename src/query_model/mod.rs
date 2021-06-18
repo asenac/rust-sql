@@ -2174,6 +2174,65 @@ impl CteDiscovery {
                         rq.replace_input_box(b1_ref.clone());
                     }
                     return true;
+                } else if false && b2.is_select() && quantifier_intersection > 1 {
+                    // Pushdown common sub-join
+                    let b1 = b1_ref.borrow();
+                    let (translation_map1, translation_map2) = Self::get_translation_maps(&b1, &b2);
+
+                    let predicates1 = Self::translate_predicates(&b1.predicates, &translation_map1);
+                    let predicates2 = Self::translate_predicates(&b2.predicates, &translation_map2);
+                    let intersection = predicates1
+                        .iter()
+                        .filter_map(|(p1, o1)| {
+                            if let Some((_, o2)) = predicates2.iter().find(|(p2, _)| p1 == p2) {
+                                Some((p1, o1, o2))
+                            } else {
+                                None
+                            }
+                        })
+                        .collect::<Vec<_>>();
+
+                    let model = b1.model.upgrade().expect("expect valid model");
+                    let select_box = QGBox::new(
+                        b1.model.clone(),
+                        model.borrow_mut().ids.get_box_id(),
+                        BoxType::Select(Select::new()),
+                    );
+                    drop(b1);
+                    drop(b2);
+
+                    // map used to rewrite remaining expressions
+                    let mut class_to_offset = HashMap::new();
+
+                    for (q, c) in translation_map1.iter() {
+                        b1_ref.borrow_mut().remove_quantifier(q);
+                        add_quantifier_to_box(&select_box, q);
+                        class_to_offset.insert(c, (q.clone(), select_box.borrow().columns.len()));
+                    }
+                    for (q, _) in translation_map2.iter() {
+                        b2_ref.borrow_mut().remove_quantifier(q);
+                    }
+                    for (_, o1, o2) in intersection.iter() {
+                        b1_ref.borrow_mut().remove_predicate(o1);
+                        b2_ref.borrow_mut().remove_predicate(o2);
+                        select_box.borrow_mut().add_predicate(Rc::clone(o1));
+                    }
+
+                    let q1 = Quantifier::new(
+                        model.borrow_mut().ids.get_quantifier_id(),
+                        QuantifierType::Foreach,
+                        select_box.clone(),
+                        &b1_ref,
+                    );
+                    b1_ref.borrow_mut().add_quantifier(q1.clone());
+                    let q2 = Quantifier::new(
+                        model.borrow_mut().ids.get_quantifier_id(),
+                        QuantifierType::Foreach,
+                        select_box.clone(),
+                        &b2_ref,
+                    );
+                    b2_ref.borrow_mut().add_quantifier(q2.clone());
+                    // @todo rewrite remaining expressions in both boxes
                 }
             }
         }
@@ -2472,11 +2531,23 @@ pub fn rewrite_model(m: &ModelRef) {
     }
 
     let mut cte_discovery = CteDiscovery {};
-    while cte_discovery.apply(&m.borrow().top_box) {}
+    loop {
+        let top_box = m.borrow().top_box.clone();
+        if !cte_discovery.apply(&top_box) {
+            break;
+        }
+    }
 
     // @todo at some point this should exclude merge and any other rule
     // that might introduce new boxes
     apply_rules(m, &mut rules);
+
+    loop {
+        let top_box = m.borrow().top_box.clone();
+        if !cte_discovery.apply(&top_box) {
+            break;
+        }
+    }
 }
 
 impl rewrite_engine::Traverse<BoxRef> for BoxRef {
