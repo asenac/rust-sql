@@ -169,6 +169,18 @@ impl QGBox {
             unique_keys: Vec::new(),
         })
     }
+    /// whether the two boxes share the same box type.
+    pub fn is_same_type(&self, o: &QGBox) -> bool {
+        match (&self.box_type, &o.box_type) {
+            (BoxType::BaseTable(..), BoxType::BaseTable(..)) => true,
+            (BoxType::Grouping(..), BoxType::Grouping(..)) => true,
+            (BoxType::OuterJoin, BoxType::OuterJoin) => true,
+            (BoxType::Select(..), BoxType::Select(..)) => true,
+            (BoxType::Union, BoxType::Union) => true,
+            (BoxType::Values(..), BoxType::Values(..)) => true,
+            _ => false,
+        }
+    }
     /// use add_quantifier_to_box instead to properly set the parent box of the quantifier
     pub fn add_quantifier(&mut self, q: QuantifierRef) {
         self.quantifiers.insert(q);
@@ -245,6 +257,14 @@ impl QGBox {
 
     pub fn has_predicates(&self) -> bool {
         !self.predicates.is_none() && !self.predicates.as_ref().unwrap().is_empty()
+    }
+
+    pub fn num_predicates(&self) -> usize {
+        if let Some(predicates) = &self.predicates {
+            predicates.len()
+        } else {
+            0
+        }
     }
 
     pub fn is_select(&self) -> bool {
@@ -856,7 +876,7 @@ impl Drop for Quantifier {
     }
 }
 
-#[derive(PartialEq, Copy, Clone)]
+#[derive(PartialEq, Eq, Copy, Clone, Hash, Debug)]
 pub enum QuantifierType {
     Foreach,
     PreservedForeach,
