@@ -2267,34 +2267,7 @@ impl CteDiscovery {
             && b1.num_predicates() == b2.num_predicates()
             && b1.distinct_operation == b2.distinct_operation
         {
-            // vector of equivalence id, quantifier from b1, quantifier from b2
-            let equivalences = b1
-                .quantifiers
-                .iter()
-                .filter_map(|q| {
-                    let q1 = q.borrow();
-                    let ib1 = q1.input_box.borrow();
-                    // find again the matching quantifiers
-                    if let Some(it) = b2.quantifiers.iter().find(|q2| {
-                        let q2 = q2.borrow();
-                        let ib2 = q2.input_box.borrow();
-                        q1.quantifier_type == q2.quantifier_type && ib1.id == ib2.id
-                    }) {
-                        Some((q.clone(), it.clone()))
-                    } else {
-                        None
-                    }
-                })
-                .enumerate()
-                .collect::<Vec<_>>();
-            let translation_map1 = equivalences
-                .iter()
-                .map(|(i, (q, _))| (q.clone(), *i))
-                .collect::<BTreeMap<_, _>>();
-            let translation_map2 = equivalences
-                .iter()
-                .map(|(i, (_, q))| (q.clone(), *i))
-                .collect::<BTreeMap<_, _>>();
+            let (translation_map1, translation_map2) = Self::get_translation_maps(&b1, &b2);
 
             let predicates1 = Self::translate_predicates(&b1.predicates, &translation_map1);
             let predicates2 = Self::translate_predicates(&b2.predicates, &translation_map2);
@@ -2352,6 +2325,45 @@ impl CteDiscovery {
             }
         }
         false
+    }
+
+    fn get_translation_maps(
+        b1: &QGBox,
+        b2: &QGBox,
+    ) -> (
+        BTreeMap<QuantifierRef, usize>,
+        BTreeMap<QuantifierRef, usize>,
+    ) {
+        // vector of equivalence id, quantifier from b1, quantifier from b2
+        let equivalences = b1
+            .quantifiers
+            .iter()
+            .filter_map(|q| {
+                let q1 = q.borrow();
+                let ib1 = q1.input_box.borrow();
+                // find again the matching quantifiers
+                if let Some(it) = b2.quantifiers.iter().find(|q2| {
+                    let q2 = q2.borrow();
+                    let ib2 = q2.input_box.borrow();
+                    q1.quantifier_type == q2.quantifier_type && ib1.id == ib2.id
+                }) {
+                    Some((q.clone(), it.clone()))
+                } else {
+                    None
+                }
+            })
+            .enumerate()
+            .collect::<Vec<_>>();
+        let translation_map1 = equivalences
+            .iter()
+            .map(|(i, (q, _))| (q.clone(), *i))
+            .collect::<BTreeMap<_, _>>();
+        let translation_map2 = equivalences
+            .iter()
+            .map(|(i, (_, q))| (q.clone(), *i))
+            .collect::<BTreeMap<_, _>>();
+
+        (translation_map1, translation_map2)
     }
 }
 
