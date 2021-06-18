@@ -2583,16 +2583,11 @@ pub fn rewrite_model(m: &ModelRef) {
         }
     }
 
-    // @todo at some point this should exclude merge and any other rule
-    // that might introduce new boxes
-    apply_rules(m, &mut rules);
-
-    loop {
-        let top_box = m.borrow().top_box.clone();
-        if !cte_discovery.apply(&top_box) {
-            break;
-        }
-    }
+    let mut cleanup_rules: Vec<RuleBox> = vec![
+        Box::new(EquivalentColumnsRule::new()),
+        Box::new(ColumnRemovalRule::new()),
+    ];
+    apply_rules(m, &mut cleanup_rules);
 }
 
 impl rewrite_engine::Traverse<BoxRef> for BoxRef {
