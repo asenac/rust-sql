@@ -2161,84 +2161,11 @@ impl CteDiscovery {
 
         for (b1_id, b2_id, quantifier_intersection) in v {
             let b1_ref = box_by_id.get(&b1_id).unwrap();
-            let b1 = b1_ref.borrow();
             let b2_ref = box_by_id.get(&b2_id).unwrap();
             let b2 = b2_ref.borrow();
-
-            // vector of equivalence id, quantifier from b1, quantifier from b2
-            let equivalences = b1
-                .quantifiers
-                .iter()
-                .filter_map(|q| {
-                    let q1 = q.borrow();
-                    let ib1 = q1.input_box.borrow();
-                    // find again the matching quantifiers
-                    if let Some(it) = b2.quantifiers.iter().find(|q2| {
-                        let q2 = q2.borrow();
-                        let ib2 = q2.input_box.borrow();
-                        q1.quantifier_type == q2.quantifier_type && ib1.id == ib2.id
-                    }) {
-                        Some((q.clone(), it.clone()))
-                    } else {
-                        None
-                    }
-                })
-                .enumerate()
-                .collect::<Vec<_>>();
-            let translation_map1 = equivalences
-                .iter()
-                .map(|(i, (q, _))| (q.clone(), *i))
-                .collect::<BTreeMap<_, _>>();
-            let translation_map2 = equivalences
-                .iter()
-                .map(|(i, (_, q))| (q.clone(), *i))
-                .collect::<BTreeMap<_, _>>();
-
-            let predicates1 = Self::translate_predicates(&b1.predicates, &translation_map1);
-            let predicates2 = Self::translate_predicates(&b2.predicates, &translation_map2);
-
-            let intersection = predicates1
-                .iter()
-                .filter_map(|(p1, o1)| {
-                    if let Some((_, o2)) = predicates2.iter().find(|(p2, _)| p1 == p2) {
-                        Some((p1, o1, o2))
-                    } else {
-                        None
-                    }
-                })
-                .collect::<Vec<_>>();
-
-            for (p, _, _) in intersection.iter() {
-                println!("-> {}", p.borrow());
-            }
-
-            if b1.quantifiers.len() == quantifier_intersection
-                && b2.quantifiers.len() == quantifier_intersection
-                && b1.num_predicates() == b2.num_predicates()
-                && b1.num_predicates() == intersection.len()
-                && b1.distinct_operation == b2.distinct_operation
-                && b1.columns.len() == b2.columns.len()
-                && b1.ranging_quantifiers.len() > 0
-                && b2.ranging_quantifiers.len() > 0
-            {
-                let translated_columns1 = b1
-                    .columns
-                    .iter()
-                    .filter_map(|c| Self::translate_expression(&c.expr, &translation_map1))
-                    .map(|(c, _)| c)
-                    .collect::<Vec<_>>();
-                let translated_columns2 = b2
-                    .columns
-                    .iter()
-                    .filter_map(|c| Self::translate_expression(&c.expr, &translation_map2))
-                    .map(|(c, _)| c)
-                    .collect::<Vec<_>>();
-                if b1.columns.len() == translated_columns1.len()
-                    && b2.columns.len() == translated_columns2.len()
-                    && translated_columns1 == translated_columns2
-                {
+            if b2.ranging_quantifiers.len() > 0 {
+                if Self::are_fully_equivalent_boxes(&b1_ref, &b2_ref, quantifier_intersection) {
                     let ranging_quantifiers = b2.ranging_quantifiers.clone();
-                    drop(b1); // borrow drop
                     drop(b2); // borrow drop
 
                     for rq in ranging_quantifiers {
@@ -2299,6 +2226,86 @@ impl CteDiscovery {
         } else {
             None
         }
+    }
+
+    fn are_fully_equivalent_boxes(
+        b1: &BoxRef,
+        b2: &BoxRef,
+        quantifier_intersection: usize,
+    ) -> bool {
+        let b1 = b1.borrow();
+        let b2 = b2.borrow();
+
+        if b1.quantifiers.len() == quantifier_intersection
+            && b2.quantifiers.len() == quantifier_intersection
+            && b1.num_predicates() == b2.num_predicates()
+            && b1.distinct_operation == b2.distinct_operation
+        {
+            // vector of equivalence id, quantifier from b1, quantifier from b2
+            let equivalences = b1
+                .quantifiers
+                .iter()
+                .filter_map(|q| {
+                    let q1 = q.borrow();
+                    let ib1 = q1.input_box.borrow();
+                    // find again the matching quantifiers
+                    if let Some(it) = b2.quantifiers.iter().find(|q2| {
+                        let q2 = q2.borrow();
+                        let ib2 = q2.input_box.borrow();
+                        q1.quantifier_type == q2.quantifier_type && ib1.id == ib2.id
+                    }) {
+                        Some((q.clone(), it.clone()))
+                    } else {
+                        None
+                    }
+                })
+                .enumerate()
+                .collect::<Vec<_>>();
+            let translation_map1 = equivalences
+                .iter()
+                .map(|(i, (q, _))| (q.clone(), *i))
+                .collect::<BTreeMap<_, _>>();
+            let translation_map2 = equivalences
+                .iter()
+                .map(|(i, (_, q))| (q.clone(), *i))
+                .collect::<BTreeMap<_, _>>();
+
+            let predicates1 = Self::translate_predicates(&b1.predicates, &translation_map1);
+            let predicates2 = Self::translate_predicates(&b2.predicates, &translation_map2);
+            let intersection = predicates1
+                .iter()
+                .filter_map(|(p1, o1)| {
+                    if let Some((_, o2)) = predicates2.iter().find(|(p2, _)| p1 == p2) {
+                        Some((p1, o1, o2))
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>();
+
+            if b1.num_predicates() == intersection.len() {
+                let translated_columns1 = b1
+                    .columns
+                    .iter()
+                    .filter_map(|c| Self::translate_expression(&c.expr, &translation_map1))
+                    .map(|(c, _)| c)
+                    .collect::<Vec<_>>();
+                let translated_columns2 = b2
+                    .columns
+                    .iter()
+                    .filter_map(|c| Self::translate_expression(&c.expr, &translation_map2))
+                    .map(|(c, _)| c)
+                    .collect::<Vec<_>>();
+
+                if b1.columns.len() == translated_columns1.len()
+                    && b2.columns.len() == translated_columns2.len()
+                    && translated_columns1 == translated_columns2
+                {
+                    return true;
+                }
+            }
+        }
+        false
     }
 }
 
