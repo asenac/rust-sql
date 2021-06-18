@@ -599,8 +599,12 @@ impl QGBox {
         }
 
         if let DistinctOperation::Enforce = self.distinct_operation {
-            let num_columns = self.columns.len();
-            self.unique_keys.push((0..num_columns).collect());
+            if self.unique_keys.is_empty() {
+                let num_columns = self.columns.len();
+                self.unique_keys.push((0..num_columns).collect());
+            } else {
+                self.distinct_operation = DistinctOperation::Guaranteed;
+            }
         }
 
         // remove duplicated keys. We could remove keys which prefix is also a key
@@ -697,8 +701,11 @@ pub struct KeyItem {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DistinctOperation {
-    Permit,
+    /// DISTINCTness is required but guaranteed
+    Guaranteed,
+    /// The box must enforce DISTINCT
     Enforce,
+    /// DISTINCTness is not required
     Preserve,
 }
 
