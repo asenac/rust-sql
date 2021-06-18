@@ -2301,7 +2301,50 @@ impl CteDiscovery {
                     && b2.columns.len() == translated_columns2.len()
                     && translated_columns1 == translated_columns2
                 {
-                    return true;
+                    return match (&b1.box_type, &b2.box_type) {
+                        (BoxType::Grouping(g1), BoxType::Grouping(g2)) => {
+                            // same grouping key
+                            let translated_key1 = g1
+                                .groups
+                                .iter()
+                                .filter_map(|c| {
+                                    if let Some((p, _)) =
+                                        Self::translate_expression(&c.expr, &translation_map1)
+                                    {
+                                        Some((p, c.dir.clone()))
+                                    } else {
+                                        None
+                                    }
+                                })
+                                .map(|(c, _)| c)
+                                .collect::<Vec<_>>();
+                            let translated_key2 = g2
+                                .groups
+                                .iter()
+                                .filter_map(|c| {
+                                    if let Some((p, _)) =
+                                        Self::translate_expression(&c.expr, &translation_map2)
+                                    {
+                                        Some((p, c.dir.clone()))
+                                    } else {
+                                        None
+                                    }
+                                })
+                                .map(|(c, _)| c)
+                                .collect::<Vec<_>>();
+
+                            g1.groups.len() == g2.groups.len()
+                                && g1.groups.len() == translated_key1.len()
+                                && g2.groups.len() == translated_key2.len()
+                                && translated_key1 == translated_key2
+                        }
+                        (BoxType::Select(s1), BoxType::Select(s2)) => {
+                            // @todo check equivalent order keys
+                            s1.order_by.is_none() && s2.order_by.is_none() && s1.limit == s2.limit
+                        }
+                        // @todo (BoxType::Values(..), BoxType::Values(..)) => true,
+                        _ => true,
+                    };
                 }
             }
         }
@@ -2415,6 +2458,10 @@ pub fn rewrite_model(m: &ModelRef) {
 
     let mut cte_discovery = CteDiscovery {};
     while cte_discovery.apply(&m.borrow().top_box) {}
+
+    // @todo at some point this should exclude merge and any other rule
+    // that might introduce new boxes
+    apply_rules(m, &mut rules);
 }
 
 impl rewrite_engine::Traverse<BoxRef> for BoxRef {
