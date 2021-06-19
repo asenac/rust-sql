@@ -351,16 +351,7 @@ digraph G {
     node [ shape = box ]
     subgraph cluster0 {
         label = "Box0:Select"
-        boxhead0 [ shape = record, label="{ Distinct: Preserve| ONE TUPLE AT MOST| 0: Q1.c0 AS D| 1: Q1.c0 AS D }" ]
-        {
-            rank = same
-            node [ shape = circle ]
-            Q1 [ label="Q1(F)" ]
-        }
-    }
-    subgraph cluster1 {
-        label = "Box1:Select"
-        boxhead1 [ shape = record, label="{ Distinct: Enforce (DISTINCT TUPLES)| ONE TUPLE AT MOST| 0: 2 AS D| UNIQUE KEY [0] }" ]
+        boxhead0 [ shape = record, label="{ Distinct: Enforce (DISTINCT TUPLES)| ONE TUPLE AT MOST| 0: 2 AS D| 1: 2 AS D| UNIQUE KEY [0, 1] }" ]
         {
             rank = same
             node [ shape = circle ]
@@ -375,8 +366,44 @@ digraph G {
         }
     }
     edge [ arrowhead = none, style = dashed ]
-    Q1 -> boxhead1 [ lhead = cluster1 ]
     Q0 -> boxhead2 [ lhead = cluster2 ]
+}
+
+----
+----
+
+query apply=(Merge,ColumnRemoval,SemiJoinRemoval,Merge)
+select a from a b where a in (select distinct b.a from a);
+----
+----
+digraph G {
+    compound = true
+    labeljust = l
+    label="select a from a b where a in (select distinct b.a from a);
+ + Merge + ColumnRemoval + SemiJoinRemoval + Merge"
+    node [ shape = box ]
+    subgraph cluster0 {
+        label = "Box0:Select"
+        boxhead0 [ shape = record, label="{ Distinct: Enforce (DISTINCT TUPLES)| 0: Q0.c0 AS A| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q0 [ label="Q0(F)" ]
+            Q1 [ label="Q1(F)" ]
+            edge [ arrowhead = none, style = solid ]
+            Q0 -> Q0 [ label="(Q0.c0) = (Q0.c0)" ]
+        }
+    }
+    subgraph cluster1 {
+        label = "Box1:BaseTable A"
+        boxhead1 [ shape = record, label="{ Distinct: Preserve (DISTINCT TUPLES)| 0: c0 AS A| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+        }
+    }
+    edge [ arrowhead = none, style = dashed ]
+    Q0 -> boxhead1 [ lhead = cluster1 ]
+    Q1 -> boxhead1 [ lhead = cluster1 ]
 }
 
 ----
