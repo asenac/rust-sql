@@ -442,14 +442,18 @@ impl Expr {
     }
 
     pub fn is_constant_within_context(&self, context: &QuantifierSet) -> bool {
+        !self.references_context(context)
+    }
+
+    /// Whether the expression contains any column reference of the given
+    /// context. Used to detect correlation.
+    pub fn references_context(&self, context: &QuantifierSet) -> bool {
         match &self.expr_type {
-            ExprType::Column(_) | ExprType::BaseColumn(_) => false,
-            ExprType::Literal(_) | ExprType::Parameter(_) => true,
-            ExprType::ColumnReference(c) => !context.contains(&c.quantifier),
-            _ => self.operands.iter().all(|operands| {
+            ExprType::ColumnReference(c) => context.contains(&c.quantifier),
+            _ => self.operands.iter().any(|operands| {
                 operands
                     .iter()
-                    .all(|o| o.borrow().is_constant_within_context(context))
+                    .any(|o| o.borrow().references_context(context))
             }),
         }
     }
