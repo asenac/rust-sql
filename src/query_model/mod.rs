@@ -2236,7 +2236,9 @@ impl CteDiscovery {
                     // note: refcounted expressions are a mess!
                     visit_boxes_recurisvely(b1_ref.clone(), |obj| {
                         let mut visit_expression = |e: &mut ExprRef| {
-                            *e = deep_clone(e);
+                            if Rc::strong_count(&e) > 1 {
+                                *e = deep_clone(e);
+                            }
                             let mut v = |e: &mut Expr| -> Result<(), ()> {
                                 if let ExprType::ColumnReference(c) = &mut e.expr_type {
                                     if let Some(class) = translation_map1.get(&c.quantifier) {
@@ -2254,7 +2256,9 @@ impl CteDiscovery {
                     });
                     visit_boxes_recurisvely(b2_ref.clone(), |obj| {
                         let mut visit_expression = |e: &mut ExprRef| {
-                            *e = deep_clone(e);
+                            if Rc::strong_count(&e) > 1 {
+                                *e = deep_clone(e);
+                            }
                             let mut v = |e: &mut Expr| -> Result<(), ()> {
                                 if let ExprType::ColumnReference(c) = &mut e.expr_type {
                                     if let Some(class) = translation_map2.get(&c.quantifier) {
