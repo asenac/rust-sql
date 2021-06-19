@@ -893,8 +893,7 @@ impl rewrite_engine::Rule<BoxRef> for MergeRule {
                             let input_box = borrowed_q.input_box.borrow();
                             if let BoxType::Select(inner_select) = &input_box.box_type {
                                 if borrowed_obj.distinct_tuples()
-                                    || (input_box.distinct_operation != DistinctOperation::Enforce
-                                        || input_box.has_constant_projection())
+                                    || input_box.distinct_operation != DistinctOperation::Enforce
                                 {
                                     if inner_select.order_by.is_none()
                                         && inner_select.limit.is_none()

@@ -351,7 +351,16 @@ digraph G {
     node [ shape = box ]
     subgraph cluster0 {
         label = "Box0:Select"
-        boxhead0 [ shape = record, label="{ Distinct: Enforce (DISTINCT TUPLES)| ONE TUPLE AT MOST| 0: 2 AS D| 1: 2 AS D| UNIQUE KEY [0, 1] }" ]
+        boxhead0 [ shape = record, label="{ Distinct: Preserve| ONE TUPLE AT MOST| 0: Q1.c0 AS D| 1: Q1.c0 AS D }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q1 [ label="Q1(F)" ]
+        }
+    }
+    subgraph cluster1 {
+        label = "Box1:Select"
+        boxhead1 [ shape = record, label="{ Distinct: Enforce (DISTINCT TUPLES)| ONE TUPLE AT MOST| 0: 2 AS D| UNIQUE KEY [0] }" ]
         {
             rank = same
             node [ shape = circle ]
@@ -366,6 +375,7 @@ digraph G {
         }
     }
     edge [ arrowhead = none, style = dashed ]
+    Q1 -> boxhead1 [ lhead = cluster1 ]
     Q0 -> boxhead2 [ lhead = cluster2 ]
 }
 
@@ -403,6 +413,53 @@ digraph G {
     }
     edge [ arrowhead = none, style = dashed ]
     Q0 -> boxhead1 [ lhead = cluster1 ]
+    Q1 -> boxhead1 [ lhead = cluster1 ]
+}
+
+----
+----
+
+query apply=(Merge,ColumnRemoval,Merge)
+select a from a, (select distinct 1 as b from a) x where a > x.b
+----
+----
+digraph G {
+    compound = true
+    labeljust = l
+    label="select a from a, (select distinct 1 as b from a) x where a > x.b
+ + Merge + ColumnRemoval + Merge"
+    node [ shape = box ]
+    subgraph cluster0 {
+        label = "Box0:Select"
+        boxhead0 [ shape = record, label="{ Distinct: Preserve| 0: Q0.c0 AS A }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q0 [ label="Q0(F)" ]
+            Q2 [ label="Q2(F)" ]
+            edge [ arrowhead = none, style = solid ]
+            Q0 -> Q2 [ label="(Q0.c0) > (Q2.c0)" ]
+        }
+    }
+    subgraph cluster2 {
+        label = "Box2:Select"
+        boxhead2 [ shape = record, label="{ Distinct: Enforce (DISTINCT TUPLES)| ONE TUPLE AT MOST| 0: 1 AS B| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q1 [ label="Q1(F)" ]
+        }
+    }
+    subgraph cluster1 {
+        label = "Box1:BaseTable A"
+        boxhead1 [ shape = record, label="{ Distinct: Preserve (DISTINCT TUPLES)| 0: c0 AS A| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+        }
+    }
+    edge [ arrowhead = none, style = dashed ]
+    Q0 -> boxhead1 [ lhead = cluster1 ]
+    Q2 -> boxhead2 [ lhead = cluster2 ]
     Q1 -> boxhead1 [ lhead = cluster1 ]
 }
 
