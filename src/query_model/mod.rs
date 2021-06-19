@@ -720,13 +720,20 @@ impl rewrite_engine::Rule<BoxRef> for GroupByRemovalRule {
                     .iter()
                     .any(|c| c.expr.borrow().is_aggregate_function())
                 {
+                    let input_q = obj.first_quantifier().unwrap();
                     let column_refs_in_key = grouping
                         .groups
                         .iter()
                         .filter_map(|x| {
                             let x = x.expr.borrow();
                             if let ExprType::ColumnReference(c) = &x.expr_type {
-                                Some(c.position)
+                                // it may be a sibling of the ranging quantifier (in the case
+                                // of correlated aggregations)
+                                if c.quantifier == input_q {
+                                    Some(c.position)
+                                } else {
+                                    None
+                                }
                             } else {
                                 None
                             }
