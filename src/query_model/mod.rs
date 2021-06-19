@@ -93,6 +93,20 @@ fn collect_used_columns_recursively(obj: BoxRef, column_references: &mut PerBoxC
         top.borrow_mut().visit_expressions(&mut f);
         let top = top.borrow();
 
+        // non-constant columns of a distinct operator are 'implicitly used'
+        if top.distinct_operation != DistinctOperation::Preserve {
+            for (pos, c) in top.columns.iter().enumerate() {
+                if !c.expr.borrow().is_constant_within_context(&top.quantifiers) {
+                    // ensure there is at least an empty entry
+                    column_references
+                        .entry(top.id)
+                        .or_insert(HashMap::new())
+                        .entry(pos)
+                        .or_insert(Vec::new());
+                }
+            }
+        }
+
         // Note: mark the used from the same branch as used for the rest of the branches
         if let BoxType::Union = top.box_type {
             let first_branch_id = top
@@ -1084,16 +1098,14 @@ impl rewrite_engine::Rule<BoxRef> for ColumnRemovalRule {
             return false;
         }
         let obj = obj.borrow();
-        // cannot remove columns from a DISTINCT operator
-        obj.distinct_operation == DistinctOperation::Preserve
-            && obj.columns.len()
-                != self
-                    .column_references
-                    .as_mut()
-                    .unwrap()
-                    .entry(obj.id)
-                    .or_default()
-                    .len()
+        obj.columns.len()
+            != self
+                .column_references
+                .as_mut()
+                .unwrap()
+                .entry(obj.id)
+                .or_default()
+                .len()
     }
     fn action(&mut self, obj: &mut BoxRef) {
         let mut obj = obj.borrow_mut();
