@@ -318,7 +318,7 @@ digraph G {
     node [ shape = box ]
     subgraph cluster0 {
         label = "Box0:Select"
-        boxhead0 [ shape = record, label="{ Distinct: Enforce (DISTINCT TUPLES)| 0: 2 AS D| UNIQUE KEY [0] }" ]
+        boxhead0 [ shape = record, label="{ Distinct: Enforce (DISTINCT TUPLES)| ONE TUPLE AT MOST| 0: 2 AS D| UNIQUE KEY [0] }" ]
         {
             rank = same
             node [ shape = circle ]
@@ -351,7 +351,7 @@ digraph G {
     node [ shape = box ]
     subgraph cluster0 {
         label = "Box0:Select"
-        boxhead0 [ shape = record, label="{ Distinct: Preserve| 0: Q1.c0 AS D| 1: Q1.c0 AS D }" ]
+        boxhead0 [ shape = record, label="{ Distinct: Preserve| ONE TUPLE AT MOST| 0: Q1.c0 AS D| 1: Q1.c0 AS D }" ]
         {
             rank = same
             node [ shape = circle ]
@@ -360,7 +360,7 @@ digraph G {
     }
     subgraph cluster1 {
         label = "Box1:Select"
-        boxhead1 [ shape = record, label="{ Distinct: Enforce (DISTINCT TUPLES)| 0: 2 AS D| UNIQUE KEY [0] }" ]
+        boxhead1 [ shape = record, label="{ Distinct: Enforce (DISTINCT TUPLES)| ONE TUPLE AT MOST| 0: 2 AS D| UNIQUE KEY [0] }" ]
         {
             rank = same
             node [ shape = circle ]

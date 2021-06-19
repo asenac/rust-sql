@@ -315,6 +315,16 @@ impl QGBox {
     pub fn one_tuple_at_most(&self) -> bool {
         match &self.box_type {
             BoxType::Select(_) => {
+                // a DISTINCT operator with a constant projection will return one tuple at most.
+                if self.distinct_operation == DistinctOperation::Enforce
+                    && self.columns.iter().all(|c| {
+                        c.expr
+                            .borrow()
+                            .is_constant_within_context(&self.quantifiers)
+                    })
+                {
+                    return true;
+                }
                 let foreach_q = self
                     .quantifiers
                     .iter()

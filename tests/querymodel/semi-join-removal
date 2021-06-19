@@ -403,3 +403,326 @@ digraph G {
 
 ----
 ----
+
+steps apply=(SemiJoinRemoval,Merge,RedundantJoin)
+select a from a where a in (select distinct 1 from a where a = 10);
+----
+----
+digraph G {
+    compound = true
+    labeljust = l
+    label="select a from a where a in (select distinct 1 from a where a = 10);
+"
+    node [ shape = box ]
+    subgraph cluster0 {
+        label = "Box0:Select"
+        boxhead0 [ shape = record, label="{ Distinct: Preserve (DISTINCT TUPLES)| 0: Q0.c0 AS A| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q0 [ label="Q0(F)" ]
+            Q2 [ label="Q2(E)" ]
+            edge [ arrowhead = none, style = solid ]
+            Q0 -> Q2 [ label="(Q0.c0) = (Q2.c0)" ]
+        }
+    }
+    subgraph cluster2 {
+        label = "Box2:Select"
+        boxhead2 [ shape = record, label="{ Distinct: Enforce (DISTINCT TUPLES)| ONE TUPLE AT MOST| 0: 1| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q1 [ label="Q1(F)" ]
+            edge [ arrowhead = none, style = solid ]
+            Q1 -> Q1 [ label="(Q1.c0) = (10)" ]
+        }
+    }
+    subgraph cluster1 {
+        label = "Box1:BaseTable A"
+        boxhead1 [ shape = record, label="{ Distinct: Preserve (DISTINCT TUPLES)| 0: c0 AS A| 1: c1 AS B| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+        }
+    }
+    edge [ arrowhead = none, style = dashed ]
+    Q0 -> boxhead1 [ lhead = cluster1 ]
+    Q2 -> boxhead2 [ lhead = cluster2 ]
+    Q1 -> boxhead1 [ lhead = cluster1 ]
+}
+digraph G {
+    compound = true
+    labeljust = l
+    label="select a from a where a in (select distinct 1 from a where a = 10);
+ + SemiJoinRemoval"
+    node [ shape = box ]
+    subgraph cluster0 {
+        label = "Box0:Select"
+        boxhead0 [ shape = record, label="{ Distinct: Preserve (DISTINCT TUPLES)| 0: Q0.c0 AS A| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q0 [ label="Q0(F)" ]
+            Q2 [ label="Q2(F)" ]
+            edge [ arrowhead = none, style = solid ]
+            Q0 -> Q2 [ label="(Q0.c0) = (Q2.c0)" ]
+        }
+    }
+    subgraph cluster2 {
+        label = "Box2:Select"
+        boxhead2 [ shape = record, label="{ Distinct: Enforce (DISTINCT TUPLES)| ONE TUPLE AT MOST| 0: 1| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q1 [ label="Q1(F)" ]
+            edge [ arrowhead = none, style = solid ]
+            Q1 -> Q1 [ label="(Q1.c0) = (10)" ]
+        }
+    }
+    subgraph cluster1 {
+        label = "Box1:BaseTable A"
+        boxhead1 [ shape = record, label="{ Distinct: Preserve (DISTINCT TUPLES)| 0: c0 AS A| 1: c1 AS B| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+        }
+    }
+    edge [ arrowhead = none, style = dashed ]
+    Q0 -> boxhead1 [ lhead = cluster1 ]
+    Q2 -> boxhead2 [ lhead = cluster2 ]
+    Q1 -> boxhead1 [ lhead = cluster1 ]
+}
+digraph G {
+    compound = true
+    labeljust = l
+    label="select a from a where a in (select distinct 1 from a where a = 10);
+ + SemiJoinRemoval + Merge"
+    node [ shape = box ]
+    subgraph cluster0 {
+        label = "Box0:Select"
+        boxhead0 [ shape = record, label="{ Distinct: Enforce (DISTINCT TUPLES)| 0: Q0.c0 AS A| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q0 [ label="Q0(F)" ]
+            Q1 [ label="Q1(F)" ]
+            edge [ arrowhead = none, style = solid ]
+            Q0 -> Q0 [ label="(Q0.c0) = (1)" ]
+            Q1 -> Q1 [ label="(Q1.c0) = (10)" ]
+        }
+    }
+    subgraph cluster1 {
+        label = "Box1:BaseTable A"
+        boxhead1 [ shape = record, label="{ Distinct: Preserve (DISTINCT TUPLES)| 0: c0 AS A| 1: c1 AS B| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+        }
+    }
+    edge [ arrowhead = none, style = dashed ]
+    Q0 -> boxhead1 [ lhead = cluster1 ]
+    Q1 -> boxhead1 [ lhead = cluster1 ]
+}
+digraph G {
+    compound = true
+    labeljust = l
+    label="select a from a where a in (select distinct 1 from a where a = 10);
+ + SemiJoinRemoval + Merge + RedundantJoin"
+    node [ shape = box ]
+    subgraph cluster0 {
+        label = "Box0:Select"
+        boxhead0 [ shape = record, label="{ Distinct: Enforce (DISTINCT TUPLES)| 0: Q0.c0 AS A| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q0 [ label="Q0(F)" ]
+            Q1 [ label="Q1(F)" ]
+            edge [ arrowhead = none, style = solid ]
+            Q0 -> Q0 [ label="(Q0.c0) = (1)" ]
+            Q1 -> Q1 [ label="(Q1.c0) = (10)" ]
+        }
+    }
+    subgraph cluster1 {
+        label = "Box1:BaseTable A"
+        boxhead1 [ shape = record, label="{ Distinct: Preserve (DISTINCT TUPLES)| 0: c0 AS A| 1: c1 AS B| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+        }
+    }
+    edge [ arrowhead = none, style = dashed ]
+    Q0 -> boxhead1 [ lhead = cluster1 ]
+    Q1 -> boxhead1 [ lhead = cluster1 ]
+}
+
+----
+----
+
+steps apply=(SemiJoinRemoval,Merge,RedundantJoin,ConstantLifting)
+select a from a where a in (select distinct 1 from a);
+----
+----
+digraph G {
+    compound = true
+    labeljust = l
+    label="select a from a where a in (select distinct 1 from a);
+"
+    node [ shape = box ]
+    subgraph cluster0 {
+        label = "Box0:Select"
+        boxhead0 [ shape = record, label="{ Distinct: Preserve (DISTINCT TUPLES)| 0: Q0.c0 AS A| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q0 [ label="Q0(F)" ]
+            Q2 [ label="Q2(E)" ]
+            edge [ arrowhead = none, style = solid ]
+            Q0 -> Q2 [ label="(Q0.c0) = (Q2.c0)" ]
+        }
+    }
+    subgraph cluster2 {
+        label = "Box2:Select"
+        boxhead2 [ shape = record, label="{ Distinct: Enforce (DISTINCT TUPLES)| ONE TUPLE AT MOST| 0: 1| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q1 [ label="Q1(F)" ]
+        }
+    }
+    subgraph cluster1 {
+        label = "Box1:BaseTable A"
+        boxhead1 [ shape = record, label="{ Distinct: Preserve (DISTINCT TUPLES)| 0: c0 AS A| 1: c1 AS B| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+        }
+    }
+    edge [ arrowhead = none, style = dashed ]
+    Q0 -> boxhead1 [ lhead = cluster1 ]
+    Q2 -> boxhead2 [ lhead = cluster2 ]
+    Q1 -> boxhead1 [ lhead = cluster1 ]
+}
+digraph G {
+    compound = true
+    labeljust = l
+    label="select a from a where a in (select distinct 1 from a);
+ + SemiJoinRemoval"
+    node [ shape = box ]
+    subgraph cluster0 {
+        label = "Box0:Select"
+        boxhead0 [ shape = record, label="{ Distinct: Preserve (DISTINCT TUPLES)| 0: Q0.c0 AS A| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q0 [ label="Q0(F)" ]
+            Q2 [ label="Q2(F)" ]
+            edge [ arrowhead = none, style = solid ]
+            Q0 -> Q2 [ label="(Q0.c0) = (Q2.c0)" ]
+        }
+    }
+    subgraph cluster2 {
+        label = "Box2:Select"
+        boxhead2 [ shape = record, label="{ Distinct: Enforce (DISTINCT TUPLES)| ONE TUPLE AT MOST| 0: 1| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q1 [ label="Q1(F)" ]
+        }
+    }
+    subgraph cluster1 {
+        label = "Box1:BaseTable A"
+        boxhead1 [ shape = record, label="{ Distinct: Preserve (DISTINCT TUPLES)| 0: c0 AS A| 1: c1 AS B| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+        }
+    }
+    edge [ arrowhead = none, style = dashed ]
+    Q0 -> boxhead1 [ lhead = cluster1 ]
+    Q2 -> boxhead2 [ lhead = cluster2 ]
+    Q1 -> boxhead1 [ lhead = cluster1 ]
+}
+digraph G {
+    compound = true
+    labeljust = l
+    label="select a from a where a in (select distinct 1 from a);
+ + SemiJoinRemoval + Merge"
+    node [ shape = box ]
+    subgraph cluster0 {
+        label = "Box0:Select"
+        boxhead0 [ shape = record, label="{ Distinct: Enforce (DISTINCT TUPLES)| 0: Q0.c0 AS A| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q0 [ label="Q0(F)" ]
+            Q1 [ label="Q1(F)" ]
+            edge [ arrowhead = none, style = solid ]
+            Q0 -> Q0 [ label="(Q0.c0) = (1)" ]
+        }
+    }
+    subgraph cluster1 {
+        label = "Box1:BaseTable A"
+        boxhead1 [ shape = record, label="{ Distinct: Preserve (DISTINCT TUPLES)| 0: c0 AS A| 1: c1 AS B| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+        }
+    }
+    edge [ arrowhead = none, style = dashed ]
+    Q0 -> boxhead1 [ lhead = cluster1 ]
+    Q1 -> boxhead1 [ lhead = cluster1 ]
+}
+digraph G {
+    compound = true
+    labeljust = l
+    label="select a from a where a in (select distinct 1 from a);
+ + SemiJoinRemoval + Merge + RedundantJoin"
+    node [ shape = box ]
+    subgraph cluster0 {
+        label = "Box0:Select"
+        boxhead0 [ shape = record, label="{ Distinct: Enforce (DISTINCT TUPLES)| 0: Q0.c0 AS A| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q0 [ label="Q0(F)" ]
+            Q1 [ label="Q1(F)" ]
+            edge [ arrowhead = none, style = solid ]
+            Q0 -> Q0 [ label="(Q0.c0) = (1)" ]
+        }
+    }
+    subgraph cluster1 {
+        label = "Box1:BaseTable A"
+        boxhead1 [ shape = record, label="{ Distinct: Preserve (DISTINCT TUPLES)| 0: c0 AS A| 1: c1 AS B| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+        }
+    }
+    edge [ arrowhead = none, style = dashed ]
+    Q0 -> boxhead1 [ lhead = cluster1 ]
+    Q1 -> boxhead1 [ lhead = cluster1 ]
+}
+digraph G {
+    compound = true
+    labeljust = l
+    label="select a from a where a in (select distinct 1 from a);
+ + SemiJoinRemoval + Merge + RedundantJoin + ConstantLifting"
+    node [ shape = box ]
+    subgraph cluster0 {
+        label = "Box0:Select"
+        boxhead0 [ shape = record, label="{ Distinct: Enforce (DISTINCT TUPLES)| 0: Q0.c0 AS A| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q0 [ label="Q0(F)" ]
+            Q1 [ label="Q1(F)" ]
+            edge [ arrowhead = none, style = solid ]
+            Q0 -> Q0 [ label="(Q0.c0) = (1)" ]
+        }
+    }
+    subgraph cluster1 {
+        label = "Box1:BaseTable A"
+        boxhead1 [ shape = record, label="{ Distinct: Preserve (DISTINCT TUPLES)| 0: c0 AS A| 1: c1 AS B| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+        }
+    }
+    edge [ arrowhead = none, style = dashed ]
+    Q0 -> boxhead1 [ lhead = cluster1 ]
+    Q1 -> boxhead1 [ lhead = cluster1 ]
+}
+
+----
+----
