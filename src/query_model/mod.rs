@@ -2084,6 +2084,8 @@ impl rewrite_engine::Rule<BoxRef> for FlattenJoinRule {
             for (b, q) in self.to_pull.drain(..) {
                 b.borrow_mut().quantifiers.remove(&q);
                 q.borrow_mut().quantifier_type = QuantifierType::Foreach;
+                // @todo expressions within obj referencing columns from q through b must
+                // be rewritten
                 add_quantifier_to_box(obj, &q);
             }
             if !self.condition(obj) {

@@ -1,4 +1,4 @@
-use crate::query_model::{BoxRef, QGBox, QuantifierRef, QuantifierType};
+use crate::query_model::{BoxRef, QGBox, QuantifierRef, QuantifierSet, QuantifierType};
 use itertools::Itertools;
 use std::cell::RefCell;
 use std::cmp::*;
@@ -438,6 +438,19 @@ impl Expr {
                     }
                 }
             }
+        }
+    }
+
+    pub fn is_constant_within_context(&self, context: &QuantifierSet) -> bool {
+        match &self.expr_type {
+            ExprType::Column(_) | ExprType::BaseColumn(_) => false,
+            ExprType::Literal(_) | ExprType::Parameter(_) => true,
+            ExprType::ColumnReference(c) => !context.contains(&c.quantifier),
+            _ => self.operands.iter().all(|operands| {
+                operands
+                    .iter()
+                    .all(|o| o.borrow().is_constant_within_context(context))
+            }),
         }
     }
 

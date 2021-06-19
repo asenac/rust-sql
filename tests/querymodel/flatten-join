@@ -2,7 +2,7 @@ ddl
 create table a(a, b); create table b(c, d); create table c(e, f);
 ----
 
-query apply=(Merge,FlattenJoin)
+query apply=(Merge,FlattenJoin,ColumnRemoval)
 select * from a left join b on a = c left join c on a = e, a left join b on a = c left join c on a = e;
 ----
 ----
@@ -10,7 +10,7 @@ digraph G {
     compound = true
     labeljust = l
     label="select * from a left join b on a = c left join c on a = e, a left join b on a = c left join c on a = e;
- + Merge + FlattenJoin"
+ + Merge + FlattenJoin + ColumnRemoval"
     node [ shape = box ]
     subgraph cluster0 {
         label = "Box0:Select"
