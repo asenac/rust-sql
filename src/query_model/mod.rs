@@ -761,6 +761,7 @@ impl rewrite_engine::Rule<BoxRef> for GroupByRemovalRule {
 //
 
 /// Remove columns from GROUP KEY that functionally depend on other columns also in the GROUP KEY
+/// It also removes constants from the key.
 struct FunctionalDependenciesRule {
     new_key: Option<Vec<KeyItem>>,
 }
@@ -819,6 +820,22 @@ impl rewrite_engine::Rule<BoxRef> for FunctionalDependenciesRule {
                                     }
                                 }
                                 false
+                            })
+                            .cloned()
+                            .collect::<Vec<_>>(),
+                    );
+                } else if grouping
+                    .groups
+                    .iter()
+                    .any(|x| x.expr.borrow().is_constant_within_context(&obj.quantifiers))
+                {
+                    self.new_key = Some(
+                        grouping
+                            .groups
+                            .iter()
+                            .filter(|x| {
+                                let x = x.expr.borrow();
+                                !x.is_constant_within_context(&obj.quantifiers)
                             })
                             .cloned()
                             .collect::<Vec<_>>(),
