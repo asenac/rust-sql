@@ -110,17 +110,8 @@ digraph G {
         }
     }
     subgraph cluster3 {
-        label = "Box3:Grouping"
-        boxhead3 [ shape = record, label="{ Distinct: Preserve (DISTINCT TUPLES)| 0: Q1.c0 AS A| GROUP Q1.c0 Ascending| UNIQUE KEY [0] }" ]
-        {
-            rank = same
-            node [ shape = circle ]
-            Q1 [ label="Q1(F)" ]
-        }
-    }
-    subgraph cluster1 {
-        label = "Box1:Select"
-        boxhead1 [ shape = record, label="{ Distinct: Preserve| 0: Q0.c0 AS A }" ]
+        label = "Box3:Select"
+        boxhead3 [ shape = record, label="{ Distinct: Enforce (DISTINCT TUPLES)| 0: Q0.c0 AS A| UNIQUE KEY [0] }" ]
         {
             rank = same
             node [ shape = circle ]
@@ -137,7 +128,6 @@ digraph G {
     edge [ arrowhead = none, style = dashed ]
     Q2 -> boxhead3 [ lhead = cluster3 ]
     Q6 -> boxhead3 [ lhead = cluster3 ]
-    Q1 -> boxhead1 [ lhead = cluster1 ]
     Q0 -> boxhead2 [ lhead = cluster2 ]
 }
 
@@ -245,33 +235,16 @@ digraph G {
     node [ shape = box ]
     subgraph cluster0 {
         label = "Box0:Select"
-        boxhead0 [ shape = record, label="{ Distinct: Preserve (DISTINCT TUPLES)| 0: Q2.c0 AS A| 1: Q2.c0 AS A| UNIQUE KEY [0]| UNIQUE KEY [1] }" ]
-        {
-            rank = same
-            node [ shape = circle ]
-            Q2 [ label="Q2(F)" ]
-            edge [ arrowhead = none, style = solid ]
-            Q2 -> Q2 [ label="(Q2.c0) = (Q2.c0)" ]
-        }
-    }
-    subgraph cluster3 {
-        label = "Box3:Grouping"
-        boxhead3 [ shape = record, label="{ Distinct: Preserve (DISTINCT TUPLES)| 0: Q1.c0 AS A| GROUP Q1.c0 Ascending| UNIQUE KEY [0] }" ]
-        {
-            rank = same
-            node [ shape = circle ]
-            Q1 [ label="Q1(F)" ]
-        }
-    }
-    subgraph cluster1 {
-        label = "Box1:Select"
-        boxhead1 [ shape = record, label="{ Distinct: Preserve| 0: Q0.c0 AS A }" ]
+        boxhead0 [ shape = record, label="{ Distinct: Enforce (DISTINCT TUPLES)| 0: Q0.c0 AS A| 1: Q4.c0 AS A| UNIQUE KEY [0, 1] }" ]
         {
             rank = same
             node [ shape = circle ]
             Q0 [ label="Q0(F)" ]
+            Q4 [ label="Q4(F)" ]
             edge [ arrowhead = none, style = solid ]
+            Q0 -> Q4 [ label="(Q0.c0) = (Q4.c0)" ]
             Q0 -> Q0 [ label="NOT ((Q0.c0) IS NULL)" ]
+            Q4 -> Q4 [ label="NOT ((Q4.c0) IS NULL)" ]
         }
     }
     subgraph cluster2 {
@@ -282,9 +255,8 @@ digraph G {
         }
     }
     edge [ arrowhead = none, style = dashed ]
-    Q2 -> boxhead3 [ lhead = cluster3 ]
-    Q1 -> boxhead1 [ lhead = cluster1 ]
     Q0 -> boxhead2 [ lhead = cluster2 ]
+    Q4 -> boxhead2 [ lhead = cluster2 ]
 }
 
 ----

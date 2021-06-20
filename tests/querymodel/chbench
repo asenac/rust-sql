@@ -410,17 +410,8 @@ order by n_name, su_name, i_id;
         }
     }
     subgraph cluster7 {
-        label = "Box7:Grouping"
-        boxhead7 [ shape = record, label="{ Distinct: Preserve (DISTINCT TUPLES)| 0: Q9.c0 AS S_I_ID| GROUP Q9.c0 Ascending| UNIQUE KEY [0] }" ]
-        {
-            rank = same
-            node [ shape = circle ]
-            Q9 [ label="Q9(F)" ]
-        }
-    }
-    subgraph cluster6 {
-        label = "Box6:Select"
-        boxhead6 [ shape = record, label="{ Distinct: Preserve| 0: Q13.c5 AS S_I_ID }" ]
+        label = "Box7:Select"
+        boxhead7 [ shape = record, label="{ Distinct: Enforce (DISTINCT TUPLES)| 0: Q13.c5 AS S_I_ID| UNIQUE KEY [0] }" ]
         {
             rank = same
             node [ shape = circle ]
@@ -442,7 +433,6 @@ order by n_name, su_name, i_id;
     Q2 -> boxhead3 [ lhead = cluster3 ]
     Q3 -> boxhead4 [ lhead = cluster4 ]
     Q4 -> boxhead5 [ lhead = cluster5 ]
-    Q9 -> boxhead6 [ lhead = cluster6 ]
     Q13 -> boxhead9 [ lhead = cluster9 ]
 }
 

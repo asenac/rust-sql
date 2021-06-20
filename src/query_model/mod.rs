@@ -691,13 +691,21 @@ impl rewrite_engine::Rule<BoxRef> for SemiJoinRemovalRule {
 // GroupByRemoval
 //
 
+#[derive(PartialEq, Copy, Clone)]
+enum GroupByRemovalMode {
+    Distinct,
+    Remove,
+}
+
 /// Remove a GROUP BY operator with a key that forms a unique key in the
 /// input quantifier.
-struct GroupByRemovalRule {}
+struct GroupByRemovalRule {
+    mode: Option<GroupByRemovalMode>,
+}
 
 impl GroupByRemovalRule {
     fn new() -> Self {
-        Self {}
+        Self { mode: None }
     }
 }
 
@@ -709,6 +717,7 @@ impl rewrite_engine::Rule<BoxRef> for GroupByRemovalRule {
         false
     }
     fn condition(&mut self, obj: &BoxRef) -> bool {
+        self.mode = None;
         let obj = obj.borrow();
         // note: this should be an assert
         if obj.quantifiers.len() == 1 {
@@ -746,19 +755,36 @@ impl rewrite_engine::Rule<BoxRef> for GroupByRemovalRule {
                         let b = q.input_box.borrow();
                         // there must be a unique key in the input box that
                         // contains all members of the grouping key
-                        return b
-                            .unique_keys
+                        if b.unique_keys
                             .iter()
-                            .any(|key| column_refs_in_key.iter().all(|x| key.contains(x)));
+                            .any(|key| column_refs_in_key.iter().all(|x| key.contains(x)))
+                        {
+                            self.mode = Some(GroupByRemovalMode::Remove);
+                        }
+                    }
+
+                    if self.mode.is_none()
+                        && grouping
+                            .groups
+                            .iter()
+                            .map(|x| x.expr.clone())
+                            .sorted()
+                            .dedup()
+                            .eq(obj.columns.iter().map(|c| c.expr.clone()).sorted().dedup())
+                    {
+                        self.mode = Some(GroupByRemovalMode::Distinct);
                     }
                 }
             }
         }
-        false
+        self.mode.is_some()
     }
     fn action(&mut self, obj: &mut BoxRef) {
         let mut obj = obj.borrow_mut();
         obj.box_type = BoxType::Select(Select::new());
+        if let Some(GroupByRemovalMode::Distinct) = self.mode {
+            obj.distinct_operation = DistinctOperation::Enforce;
+        }
         obj.recompute_unique_keys();
     }
 }
