@@ -1,4 +1,6 @@
-use crate::query_model::{get_quantifiers, BoxType, ExprRef, Model, QGBox, QuantifierRef};
+use crate::query_model::{
+    get_quantifiers, BoxType, ExprRef, Model, QGBox, Quantifier, QuantifierRef,
+};
 use std::collections::HashSet;
 use std::rc::Rc;
 
@@ -94,8 +96,10 @@ impl DotGenerator {
                 let q = q.borrow();
                 box_stack.push(Rc::clone(&q.input_box));
                 self.new_line(&format!(
-                    "Q{0} [ label=\"Q{0}({1})\" ]",
-                    q.id, q.quantifier_type
+                    "Q{0} [ label=\"Q{0}({1}){2}\" ]",
+                    q.id,
+                    q.quantifier_type,
+                    self.get_quantifier_alias(&q)
                 ));
             }
 
@@ -135,6 +139,14 @@ impl DotGenerator {
         Ok(self.output)
     }
 
+    fn get_quantifier_alias(&self, q: &Quantifier) -> String {
+        if let Some(alias) = &q.alias {
+            format!(" as {}", alias)
+        } else {
+            "".to_string()
+        }
+    }
+
     fn get_box_head(b: &QGBox, predicates: &[ExprRef]) -> String {
         let mut r = String::new();
 
@@ -148,7 +160,7 @@ impl DotGenerator {
         for (i, c) in b.columns.iter().enumerate() {
             r.push_str(&format!("| {}: {}", i, c.expr.borrow()));
             if let Some(c) = &c.name {
-                r.push_str(&format!(" AS {}", c));
+                r.push_str(&format!(" as {}", c));
             }
         }
         for expr in predicates {

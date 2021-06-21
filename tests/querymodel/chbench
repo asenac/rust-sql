@@ -208,16 +208,16 @@ order by n_name, su_name, i_id;
     node [ shape = box ]
     subgraph cluster0 {
         label = "Box0:Select"
-        boxhead0 [ shape = record, label="{ Distinct: Preserve| 0: Q1.c0 AS SU_SUPPKEY| 1: Q1.c1 AS SU_NAME| 2: Q3.c1 AS N_NAME| 3: Q0.c0 AS I_ID| 4: Q0.c2 AS I_NAME| 5: Q1.c2 AS SU_ADDRESS| 6: Q1.c4 AS SU_PHONE| 7: Q1.c6 AS SU_COMMENT| ORDER Q3.c1 Ascending Q1.c1 Ascending Q0.c0 Ascending }" ]
+        boxhead0 [ shape = record, label="{ Distinct: Preserve| 0: Q1.c0 as SU_SUPPKEY| 1: Q1.c1 as SU_NAME| 2: Q3.c1 as N_NAME| 3: Q0.c0 as I_ID| 4: Q0.c2 as I_NAME| 5: Q1.c2 as SU_ADDRESS| 6: Q1.c4 as SU_PHONE| 7: Q1.c6 as SU_COMMENT| ORDER Q3.c1 Ascending Q1.c1 Ascending Q0.c0 Ascending }" ]
         {
             rank = same
             node [ shape = circle ]
-            Q0 [ label="Q0(F)" ]
-            Q1 [ label="Q1(F)" ]
-            Q2 [ label="Q2(F)" ]
-            Q3 [ label="Q3(F)" ]
-            Q4 [ label="Q4(F)" ]
-            Q11 [ label="Q11(F)" ]
+            Q0 [ label="Q0(F) as ITEM" ]
+            Q1 [ label="Q1(F) as SUPPLIER" ]
+            Q2 [ label="Q2(F) as STOCK" ]
+            Q3 [ label="Q3(F) as NATION" ]
+            Q4 [ label="Q4(F) as REGION" ]
+            Q11 [ label="Q11(F) as M" ]
             edge [ arrowhead = none, style = solid ]
             Q0 -> Q2 [ label="(Q0.c0) = (Q2.c0)" ]
             Q1 -> Q2 [ label="(Q2.c1) >= (Q1.c0)" ]
@@ -231,7 +231,7 @@ order by n_name, su_name, i_id;
     }
     subgraph cluster8 {
         label = "Box8:Select"
-        boxhead8 [ shape = record, label="{ Distinct: Preserve (DISTINCT TUPLES)| 0: Q10.c0 AS M_I_ID| 1: ?:0 AS M_S_QUANTITY| UNIQUE KEY [0] }" ]
+        boxhead8 [ shape = record, label="{ Distinct: Preserve (DISTINCT TUPLES)| 0: Q10.c0 as M_I_ID| 1: ?:0 as M_S_QUANTITY| UNIQUE KEY [0] }" ]
         {
             rank = same
             node [ shape = circle ]
@@ -240,7 +240,7 @@ order by n_name, su_name, i_id;
     }
     subgraph cluster7 {
         label = "Box7:Grouping"
-        boxhead7 [ shape = record, label="{ Distinct: Preserve (DISTINCT TUPLES)| 0: Q9.c0 AS S_I_ID| GROUP Q9.c0 Ascending| UNIQUE KEY [0] }" ]
+        boxhead7 [ shape = record, label="{ Distinct: Preserve (DISTINCT TUPLES)| 0: Q9.c0 as S_I_ID| GROUP Q9.c0 Ascending| UNIQUE KEY [0] }" ]
         {
             rank = same
             node [ shape = circle ]
@@ -249,14 +249,14 @@ order by n_name, su_name, i_id;
     }
     subgraph cluster6 {
         label = "Box6:Select"
-        boxhead6 [ shape = record, label="{ Distinct: Preserve| 0: Q5.c0 AS S_I_ID| 1: Q5.c1 AS S_W_ID| 2: Q5.c2 AS S_QUANTITY| 3: Q5.c3 AS S_DIST_01| 4: Q5.c4 AS S_DIST_02| 5: Q5.c5 AS S_DIST_03| 6: Q5.c6 AS S_DIST_04| 7: Q5.c7 AS S_DIST_05| 8: Q5.c8 AS S_DIST_06| 9: Q5.c9 AS S_DIST_07| 10: Q5.c10 AS S_DIST_08| 11: Q5.c11 AS S_DIST_09| 12: Q5.c12 AS S_DIST_10| 13: Q5.c13 AS S_YTD| 14: Q5.c14 AS S_ORDER_CNT| 15: Q5.c15 AS S_REMOTE_CNT| 16: Q5.c16 AS S_DATA| 17: Q5.c17 AS S_SU_SUPPKEY| 18: Q6.c0 AS SU_SUPPKEY| 19: Q6.c1 AS SU_NAME| 20: Q6.c2 AS SU_ADDRESS| 21: Q6.c3 AS SU_NATIONKEY| 22: Q6.c4 AS SU_PHONE| 23: Q6.c5 AS SU_ACCTBAL| 24: Q6.c6 AS SU_COMMENT| 25: Q7.c0 AS N_NATIONKEY| 26: Q7.c1 AS N_NAME| 27: Q7.c2 AS N_REGIONKEY| 28: Q7.c3 AS N_COMMENT| 29: Q8.c0 AS R_REGIONKEY| 30: Q8.c1 AS R_NAME| 31: Q8.c2 AS R_COMMENT }" ]
+        boxhead6 [ shape = record, label="{ Distinct: Preserve| 0: Q5.c0 as S_I_ID| 1: Q5.c1 as S_W_ID| 2: Q5.c2 as S_QUANTITY| 3: Q5.c3 as S_DIST_01| 4: Q5.c4 as S_DIST_02| 5: Q5.c5 as S_DIST_03| 6: Q5.c6 as S_DIST_04| 7: Q5.c7 as S_DIST_05| 8: Q5.c8 as S_DIST_06| 9: Q5.c9 as S_DIST_07| 10: Q5.c10 as S_DIST_08| 11: Q5.c11 as S_DIST_09| 12: Q5.c12 as S_DIST_10| 13: Q5.c13 as S_YTD| 14: Q5.c14 as S_ORDER_CNT| 15: Q5.c15 as S_REMOTE_CNT| 16: Q5.c16 as S_DATA| 17: Q5.c17 as S_SU_SUPPKEY| 18: Q6.c0 as SU_SUPPKEY| 19: Q6.c1 as SU_NAME| 20: Q6.c2 as SU_ADDRESS| 21: Q6.c3 as SU_NATIONKEY| 22: Q6.c4 as SU_PHONE| 23: Q6.c5 as SU_ACCTBAL| 24: Q6.c6 as SU_COMMENT| 25: Q7.c0 as N_NATIONKEY| 26: Q7.c1 as N_NAME| 27: Q7.c2 as N_REGIONKEY| 28: Q7.c3 as N_COMMENT| 29: Q8.c0 as R_REGIONKEY| 30: Q8.c1 as R_NAME| 31: Q8.c2 as R_COMMENT }" ]
         {
             rank = same
             node [ shape = circle ]
-            Q5 [ label="Q5(F)" ]
-            Q6 [ label="Q6(F)" ]
-            Q7 [ label="Q7(F)" ]
-            Q8 [ label="Q8(F)" ]
+            Q5 [ label="Q5(F) as STOCK" ]
+            Q6 [ label="Q6(F) as SUPPLIER" ]
+            Q7 [ label="Q7(F) as NATION" ]
+            Q8 [ label="Q8(F) as REGION" ]
             edge [ arrowhead = none, style = solid ]
             Q5 -> Q6 [ label="(Q5.c1) >= (Q6.c0)" ]
             Q6 -> Q7 [ label="(Q6.c3) = (Q7.c0)" ]
@@ -266,35 +266,35 @@ order by n_name, su_name, i_id;
     }
     subgraph cluster5 {
         label = "Box5:BaseTable REGION"
-        boxhead5 [ shape = record, label="{ Distinct: Preserve (DISTINCT TUPLES)| 0: c0 AS R_REGIONKEY| 1: c1 AS R_NAME| 2: c2 AS R_COMMENT| UNIQUE KEY [0] }" ]
+        boxhead5 [ shape = record, label="{ Distinct: Preserve (DISTINCT TUPLES)| 0: c0 as R_REGIONKEY| 1: c1 as R_NAME| 2: c2 as R_COMMENT| UNIQUE KEY [0] }" ]
         {
             rank = same
         }
     }
     subgraph cluster4 {
         label = "Box4:BaseTable NATION"
-        boxhead4 [ shape = record, label="{ Distinct: Preserve (DISTINCT TUPLES)| 0: c0 AS N_NATIONKEY| 1: c1 AS N_NAME| 2: c2 AS N_REGIONKEY| 3: c3 AS N_COMMENT| UNIQUE KEY [0] }" ]
+        boxhead4 [ shape = record, label="{ Distinct: Preserve (DISTINCT TUPLES)| 0: c0 as N_NATIONKEY| 1: c1 as N_NAME| 2: c2 as N_REGIONKEY| 3: c3 as N_COMMENT| UNIQUE KEY [0] }" ]
         {
             rank = same
         }
     }
     subgraph cluster2 {
         label = "Box2:BaseTable SUPPLIER"
-        boxhead2 [ shape = record, label="{ Distinct: Preserve (DISTINCT TUPLES)| 0: c0 AS SU_SUPPKEY| 1: c1 AS SU_NAME| 2: c2 AS SU_ADDRESS| 3: c3 AS SU_NATIONKEY| 4: c4 AS SU_PHONE| 5: c5 AS SU_ACCTBAL| 6: c6 AS SU_COMMENT| UNIQUE KEY [0] }" ]
+        boxhead2 [ shape = record, label="{ Distinct: Preserve (DISTINCT TUPLES)| 0: c0 as SU_SUPPKEY| 1: c1 as SU_NAME| 2: c2 as SU_ADDRESS| 3: c3 as SU_NATIONKEY| 4: c4 as SU_PHONE| 5: c5 as SU_ACCTBAL| 6: c6 as SU_COMMENT| UNIQUE KEY [0] }" ]
         {
             rank = same
         }
     }
     subgraph cluster3 {
         label = "Box3:BaseTable STOCK"
-        boxhead3 [ shape = record, label="{ Distinct: Preserve (DISTINCT TUPLES)| 0: c0 AS S_I_ID| 1: c1 AS S_W_ID| 2: c2 AS S_QUANTITY| 3: c3 AS S_DIST_01| 4: c4 AS S_DIST_02| 5: c5 AS S_DIST_03| 6: c6 AS S_DIST_04| 7: c7 AS S_DIST_05| 8: c8 AS S_DIST_06| 9: c9 AS S_DIST_07| 10: c10 AS S_DIST_08| 11: c11 AS S_DIST_09| 12: c12 AS S_DIST_10| 13: c13 AS S_YTD| 14: c14 AS S_ORDER_CNT| 15: c15 AS S_REMOTE_CNT| 16: c16 AS S_DATA| 17: c17 AS S_SU_SUPPKEY| UNIQUE KEY [0, 1] }" ]
+        boxhead3 [ shape = record, label="{ Distinct: Preserve (DISTINCT TUPLES)| 0: c0 as S_I_ID| 1: c1 as S_W_ID| 2: c2 as S_QUANTITY| 3: c3 as S_DIST_01| 4: c4 as S_DIST_02| 5: c5 as S_DIST_03| 6: c6 as S_DIST_04| 7: c7 as S_DIST_05| 8: c8 as S_DIST_06| 9: c9 as S_DIST_07| 10: c10 as S_DIST_08| 11: c11 as S_DIST_09| 12: c12 as S_DIST_10| 13: c13 as S_YTD| 14: c14 as S_ORDER_CNT| 15: c15 as S_REMOTE_CNT| 16: c16 as S_DATA| 17: c17 as S_SU_SUPPKEY| UNIQUE KEY [0, 1] }" ]
         {
             rank = same
         }
     }
     subgraph cluster1 {
         label = "Box1:BaseTable ITEM"
-        boxhead1 [ shape = record, label="{ Distinct: Preserve (DISTINCT TUPLES)| 0: c0 AS I_ID| 1: c1 AS I_IM_ID| 2: c2 AS I_NAME| 3: c3 AS I_PRICE| 4: c4 AS I_DATA| UNIQUE KEY [0] }" ]
+        boxhead1 [ shape = record, label="{ Distinct: Preserve (DISTINCT TUPLES)| 0: c0 as I_ID| 1: c1 as I_IM_ID| 2: c2 as I_NAME| 3: c3 as I_PRICE| 4: c4 as I_DATA| UNIQUE KEY [0] }" ]
         {
             rank = same
         }
@@ -339,11 +339,11 @@ order by n_name, su_name, i_id;
     node [ shape = box ]
     subgraph cluster0 {
         label = "Box0:Select"
-        boxhead0 [ shape = record, label="{ Distinct: Preserve| 0: Q12.c0 AS SU_SUPPKEY| 1: Q12.c1 AS SU_NAME| 2: Q12.c7 AS N_NAME| 3: Q0.c0 AS I_ID| 4: Q0.c1 AS I_NAME| 5: Q12.c2 AS SU_ADDRESS| 6: Q12.c3 AS SU_PHONE| 7: Q12.c4 AS SU_COMMENT| ORDER Q12.c7 Ascending Q12.c1 Ascending Q0.c0 Ascending }" ]
+        boxhead0 [ shape = record, label="{ Distinct: Preserve| 0: Q12.c0 as SU_SUPPKEY| 1: Q12.c1 as SU_NAME| 2: Q12.c7 as N_NAME| 3: Q0.c0 as I_ID| 4: Q0.c1 as I_NAME| 5: Q12.c2 as SU_ADDRESS| 6: Q12.c3 as SU_PHONE| 7: Q12.c4 as SU_COMMENT| ORDER Q12.c7 Ascending Q12.c1 Ascending Q0.c0 Ascending }" ]
         {
             rank = same
             node [ shape = circle ]
-            Q0 [ label="Q0(F)" ]
+            Q0 [ label="Q0(F) as ITEM" ]
             Q10 [ label="Q10(F)" ]
             Q12 [ label="Q12(F)" ]
             edge [ arrowhead = none, style = solid ]
@@ -358,14 +358,14 @@ order by n_name, su_name, i_id;
     }
     subgraph cluster9 {
         label = "Box9:Select"
-        boxhead9 [ shape = record, label="{ Distinct: Preserve| 0: Q1.c0 AS SU_SUPPKEY| 1: Q1.c1 AS SU_NAME| 2: Q1.c2 AS SU_ADDRESS| 3: Q1.c4 AS SU_PHONE| 4: Q1.c5 AS SU_COMMENT| 5: Q2.c0 AS S_I_ID| 6: Q2.c2 AS S_QUANTITY| 7: Q3.c1 AS N_NAME }" ]
+        boxhead9 [ shape = record, label="{ Distinct: Preserve| 0: Q1.c0 as SU_SUPPKEY| 1: Q1.c1 as SU_NAME| 2: Q1.c2 as SU_ADDRESS| 3: Q1.c4 as SU_PHONE| 4: Q1.c5 as SU_COMMENT| 5: Q2.c0 as S_I_ID| 6: Q2.c2 as S_QUANTITY| 7: Q3.c1 as N_NAME }" ]
         {
             rank = same
             node [ shape = circle ]
-            Q1 [ label="Q1(F)" ]
-            Q2 [ label="Q2(F)" ]
-            Q3 [ label="Q3(F)" ]
-            Q4 [ label="Q4(F)" ]
+            Q1 [ label="Q1(F) as SUPPLIER" ]
+            Q2 [ label="Q2(F) as STOCK" ]
+            Q3 [ label="Q3(F) as NATION" ]
+            Q4 [ label="Q4(F) as REGION" ]
             edge [ arrowhead = none, style = solid ]
             Q1 -> Q2 [ label="(Q1.c0) <= (Q2.c1)" ]
             Q1 -> Q3 [ label="(Q1.c3) = (Q3.c0)" ]
@@ -383,35 +383,35 @@ order by n_name, su_name, i_id;
     }
     subgraph cluster5 {
         label = "Box5:BaseTable REGION"
-        boxhead5 [ shape = record, label="{ Distinct: Preserve (DISTINCT TUPLES)| 0: c0 AS R_REGIONKEY| 1: c1 AS R_NAME| UNIQUE KEY [0] }" ]
+        boxhead5 [ shape = record, label="{ Distinct: Preserve (DISTINCT TUPLES)| 0: c0 as R_REGIONKEY| 1: c1 as R_NAME| UNIQUE KEY [0] }" ]
         {
             rank = same
         }
     }
     subgraph cluster4 {
         label = "Box4:BaseTable NATION"
-        boxhead4 [ shape = record, label="{ Distinct: Preserve (DISTINCT TUPLES)| 0: c0 AS N_NATIONKEY| 1: c1 AS N_NAME| 2: c2 AS N_REGIONKEY| UNIQUE KEY [0] }" ]
+        boxhead4 [ shape = record, label="{ Distinct: Preserve (DISTINCT TUPLES)| 0: c0 as N_NATIONKEY| 1: c1 as N_NAME| 2: c2 as N_REGIONKEY| UNIQUE KEY [0] }" ]
         {
             rank = same
         }
     }
     subgraph cluster3 {
         label = "Box3:BaseTable STOCK"
-        boxhead3 [ shape = record, label="{ Distinct: Preserve (DISTINCT TUPLES)| 0: c0 AS S_I_ID| 1: c1 AS S_W_ID| 2: c2 AS S_QUANTITY| UNIQUE KEY [1, 0] }" ]
+        boxhead3 [ shape = record, label="{ Distinct: Preserve (DISTINCT TUPLES)| 0: c0 as S_I_ID| 1: c1 as S_W_ID| 2: c2 as S_QUANTITY| UNIQUE KEY [1, 0] }" ]
         {
             rank = same
         }
     }
     subgraph cluster2 {
         label = "Box2:BaseTable SUPPLIER"
-        boxhead2 [ shape = record, label="{ Distinct: Preserve (DISTINCT TUPLES)| 0: c0 AS SU_SUPPKEY| 1: c1 AS SU_NAME| 2: c2 AS SU_ADDRESS| 3: c3 AS SU_NATIONKEY| 4: c4 AS SU_PHONE| 5: c6 AS SU_COMMENT| UNIQUE KEY [0] }" ]
+        boxhead2 [ shape = record, label="{ Distinct: Preserve (DISTINCT TUPLES)| 0: c0 as SU_SUPPKEY| 1: c1 as SU_NAME| 2: c2 as SU_ADDRESS| 3: c3 as SU_NATIONKEY| 4: c4 as SU_PHONE| 5: c6 as SU_COMMENT| UNIQUE KEY [0] }" ]
         {
             rank = same
         }
     }
     subgraph cluster7 {
         label = "Box7:Select"
-        boxhead7 [ shape = record, label="{ Distinct: Enforce (DISTINCT TUPLES)| 0: Q13.c5 AS S_I_ID| UNIQUE KEY [0] }" ]
+        boxhead7 [ shape = record, label="{ Distinct: Enforce (DISTINCT TUPLES)| 0: Q13.c5 as S_I_ID| UNIQUE KEY [0] }" ]
         {
             rank = same
             node [ shape = circle ]
@@ -420,7 +420,7 @@ order by n_name, su_name, i_id;
     }
     subgraph cluster1 {
         label = "Box1:BaseTable ITEM"
-        boxhead1 [ shape = record, label="{ Distinct: Preserve (DISTINCT TUPLES)| 0: c0 AS I_ID| 1: c2 AS I_NAME| 2: c4 AS I_DATA| UNIQUE KEY [0] }" ]
+        boxhead1 [ shape = record, label="{ Distinct: Preserve (DISTINCT TUPLES)| 0: c0 as I_ID| 1: c2 as I_NAME| 2: c4 as I_DATA| UNIQUE KEY [0] }" ]
         {
             rank = same
         }
