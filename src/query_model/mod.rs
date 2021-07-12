@@ -227,20 +227,10 @@ fn add_quantifier_to_box(b: &BoxRef, q: &QuantifierRef) {
 
 /// Lift an expression through the projection of the given quantifier
 fn lift_expression(q: &QuantifierRef, e: &ExprRef) -> Option<ExprRef> {
-    if e.borrow().is_runtime_constant() {
+    if e.borrow()
+        .is_constant_within_context(&q.borrow().input_box.borrow().quantifiers)
+    {
         return Some(e.clone());
-    }
-    if let ExprType::ColumnReference(c) = &e.borrow().expr_type {
-        if !q
-            .borrow()
-            .input_box
-            .borrow()
-            .quantifiers
-            .contains(&c.quantifier)
-        {
-            // it's a column reference from a parent context
-            return Some(e.clone());
-        }
     }
     for (i, c) in q.borrow().input_box.borrow().columns.iter().enumerate() {
         if c.expr.borrow().is_equiv(&e.borrow()) {
