@@ -517,20 +517,22 @@ impl QGBox {
                                 (q.id, b.unique_keys.clone())
                             })
                             .collect();
+
+                        // given a key returns the classes of the key
+                        let key_classes = |id: i32, key: &Vec<usize>| {
+                            key.iter()
+                                .filter_map(|x| {
+                                    if let Some(class) = classes.get(&(id, *x)) {
+                                        Some(*class)
+                                    } else {
+                                        None
+                                    }
+                                })
+                                .collect::<HashSet<_>>()
+                        };
+
                         let first_id: i32 = quantifiers.first().unwrap().borrow().id;
                         if let Some(unique_keys) = keys_by_q.get(&first_id) {
-                            // given a key returns the classes of the key
-                            let key_classes = |id: i32, key: &Vec<usize>| {
-                                key.iter()
-                                    .filter_map(|x| {
-                                        if let Some(class) = classes.get(&(id, *x)) {
-                                            Some(*class)
-                                        } else {
-                                            None
-                                        }
-                                    })
-                                    .collect::<HashSet<_>>()
-                            };
                             for outer_key in unique_keys {
                                 let outer_key_classes = key_classes(first_id, outer_key);
                                 if outer_key_classes.len() == outer_key.len() {
@@ -564,6 +566,69 @@ impl QGBox {
                                                 self.add_unique_key(key);
                                             }
                                         }
+                                    }
+                                }
+                            }
+                        }
+
+                        // all the projected keys from the preserving side must be preserved if
+                        // each row from the preserving side is guaranteed to match one tuple
+                        // from the non-preserving side at most.
+                        if is_outer_join {
+                            // 1. check whether the non-preserving side is guaranteed to return one
+                            // tuple at most for every tuple from the preserving side
+                            let non_preserving_side_uniqueness = quantifiers
+                                .iter()
+                                .filter(|q| q.borrow().quantifier_type == QuantifierType::Foreach)
+                                .all(|q| {
+                                    let qid = q.borrow().id;
+                                    if let Some(unique_keys) = keys_by_q.get(&qid) {
+                                        unique_keys.iter().any(|key| {
+                                            let key_classes = key_classes(qid, key);
+                                            key_classes.len() == key.len()
+                                        })
+                                    } else {
+                                        false
+                                    }
+                                });
+                            if non_preserving_side_uniqueness {
+                                let preserving_side = quantifiers.iter().find(|q| {
+                                    q.borrow().quantifier_type == QuantifierType::PreservedForeach
+                                });
+                                if let Some(preserving_side) = preserving_side {
+                                    // 2. keys from the preserving side projected through the current box
+                                    let projected_keys = {
+                                        let preserving_q = preserving_side.borrow();
+                                        let preserving_box = preserving_q.input_box.borrow();
+                                        preserving_box
+                                            .unique_keys
+                                            .iter()
+                                            .filter_map(|input_key| {
+                                                let projected_key = input_key
+                                                    .iter()
+                                                    .filter_map(|ic| {
+                                                        let col_ref = Expr::make_column_ref(
+                                                            preserving_side.clone(),
+                                                            *ic,
+                                                        );
+                                                        self.columns
+                                                            .iter()
+                                                            .find_position(|c| {
+                                                                c.expr.borrow().is_equiv(&col_ref)
+                                                            })
+                                                            .map(|(p, _)| p)
+                                                    })
+                                                    .collect::<Vec<_>>();
+                                                if projected_key.len() == input_key.len() {
+                                                    Some(projected_key)
+                                                } else {
+                                                    None
+                                                }
+                                            })
+                                            .collect::<Vec<_>>()
+                                    };
+                                    for projected_key in projected_keys {
+                                        self.add_unique_key(projected_key);
                                     }
                                 }
                             }

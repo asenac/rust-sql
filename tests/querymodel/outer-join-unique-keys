@@ -1,0 +1,177 @@
+ddl
+create table input(id, underlying_id); create unique index input1 on input(id);
+----
+
+# unique-key preserved
+full-pass
+select * from input s left join input u on s.underlying_id = u.id;
+----
+----
+digraph G {
+    compound = true
+    labeljust = l
+    label="select * from input s left join input u on s.underlying_id = u.id;
+ (before rewrites)"
+    node [ shape = box ]
+    subgraph cluster0 {
+        label = "Box0:Select"
+        boxhead0 [ shape = record, label="{ Distinct: Preserve (DISTINCT TUPLES)| 0: Q2.c0 as ID| 1: Q2.c1 as UNDERLYING_ID| 2: Q2.c2 as ID| 3: Q2.c3 as UNDERLYING_ID| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q2 [ label="Q2(F)" ]
+        }
+    }
+    subgraph cluster1 {
+        label = "Box1:OuterJoin"
+        boxhead1 [ shape = record, label="{ Distinct: Preserve (DISTINCT TUPLES)| 0: Q0.c0 as ID| 1: Q0.c1 as UNDERLYING_ID| 2: Q1.c0 as ID| 3: Q1.c1 as UNDERLYING_ID| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q0 [ label="Q0(P) as S" ]
+            Q1 [ label="Q1(F) as U" ]
+            edge [ arrowhead = none, style = solid ]
+            Q0 -> Q1 [ label="(Q0.c1) = (Q1.c0)" ]
+        }
+    }
+    subgraph cluster2 {
+        label = "Box2:BaseTable INPUT"
+        boxhead2 [ shape = record, label="{ Distinct: Preserve (DISTINCT TUPLES)| 0: c0 as ID| 1: c1 as UNDERLYING_ID| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+        }
+    }
+    edge [ arrowhead = none, style = dashed ]
+    Q2 -> boxhead1 [ lhead = cluster1 ]
+    Q0 -> boxhead2 [ lhead = cluster2 ]
+    Q1 -> boxhead2 [ lhead = cluster2 ]
+}
+digraph G {
+    compound = true
+    labeljust = l
+    label="select * from input s left join input u on s.underlying_id = u.id;
+ (after rewrites)"
+    node [ shape = box ]
+    subgraph cluster0 {
+        label = "Box0:Select"
+        boxhead0 [ shape = record, label="{ Distinct: Preserve (DISTINCT TUPLES)| 0: Q2.c0 as ID| 1: Q2.c1 as UNDERLYING_ID| 2: Q2.c2 as ID| 3: Q2.c3 as UNDERLYING_ID| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q2 [ label="Q2(F)" ]
+        }
+    }
+    subgraph cluster1 {
+        label = "Box1:OuterJoin"
+        boxhead1 [ shape = record, label="{ Distinct: Preserve (DISTINCT TUPLES)| 0: Q0.c0 as ID| 1: Q0.c1 as UNDERLYING_ID| 2: Q1.c0 as ID| 3: Q1.c1 as UNDERLYING_ID| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q0 [ label="Q0(P) as S" ]
+            Q1 [ label="Q1(F) as U" ]
+            edge [ arrowhead = none, style = solid ]
+            Q0 -> Q1 [ label="(Q0.c1) = (Q1.c0)" ]
+        }
+    }
+    subgraph cluster2 {
+        label = "Box2:BaseTable INPUT"
+        boxhead2 [ shape = record, label="{ Distinct: Preserve (DISTINCT TUPLES)| 0: c0 as ID| 1: c1 as UNDERLYING_ID| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+        }
+    }
+    edge [ arrowhead = none, style = dashed ]
+    Q2 -> boxhead1 [ lhead = cluster1 ]
+    Q0 -> boxhead2 [ lhead = cluster2 ]
+    Q1 -> boxhead2 [ lhead = cluster2 ]
+}
+
+----
+----
+
+# unique-key not preserved
+full-pass
+select * from input s left join input u on s.underlying_id = u.underlying_id;
+----
+----
+digraph G {
+    compound = true
+    labeljust = l
+    label="select * from input s left join input u on s.underlying_id = u.underlying_id;
+ (before rewrites)"
+    node [ shape = box ]
+    subgraph cluster0 {
+        label = "Box0:Select"
+        boxhead0 [ shape = record, label="{ Distinct: Preserve| 0: Q2.c0 as ID| 1: Q2.c1 as UNDERLYING_ID| 2: Q2.c2 as ID| 3: Q2.c3 as UNDERLYING_ID }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q2 [ label="Q2(F)" ]
+        }
+    }
+    subgraph cluster1 {
+        label = "Box1:OuterJoin"
+        boxhead1 [ shape = record, label="{ Distinct: Preserve| 0: Q0.c0 as ID| 1: Q0.c1 as UNDERLYING_ID| 2: Q1.c0 as ID| 3: Q1.c1 as UNDERLYING_ID }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q0 [ label="Q0(P) as S" ]
+            Q1 [ label="Q1(F) as U" ]
+            edge [ arrowhead = none, style = solid ]
+            Q0 -> Q1 [ label="(Q0.c1) = (Q1.c1)" ]
+        }
+    }
+    subgraph cluster2 {
+        label = "Box2:BaseTable INPUT"
+        boxhead2 [ shape = record, label="{ Distinct: Preserve (DISTINCT TUPLES)| 0: c0 as ID| 1: c1 as UNDERLYING_ID| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+        }
+    }
+    edge [ arrowhead = none, style = dashed ]
+    Q2 -> boxhead1 [ lhead = cluster1 ]
+    Q0 -> boxhead2 [ lhead = cluster2 ]
+    Q1 -> boxhead2 [ lhead = cluster2 ]
+}
+digraph G {
+    compound = true
+    labeljust = l
+    label="select * from input s left join input u on s.underlying_id = u.underlying_id;
+ (after rewrites)"
+    node [ shape = box ]
+    subgraph cluster0 {
+        label = "Box0:Select"
+        boxhead0 [ shape = record, label="{ Distinct: Preserve| 0: Q2.c0 as ID| 1: Q2.c1 as UNDERLYING_ID| 2: Q2.c2 as ID| 3: Q2.c3 as UNDERLYING_ID }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q2 [ label="Q2(F)" ]
+        }
+    }
+    subgraph cluster1 {
+        label = "Box1:OuterJoin"
+        boxhead1 [ shape = record, label="{ Distinct: Preserve| 0: Q0.c0 as ID| 1: Q0.c1 as UNDERLYING_ID| 2: Q1.c0 as ID| 3: Q1.c1 as UNDERLYING_ID }" ]
+        {
+            rank = same
+            node [ shape = circle ]
+            Q0 [ label="Q0(P) as S" ]
+            Q1 [ label="Q1(F) as U" ]
+            edge [ arrowhead = none, style = solid ]
+            Q0 -> Q1 [ label="(Q0.c1) = (Q1.c1)" ]
+        }
+    }
+    subgraph cluster2 {
+        label = "Box2:BaseTable INPUT"
+        boxhead2 [ shape = record, label="{ Distinct: Preserve (DISTINCT TUPLES)| 0: c0 as ID| 1: c1 as UNDERLYING_ID| UNIQUE KEY [0] }" ]
+        {
+            rank = same
+        }
+    }
+    edge [ arrowhead = none, style = dashed ]
+    Q2 -> boxhead1 [ lhead = cluster1 ]
+    Q0 -> boxhead2 [ lhead = cluster2 ]
+    Q1 -> boxhead2 [ lhead = cluster2 ]
+}
+
+----
+----
