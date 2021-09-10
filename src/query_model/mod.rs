@@ -2147,6 +2147,145 @@ impl rewrite_engine::Rule<BoxRef> for FlattenJoinRule {
     }
 }
 
+//
+// Decorrelation
+//
+
+struct DecorrelationRule {
+    external_columns: PerQuantifierColumnReferenceMap,
+}
+
+impl DecorrelationRule {
+    fn new() -> Self {
+        Self {
+            external_columns: BTreeMap::new(),
+        }
+    }
+
+    fn create_local_quantifier(
+        obj: &BoxRef,
+        external_q: &QuantifierRef,
+        columns: &[usize],
+    ) -> QuantifierRef {
+        let input_box = external_q.borrow().input_box.clone();
+        let model = obj.borrow().model.upgrade().expect("expect valid model");
+
+        let select_box = QGBox::new(
+            Rc::downgrade(&model),
+            model.borrow_mut().ids.get_box_id(),
+            BoxType::Select(Select::new()),
+        );
+        let inner_q = Quantifier::new(
+            model.borrow_mut().ids.get_quantifier_id(),
+            QuantifierType::Foreach,
+            input_box,
+            &select_box,
+        );
+        select_box.borrow_mut().add_quantifier(inner_q.clone());
+        select_box.borrow_mut().distinct_operation = DistinctOperation::Enforce;
+        for col_pos in columns.iter() {
+            select_box.borrow_mut().add_column(
+                None,
+                make_ref(Expr::make_column_ref(inner_q.clone(), *col_pos)),
+            );
+        }
+
+        let local_q = Quantifier::new(
+            model.borrow_mut().ids.get_quantifier_id(),
+            QuantifierType::Foreach,
+            select_box,
+            &obj,
+        );
+        println!(
+            "adding box {} to q {} ",
+            obj.borrow().id,
+            local_q.borrow().id
+        );
+        obj.borrow_mut().add_quantifier(local_q.clone());
+        local_q
+    }
+}
+
+impl rewrite_engine::Rule<BoxRef> for DecorrelationRule {
+    fn name(&self) -> &'static str {
+        "DecorrelationRule"
+    }
+    fn apply_top_down(&self) -> bool {
+        false
+    }
+    fn condition(&mut self, obj: &BoxRef) -> bool {
+        self.external_columns.clear();
+        let mut obj = obj.borrow_mut();
+        if obj.is_select() && obj.ranging_quantifiers.len() == 1 {
+            // collect the column references in the current box
+            let mut f = |e: &mut ExprRef| {
+                collect_column_references(e, &mut self.external_columns);
+            };
+            obj.visit_expressions(&mut f);
+
+            // remove columns from the current quantifier
+            self.external_columns
+                .retain(|q, _| !obj.quantifiers.contains(q));
+        }
+        !self.external_columns.is_empty()
+    }
+    fn action(&mut self, obj: &mut BoxRef) {
+        println!("fired for {}", obj.borrow().id);
+        for (old_q, references) in self.external_columns.iter() {
+            let required_columns = references
+                .iter()
+                .map(|(c, _)| *c)
+                .sorted()
+                .collect::<Vec<_>>();
+            let mut local_q = Self::create_local_quantifier(obj, &old_q, &required_columns);
+
+            for (new_col_pos, (_orig_col_pos, col_refs)) in references.iter().sorted().enumerate() {
+                for col_ref in col_refs.iter() {
+                    *col_ref.borrow_mut() = Expr::make_column_ref(local_q.clone(), new_col_pos);
+                }
+            }
+
+            let mut new_columns = (0..required_columns.len()).collect_vec();
+
+            let mut current_box = obj.clone();
+            loop {
+                for col_pos in new_columns.iter_mut() {
+                    // @todo unions, except, intersect and group by
+                    *col_pos = current_box
+                        .borrow_mut()
+                        .add_column_if_not_exists(Expr::make_column_ref(local_q.clone(), *col_pos));
+                }
+
+                let ranging_q = current_box
+                    .borrow()
+                    .ranging_quantifiers
+                    .first()
+                    .unwrap()
+                    .upgrade()
+                    .expect("valid quantifier");
+                let ranging_box = ranging_q.borrow().parent_box.upgrade().expect("valid box");
+
+                if ranging_box.borrow().quantifiers.contains(old_q) {
+                    for (old_col, new_col) in required_columns.iter().zip(new_columns.iter()) {
+                        let left = make_ref(Expr::make_column_ref(old_q.clone(), *old_col));
+                        let right = make_ref(Expr::make_column_ref(ranging_q.clone(), *new_col));
+                        let predicate = make_ref(Expr::make_cmp(CmpOpType::Eq, left, right));
+                        ranging_box.borrow_mut().add_predicate(predicate);
+                    }
+                    break;
+                } else {
+                    current_box = ranging_box;
+                    local_q = ranging_q;
+                }
+            }
+        }
+    }
+}
+
+//
+// CteDiscovery
+//
+
 struct CteDiscovery {}
 
 impl CteDiscovery {
@@ -3007,6 +3146,7 @@ mod tests {
                 "ConstraintPropagation" => Box::new(ConstraintPropagationRule::new()),
                 "EmptyBoxes" => Box::new(EmptyBoxesRule::new()),
                 "EquivalentColumns" => Box::new(EquivalentColumnsRule::new()),
+                "Decorrelation" => Box::new(DecorrelationRule::new()),
                 "FlattenJoin" => Box::new(FlattenJoinRule::new()),
                 "FunctionalDependencies" => Box::new(FunctionalDependenciesRule::new()),
                 "GroupByRemoval" => Box::new(GroupByRemovalRule::new()),
