@@ -2189,6 +2189,7 @@ impl DecorrelationRule {
                 make_ref(Expr::make_column_ref(inner_q.clone(), *col_pos)),
             );
         }
+        select_box.borrow_mut().recompute_unique_keys();
 
         let local_q = Quantifier::new(
             model.borrow_mut().ids.get_quantifier_id(),
@@ -2196,12 +2197,8 @@ impl DecorrelationRule {
             select_box,
             &obj,
         );
-        println!(
-            "adding box {} to q {} ",
-            obj.borrow().id,
-            local_q.borrow().id
-        );
         obj.borrow_mut().add_quantifier(local_q.clone());
+        obj.borrow_mut().recompute_unique_keys();
         local_q
     }
 }
@@ -2230,7 +2227,6 @@ impl rewrite_engine::Rule<BoxRef> for DecorrelationRule {
         !self.external_columns.is_empty()
     }
     fn action(&mut self, obj: &mut BoxRef) {
-        println!("fired for {}", obj.borrow().id);
         for (old_q, references) in self.external_columns.iter() {
             let required_columns = references
                 .iter()

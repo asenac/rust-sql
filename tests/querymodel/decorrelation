@@ -95,7 +95,7 @@ digraph G {
     }
     subgraph cluster4 {
         label = "Box4:Select"
-        boxhead4 [ shape = record, label="{ Distinct: Enforce (DISTINCT TUPLES)| 0: Q3.c1 as B }" ]
+        boxhead4 [ shape = record, label="{ Distinct: Enforce (DISTINCT TUPLES)| 0: Q3.c1 as B| UNIQUE KEY [0] }" ]
         {
             rank = same
             node [ shape = circle ]
@@ -164,7 +164,7 @@ digraph G {
     }
     subgraph cluster4 {
         label = "Box4:Select"
-        boxhead4 [ shape = record, label="{ Distinct: Enforce (DISTINCT TUPLES)| 0: Q3.c1 as B }" ]
+        boxhead4 [ shape = record, label="{ Distinct: Enforce (DISTINCT TUPLES)| 0: Q3.c1 as B| UNIQUE KEY [0] }" ]
         {
             rank = same
             node [ shape = circle ]
@@ -233,7 +233,7 @@ digraph G {
     }
     subgraph cluster4 {
         label = "Box4:Select"
-        boxhead4 [ shape = record, label="{ Distinct: Enforce (DISTINCT TUPLES)| 0: Q3.c1 as B }" ]
+        boxhead4 [ shape = record, label="{ Distinct: Enforce (DISTINCT TUPLES)| 0: Q3.c1 as B| UNIQUE KEY [0] }" ]
         {
             rank = same
             node [ shape = circle ]
