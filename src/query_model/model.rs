@@ -373,10 +373,38 @@ impl QGBox {
             BoxType::OuterJoin => self
                 .quantifiers
                 .iter()
-                .filter(|q| q.borrow().quantifier_type == QuantifierType::PreservedForeach)
-                .any(|q| q.borrow().input_box.borrow().one_tuple_at_most()),
+                .all(|q| q.borrow().input_box.borrow().one_tuple_at_most()),
             BoxType::Grouping(g) => g.groups.len() == 0,
             BoxType::Values(v) => v.len() <= 1,
+            _ => false,
+        }
+    }
+
+    pub fn exactly_one_row(&self) -> bool {
+        match &self.box_type {
+            BoxType::Select(_) => {
+                self.predicates
+                    .as_ref()
+                    .map_or(true, |predicates| predicates.is_empty())
+                    && self
+                        .quantifiers
+                        .iter()
+                        .filter(|q| q.borrow().quantifier_type == QuantifierType::Foreach)
+                        .all(|q| q.borrow().input_box.borrow().exactly_one_row())
+            }
+            BoxType::OuterJoin => {
+                self.quantifiers
+                    .iter()
+                    .filter(|q| q.borrow().quantifier_type == QuantifierType::PreservedForeach)
+                    .all(|q| q.borrow().input_box.borrow().exactly_one_row())
+                    && self
+                        .quantifiers
+                        .iter()
+                        .filter(|q| q.borrow().quantifier_type == QuantifierType::Foreach)
+                        .all(|q| q.borrow().input_box.borrow().one_tuple_at_most())
+            }
+            BoxType::Grouping(g) => g.groups.len() == 0,
+            BoxType::Values(v) => v.len() == 1,
             _ => false,
         }
     }

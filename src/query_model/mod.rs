@@ -2056,17 +2056,28 @@ impl rewrite_engine::Rule<BoxRef> for ScalarToForeachRule {
     }
     fn condition(&mut self, obj: &BoxRef) -> bool {
         let obj = obj.borrow();
-        obj.one_tuple_at_most()
+        (obj.exactly_one_row()
             && obj.ranging_quantifiers.len() > 0
             && obj.ranging_quantifiers.iter().all(|q| {
                 let q = q.upgrade();
                 if let Some(q) = q {
                     let q = q.borrow();
-                    q.quantifier_type == QuantifierType::Scalar && Self::nulls_are_rejected(&q)
+                    q.quantifier_type == QuantifierType::Scalar
                 } else {
                     false
                 }
-            })
+            }))
+            || (obj.one_tuple_at_most()
+                && obj.ranging_quantifiers.len() > 0
+                && obj.ranging_quantifiers.iter().all(|q| {
+                    let q = q.upgrade();
+                    if let Some(q) = q {
+                        let q = q.borrow();
+                        q.quantifier_type == QuantifierType::Scalar && Self::nulls_are_rejected(&q)
+                    } else {
+                        false
+                    }
+                }))
     }
     fn action(&mut self, obj: &mut BoxRef) {
         let obj = obj.borrow();
